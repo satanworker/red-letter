@@ -1,0 +1,35 @@
+{
+  "groups": [
+    { "id": "clients", "kind": "clients", "name": "Clients", "children": ["agent", "browser"] },
+    { "id": "infra", "kind": "stateless", "name": "Infra you run (no state, no keys)", "children": ["relay", "oauth"] },
+    { "id": "github", "kind": "database", "name": "GitHub (only state)", "children": ["branch", "docref", "comments"] }
+  ],
+  "tables": [
+    { "id": "agent", "kind": "component", "name": "Agent (local git)", "fields": [] },
+    { "id": "browser", "kind": "component", "name": "Browser: CM6 + Automerge replica", "focus": true, "fields": [] },
+    { "id": "relay", "kind": "component", "name": "sync relay", "fields": [] },
+    { "id": "oauth", "kind": "component", "name": "OAuth exchange fn", "fields": [] },
+    { "id": "branch", "kind": "ref", "name": "refs/heads/<branch>", "focus": true, "fields": [
+      { "name": "<path>", "type": "markdown" } ] },
+    { "id": "docref", "kind": "ref", "name": "refs/red-letter/<branch>/<path>", "fields": [
+      { "name": "automerge", "type": "blob" },
+      { "name": "commit_sha", "type": "text" } ] },
+    { "id": "comments", "kind": "branch", "name": "red-letter-comments (orphan)", "fields": [
+      { "name": "id", "type": "ulid", "key": "PK" },
+      { "name": "doc", "type": "branch/path" },
+      { "name": "anchor_from", "type": "cursor" },
+      { "name": "anchor_to", "type": "cursor" },
+      { "name": "context", "type": "text" },
+      { "name": "author", "type": "github login" },
+      { "name": "parent_id", "type": "ulid?", "key": "FK" } ], "more": 2 }
+  ],
+  "edges": [
+    { "from": "agent", "to": "branch", "label": "git push / pull" },
+    { "from": "agent", "to": "comments", "label": "git read" },
+    { "from": "browser", "to": "relay", "label": "ws ops" },
+    { "from": "browser", "to": "oauth", "label": "token" },
+    { "from": "browser", "to": "branch", "label": "poll ref / CAS commit", "focus": true },
+    { "from": "browser", "to": "docref", "label": "load / save blob" },
+    { "from": "browser", "to": "comments", "label": "read / write" }
+  ]
+}

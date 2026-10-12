@@ -1,0 +1,51 @@
+== ls-remote
+b76867d603642bdab4b459711cb49f1700dbebd5	refs/heads/main
+d2621ecf063ded7b28b8cdb761369fee3d81db37	refs/heads/spike/cas
+b76867d603642bdab4b459711cb49f1700dbebd5	refs/red-letter/feat%2Fx/a.md
+ec69f1ac38dfcb80e792ec67b033d4f4f04ed77d	refs/red-letter/main/blobref
+b76867d603642bdab4b459711cb49f1700dbebd5	refs/red-letter/main/docs/a.md
+b76867d603642bdab4b459711cb49f1700dbebd5	refs/red-letter/main/x
+bdd2bb984eed314b520ff5be6e6a91b489a846d4	refs/red-letter/spike-cas/doc
+b76867d603642bdab4b459711cb49f1700dbebd5	refs/red-letter/t/docs
+b76867d603642bdab4b459711cb49f1700dbebd5	refs/red-letter/u/docs/a.md
+== git clone: for-each-ref
+refs/heads/main
+refs/remotes/origin/HEAD
+refs/remotes/origin/main
+refs/remotes/origin/spike/cas
+== git clone --mirror: red-letter refs
+7
+== explicit fetch
+refs/red-letter/feat%2Fx/a.md commit
+refs/red-letter/main/blobref blob
+refs/red-letter/main/docs/a.md commit
+refs/red-letter/main/x commit
+refs/red-letter/spike-cas/doc commit
+refs/red-letter/t/docs commit
+refs/red-letter/u/docs/a.md commit
+== normal push of spike/x
+remote: 
+remote: Create a pull request for 'spike/x' on GitHub by visiting:        
+remote:      https://github.com/satanworker/red-letter/pull/new/spike/x        
+remote: 
+7
+== fetch --prune (default refspec)
+7
+== delete one remote custom ref, then fetch --prune with explicit refspec
+From https://github.com/satanworker/red-letter
+ - [deleted]         (none)     -> refs/red-letter/main/x
+0
+== push --mirror --dry-run from a plain clone (what it WOULD do)
+To https://github.com/satanworker/red-letter.git
+ - [deleted]         spike/cas
+ * [new reference]   origin/main -> origin/main
+== same, clone without the red-letter refs
+To https://github.com/satanworker/red-letter.git
+ - [deleted]         spike/cas
+ - [deleted]         spike/x
+ - [deleted]         refs/red-letter/feat%2Fx/a.md
+ - [deleted]         refs/red-letter/main/blobref
+ - [deleted]         refs/red-letter/main/docs/a.md
+ - [deleted]         refs/red-letter/spike-cas/doc
+ - [deleted]         refs/red-letter/t/docs
+ - [deleted]         refs/red-letter/u/docs/a.md

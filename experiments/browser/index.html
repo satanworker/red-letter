@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Red Letter smoke</title>
+<style>
+  body { font: 13px ui-monospace, monospace; margin: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  #editor { border: 1px solid #ccc; min-height: 300px; }
+  .cm-conflict { background: #fdd; }
+  pre { white-space: pre-wrap; margin: 0; max-height: 80vh; overflow: auto; }
+</style>
+<div>
+  <div id="status">loading…</div>
+  <button id="commit">commit</button>
+  <div id="editor"></div>
+</div>
+<pre id="log"></pre>
+<script type="module" src="/app.js"></script>

@@ -1,0 +1,50 @@
+== OPTIONS https://api.github.com/repos/satanworker/red-letter/git/refs/heads/spike/cas (PATCH)
+HTTP/2 204 
+access-control-expose-headers: ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, X-GitHub-Edge-Region, Deprecation, Sunset
+access-control-max-age: 86400
+access-control-allow-headers: Authorization, Content-Type, If-Match, If-Modified-Since, If-None-Match, If-Unmodified-Since, Accept-Encoding, X-GitHub-OTP, X-Requested-With, User-Agent, GraphQL-Features, X-Github-Next-Global-ID, X-GitHub-Api-Version, X-Fetch-Nonce, Copilot-Integration-Id, DD-CLIENT-TOKEN, X-Client-Application
+access-control-allow-methods: GET, POST, PATCH, PUT, DELETE
+access-control-allow-origin: *
+vary: Accept-Encoding, Accept, X-Requested-With
+== OPTIONS https://api.github.com/repos/satanworker/red-letter/git/ref/heads/main (GET)
+HTTP/2 204 
+access-control-expose-headers: ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, X-GitHub-Edge-Region, Deprecation, Sunset
+access-control-max-age: 86400
+access-control-allow-headers: Authorization, Content-Type, If-Match, If-Modified-Since, If-None-Match, If-Unmodified-Since, Accept-Encoding, X-GitHub-OTP, X-Requested-With, User-Agent, GraphQL-Features, X-Github-Next-Global-ID, X-GitHub-Api-Version, X-Fetch-Nonce, Copilot-Integration-Id, DD-CLIENT-TOKEN, X-Client-Application
+access-control-allow-methods: GET, POST, PATCH, PUT, DELETE
+access-control-allow-origin: *
+vary: Accept-Encoding, Accept, X-Requested-With
+== OPTIONS https://api.github.com/graphql (POST)
+HTTP/2 204 
+access-control-expose-headers: ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, X-GitHub-Edge-Region, Deprecation, Sunset
+access-control-max-age: 86400
+access-control-allow-headers: Authorization, Content-Type, If-Match, If-Modified-Since, If-None-Match, If-Unmodified-Since, Accept-Encoding, X-GitHub-OTP, X-Requested-With, User-Agent, GraphQL-Features, X-Github-Next-Global-ID, X-GitHub-Api-Version, X-Fetch-Nonce, Copilot-Integration-Id, DD-CLIENT-TOKEN, X-Client-Application
+access-control-allow-methods: GET, POST, PATCH, PUT, DELETE
+access-control-allow-origin: *
+vary: Accept-Encoding, Accept, X-Requested-With
+== GET (actual) api.github.com git/ref with Origin
+HTTP/2 200 
+vary: Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With
+etag: "91bcc5e6a85559ebe5e8205950f8f62f5226497d64cd0683dce9d44dd8cb3339"
+access-control-expose-headers: ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning
+access-control-allow-origin: *
+x-ratelimit-limit: 5000
+x-ratelimit-remaining: 4927
+x-ratelimit-reset: 1791838731
+x-ratelimit-used: 73
+x-ratelimit-resource: core
+== OPTIONS https://github.com/login/oauth/access_token (POST)
+HTTP/2 404 
+vary: Accept-Encoding, Accept, X-Requested-With
+== POST (actual) github.com/login/oauth/access_token with Origin
+HTTP/2 404 
+vary: X-PJAX, X-PJAX-Container, Turbo-Visit, Turbo-Frame, X-Requested-With, X-GitHub-Client-Version,Accept-Encoding, Accept, X-Requested-With
+== OPTIONS https://raw.githubusercontent.com/satanworker/red-letter/main/README.md (GET)
+HTTP/2 403 
+access-control-allow-origin: *
+vary: Authorization,Accept-Encoding
+== GET (actual) raw.githubusercontent.com with Origin
+HTTP/2 200 
+etag: "ba4e4c5c142d1236e3f5ec5299cf7b78b4fc479bc27a5d4c950ac15d43ddb2d8"
+vary: Authorization,Accept-Encoding
+access-control-allow-origin: *

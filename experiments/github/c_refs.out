@@ -1,0 +1,18 @@
+create refs/red-letter/main/x -> commit 201 refs/red-letter/main/x
+create ref -> blob 201 {"sha":"ec69f1ac38dfcb80e792ec67b033d4f4f04ed77d","type":"blob","url":"https://api.github.com/repos/satanworker/red-letter/git/blobs/ec69f1ac38dfcb80e792ec67b033d4f4f04ed77d"}
+GET blob ref 200 {"sha":"ec69f1ac38dfcb80e792ec67b033d4f4f04ed77d","type":"blob","url":"https://api.github.com/repos/satanworker/red-letter/git/blobs/ec69f1ac38dfcb80e792ec67b033d4f4f04ed77d"}
+GET /git/ref/red-letter/main/x 200 refs/red-letter/main/x commit
+GET matching-refs/red-letter/ 200 ["refs/red-letter/main/blobref:blob","refs/red-letter/main/x:commit","refs/red-letter/spike-cas/doc:commit"]
+GET /branches names 200 ["main","spike/cas"]
+GET /git/refs (all) 200 ["refs/heads/main","refs/heads/spike/cas","refs/red-letter/main/blobref","refs/red-letter/main/x","refs/red-letter/spike-cas/doc"]
+create "refs/red-letter/main/docs/a.md" 201 ok
+create "refs/red-letter/feat%2Fx/a.md" 201 ok
+create "refs/red-letter/sp ace" 422 refs/red-letter/sp ace is not a valid ref name.
+create "refs/red-letter/a..b" 422 refs/red-letter/a..b is not a valid ref name.
+create "refs/red-letter/x.lock" 422 refs/red-letter/x.lock is not a valid ref name.
+create "refs/red-letter/~bad" 422 refs/red-letter/~bad is not a valid ref name.
+D/F: create refs/red-letter/t/docs 201
+D/F: create refs/red-letter/t/docs/a.md 422 {"message":"Reference update failed","documentation_url":"https://docs.github.com/rest/git/refs#create-a-reference","status":"422"}
+D/F reverse: create refs/red-letter/u/docs/a.md 201
+D/F reverse: create refs/red-letter/u/docs 422 {"message":"Reference update failed","documentation_url":"https://docs.github.com/rest/git/refs#create-a-reference","status":"422"}
+duplicate create 422 {"message":"Reference already exists","documentation_url":"https://docs.github.com/rest/git/refs#create-a-reference","status":"422"}

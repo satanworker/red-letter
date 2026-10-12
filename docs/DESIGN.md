@@ -27,18 +27,18 @@ Infra we run, all stateless, holding no user keys:
 GitHub holds all state:
 
 - `refs/heads/<branch>` — the file. Truth.
-- `refs/red-letter/<branch>/<path>` — Automerge blob + the `commit_sha` it corresponds to. Doc identity and history.
+- `refs/red-letter/v1/<sha1(branch)>/<sha1(path)>` — parentless commit holding `doc.automerge` + `meta.json {docId, branch, path, commit, heads}`. Doc identity and history. Hashed names: `<branch>/<path>` collides and hits ref directory/file conflicts.
 - orphan branch `red-letter-comments` — comment JSON: cursor pair, context snippet, author, parent.
 
 ## Browser, per open file
 
 1. Sign in: GitHub App user-to-server token (8h, refresh 6mo), kept in the browser only.
-2. Load the CRDT ref. Absent → init from the file blob, `POST git/refs` to create it. 422 = someone else won; load theirs. Git is the lock.
-3. Ref's `commit_sha` ≠ branch head → replay the diff at the recorded heads before showing.
-4. Connect relay. Edit in CodeMirror 6. Replica in IndexedDB; offline works.
-5. Poll `GET git/ref/heads/<branch>` with `If-None-Match` every ~15s (304s are free). Changed → replay at heads.
-6. Idle 30s / explicit save: Git Data `blob → tree → commit → PATCH ref {force:false}`, then update the CRDT ref. 422 → poll, replay, retry.
-7. Comments: cursors + ~50-char context, written to the orphan branch the same way. Render from cursors; fall back to context match if the doc identity was ever lost.
+2. Load the snapshot ref. Absent → init from the file blob, `POST git/refs` to create it. 422 `Reference already exists` = someone else won; load theirs. Git is the lock.
+3. Walk first-parent commits from branch head back to the doc's last known commit; replay each agent commit in order (see below). Browser commits carry a `Red-Letter-Heads:` trailer and are never replayed; if those heads are missing locally, merge the snapshot.
+4. Connect relay. Edit in CodeMirror 6. Replica in IndexedDB; offline works. The CRDT holds LF; the committer restores the file's EOL.
+5. Poll `GET git/ref/heads/<branch>` every ~15s with `cache:"no-store"` + manual `If-None-Match` (304s are free; default fetch serves refs from cache for 60s). Changed → step 3.
+6. Idle 30s / explicit save: `POST trees` (inline content) → `POST commits` (trailer) → snapshot `blob → tree → commit` → GraphQL `updateRefs` moving branch + snapshot ref atomically with CAS. Any error → poll, replay, retry. (REST `PATCH` has no CAS on non-branch refs.) 7 calls, ~3–4s.
+7. Comments: cursors + ~50-char context, written to the orphan branch. Render from cursors; fall back to context match if the doc identity was ever lost.
 
 Agent: `git pull`, edit, `git push`. `git show red-letter-comments:…` to read comments. Nothing to install.
 
@@ -46,36 +46,37 @@ Draft = real branch: create branch + copy the CRDT ref (same doc identity). Publ
 
 ## The one hard primitive
 
-Webhook/poll diff must be applied **at the last-committed version**, not against the live doc. The agent's blob is based on the last commit; diffing against the live doc would treat in-flight browser edits as agent deletions.
+Agent pushes are applied **at the heads of the parent commit**, not against the live doc; diffing against the live doc would treat in-flight browser edits as agent deletions.
 
-Automerge: `changeAt(headsAtLastCommit, d => updateText(d, ['text'], newBlob))`. Then concurrent browser ops merge normally.
+Every open tab polls, so several tabs replay the same push. Replay must therefore be deterministic: fork at the recorded heads with actor `from[0:16] + to[0:16]`, `time: 0`, `updateText(newBlob)`, then `applyChanges` the resulting change. Identical change bytes on every tab → the CRDT dedupes. Replay every first-parent commit; skipping one produces a different change and duplicates text. Not `changeAt`: in automerge 3.5.0 its materialized text/patches are wrong ~half the time with concurrent edits. Code: `experiments/crdt/replay.ts`.
+
+Where both sides touched the same words, the merge can interleave (`pheople`, `GitHHub`). `findConflicts` (`experiments/crdt/conflicts.ts`) flags exactly those regions; they are stored in the doc as cursor pairs keyed by commit sha and highlighted for review.
 
 ## Decisions
 
 | decision | pick | why |
 |---|---|---|
-| CRDT | Automerge 3.5 | `changeAt` + `updateText` is the primitive in one call; `getCursor` for anchors; `getAuthors` for `Co-authored-by`. Loro is the swap if a Rust-only server ever appears. Yjs: best ecosystem, no historical-edit primitive, default GC drops the history we key on. |
+| CRDT | Automerge 3.5 | deterministic fork-at-heads replay (spiked: dedupes across tabs); `getCursor` for anchors; `getAuthors` for `Co-authored-by`. Loro char merges identically and is the swap if needed. Yjs: no historical-edit primitive, default GC drops the history we key on. |
 | Editor v1 | CodeMirror 6 `lang-markdown` + split preview bound to the Automerge text | every tree editor (Tiptap, Milkdown, Outline, GitBook, Tina) canonicalises or corrupts markdown on round-trip; agents would see diff noise. |
 | Editor later | Obsidian-style live preview as decorations over the same string | never a ProseMirror tree as the CRDT doc |
 | Comments | out of band, anchored by Automerge cursors + context | marks live in the doc and would serialise into the file |
 | Auth | GitHub App, user-to-server tokens in the browser; no OAuth App, no PAT | native install screen, short-lived scoped tokens, orgs can approve. Token = installed repos ∩ user access. |
-| Commit | Git Data API with CAS | atomic; `force:false` is the only safe write |
+| Commit | Git Data API + GraphQL `updateRefs` | atomic file + snapshot move with real CAS on both refs |
 | Transport | websocket relay | WebRTC adds signalling/NAT pain for nothing; offline merge is a CRDT property, not a transport property |
 
 ## Known risks
 
-- Myers diff ≠ keystrokes. Large batched `updateText` merges poorly with concurrent edits (Upwelling: `frosty`+`soft` → `frostysoft`). Show "agent changed this region"; humans review. `updateText` is Beta.
+- Myers diff ≠ keystrokes: same-word edits interleave. Flagged and highlighted (see above); humans review. `updateText` is Beta.
 - Signed-commit branch protection rejects unsigned user-token API commits. Use draft branches; main gets bot-signed + `Co-authored-by` if needed.
-- Secondary rate limit: ≤80 content-creating req/min, ≤500/h per token. A commit is ~8 calls (file + CRDT ref). Serialise, keep idle ≥30s.
-- Doc identity: comment anchors are op IDs in one specific Automerge doc. Lose the doc, lose the anchors. Hence the ref and the context snippet.
+- Secondary rate limit: ≤80 content-creating req/min, ≤500/h per token. A save is 6 writes + reads. Serialise, keep idle ≥30s.
+- Doc identity: comment anchors are op IDs in one specific Automerge doc. Lose the snapshot ref, lose the anchors; hence the context snippet. An agent's `git push --mirror` deletes `refs/red-letter/*`; a default clone doesn't fetch them.
 - Agent→browser latency is the poll interval, not ~1s webhook.
-- `@automerge/automerge-codemirror` is 0.2.0 vs `y-codemirror.next` at 171k/wk. Price of the right primitive.
+- `@automerge/automerge-codemirror` is 0.2.0 vs `y-codemirror.next` at 171k/wk. Price of the right primitive. Works in the smoke test.
+- `updateRefs` with a GitHub App user-to-server token is untested (spikes used a PAT). Verify first.
 
-## Spikes before UI
+## Spikes
 
-1. `changeAt(heads, updateText)` merge quality on realistic concurrent edits. Fallback: Loro `checkout` + `text.update`.
-2. Browser-direct Git Data API: CORS, two-ref commit sequence, CAS retry, rate ceiling.
-3. Custom refs `refs/red-letter/*` via API: creatable, readable, hidden from branches UI, survive clone/push.
+Done 2026-10-12, all passing: `experiments/RESULTS.md` (merge quality, deterministic replay, anchors, perf, GitHub API in `experiments/github/FINDINGS.md`, full browser loop in `experiments/browser/`).
 
 ## Research
 

@@ -1,0 +1,13 @@
+create CRDT ref (commit) 201
+binary blob roundtrip equal true
+ref/commit mutations ["addCloseIssueReferences: Adds one or more pull requests as manually linked closing references on an issue. The target must be an issue, not a pull request.","createCommitOnBranch: Appends a commit to the given branch as the authenticated user.\n\nThis mutation creates a commit whose parent is the HEAD of the provided\nbranch and also updates","createRef: Create a new Git Ref.","deleteRef: Delete a Git Ref.","removeCloseIssueReferences: Removes one or more manually linked pull requests from an issue. Auto-detected closing references from pull request body keywords are not removed; edit the pull","updateCheckSuitePreferences: Modifies the settings of an existing check suite","updateOrganizationWebCommitSignoffSetting: Sets whether contributors are required to sign off on web-based commits for repositories in an organization.","updateRef: Update a Git Ref.","updateRefs: Creates, updates and/or deletes multiple refs in a repository.\n\nThis mutation takes a list of `RefUpdate`s and performs these updates\non the repository. All upd","updateRepositoryWebCommitSignoffSetting: Sets whether contributors are required to sign off on web-based commits for a repository.","updateSponsorshipPreferences: Change visibility of your sponsorship and opt in or out of email updates from the maintainer."]
+RefUpdate fields ["name","afterOid","beforeOid","force"]
+updateRefs both (correct beforeOid) 200 716 ms {"data":{"updateRefs":{"clientMutationId":null}}}
+  heads now true true
+updateRefs with one stale beforeOid 200 {"errors":[{"message":"Something went wrong while executing your query on 2026-10-12T20:02:26Z. Please include `8BDE:CD225:4F39CDA:752A15A:6ACD3CD1` when reporting this issue."}]}
+  file ref moved? false crdt ref moved? false
+updateRefs non-FF, force default 200 {"data":{"updateRefs":null},"errors":[{"type":"UNPROCESSABLE","path":["updateRefs"],"locations":[{"line":1,"column":37}],"message":"rejecting non-fast forward update"}]}
+REST file PATCH 200
+REST CRDT PATCH non-FF 404 Not Found -> file ref already moved; CRDT meta.commit_sha now behind branch head
+createCommitOnBranch 200 1153 ms {"data":{"createCommitOnBranch":{"commit":{"oid":"d2621ecf063ded7b28b8cdb761369fee3d81db37"}}}}
+createCommitOnBranch stale expectedHeadOid 200 {"data":{"createCommitOnBranch":null},"errors":[{"type":"STALE_DATA","path":["createCommitOnBranch"],"locations":[{"line":1,"column":43}],"message":"Expected branch to point to \"3d0bcf00b1376ee507f2b77151ffb88a717dd9a7\" but it did not.  Pull and try again."}]}

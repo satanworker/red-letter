@@ -1,0 +1,24 @@
+updateRefs: Creates, updates and/or deletes multiple refs in a repository.
+
+This mutation takes a list of `RefUpdate`s and performs these updates
+on the repository. All updates are performed atomically, meaning that
+if one of them is rejected, no other ref will be modified.
+
+`RefUpdate.beforeOid` specifies that the given reference needs to point
+to the given value before performing any updates. A value of
+`0000000000000000000000000000000000000000` can be used to verify that
+the references should not exist.
+
+`RefUpdate.afterOid` specifies the value that the given reference
+will point to after performing all updates. A value of
+`0000000000000000000000000000000000000000` can be used to delete a
+reference.
+
+If `RefUpdate.force` is set to `true`, a non-fast-forward updates
+for the given reference will be allowed.
+
+RefUpdate: {"description":"A ref update","inputFields":[{"name":"name","description":"The fully qualified name of the ref to be update. For example `refs/heads/branch-name`"},{"name":"afterOid","description":"The value this ref should be updated to."},{"name":"beforeOid","description":"The value this ref needs to point to before the update."},{"name":"force","description":"Force a non fast-forward update."}]}
+updateRefs single stale beforeOid (bogus) 200 {"data":{"updateRefs":null},"errors":[{"type":"UNPROCESSABLE","path":["updateRefs"],"locations":[{"line":1,"column":37}],"message":"twirp error not_found: missing"}]}
+multi stale #0 200 {"data":{"updateRefs":null},"errors":[{"type":"UNPROCESSABLE","path":["updateRefs"],"locations":[{"line":1,"column":37}],"message":"rejecting non-fast forward update"}]} file moved? false
+multi stale #1 200 {"data":{"updateRefs":null},"errors":[{"type":"UNPROCESSABLE","path":["updateRefs"],"locations":[{"line":1,"column":37}],"message":"rejecting non-fast forward update"}]} file moved? false
+REST CRDT PATCH non-FF 200 undefined

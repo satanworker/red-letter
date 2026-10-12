@@ -1,0 +1,16 @@
+DELETE refs/heads/spike/cas 204
+DELETE refs/heads/spike/read 204
+DELETE refs/heads/spike/red-letter-comments 204
+DELETE refs/heads/spike/x 204
+DELETE refs/red-letter/feat%2Fx/a.md 422
+DELETE refs/red-letter/main/blobref 204
+DELETE refs/red-letter/main/docs/a.md 204
+DELETE refs/red-letter/spike-cas/doc 204
+DELETE refs/red-letter/t/docs 204
+DELETE refs/red-letter/u/docs/a.md 204
+b76867d603642bdab4b459711cb49f1700dbebd5	HEAD
+b76867d603642bdab4b459711cb49f1700dbebd5	refs/heads/main
+b76867d603642bdab4b459711cb49f1700dbebd5	refs/red-letter/feat%2Fx/a.md
+DELETE refs/red-letter/feat%2Fx/a.md 204
+b76867d603642bdab4b459711cb49f1700dbebd5	HEAD
+b76867d603642bdab4b459711cb49f1700dbebd5	refs/heads/main

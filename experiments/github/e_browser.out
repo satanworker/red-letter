@@ -1,0 +1,12 @@
+label                              status sha       etag(abbrev)  x-ratelimit-remaining  ms
+default #1                         200    9b273eaf  W/"f62a2b…"   4926                   430
+default #2 (within 60s)            200    9b273eaf  W/"f62a2b…"   4926                   5     <- served from HTTP cache
+browser PATCH                      200    -> a53a6e40
+default after PATCH                200    9b273eaf  W/"f62a2b…"   4926                   4     <- STALE (own write not visible)
+cache:'no-cache' after PATCH       200    a53a6e40  W/"2709ea…"   4924                   390
+cache:'no-store' after PATCH       200    a53a6e40  W/"2709ea…"   4923                   388
+default again                      200    a53a6e40  W/"2709ea…"   4924                   4     <- cache (entry refreshed by no-cache call)
+manual If-None-Match + no-store    304    -         "2709ea…"     4923                   381
+raw w/ auth                        TypeError: Failed to fetch (preflight rejected)
+raw no auth                        200 (repo is public)
+oauth token                        TypeError: Failed to fetch (no CORS)

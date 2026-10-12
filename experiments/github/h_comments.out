@@ -1,0 +1,4 @@
+orphan commit parents 0 [["blob",201,654],["tree",201,376],["commit",201,343]]
+create orphan branch 201
+append c2 PATCH 200
+stale append PATCH 422 Update is not a fast forward

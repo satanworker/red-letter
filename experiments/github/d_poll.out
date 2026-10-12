@@ -1,0 +1,16 @@
+200 first {"s":200,"ms":313,"etag":"W/\"d86f49488e0982e0c8fcd7f21240ef8743192c81825b9d56b24e0e64162b1729\"","cc":"private, max-age=60, s-maxage=60","vary":"Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With","lm":"Mon, 12 Oct 2026 19:57:35 GMT","rem":"4944","used":"56","res":"core"}
+304? #0 {"s":304,"ms":260,"etag":"\"d86f49488e0982e0c8fcd7f21240ef8743192c81825b9d56b24e0e64162b1729\"","cc":"private, max-age=60, s-maxage=60","vary":"Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With","lm":"Mon, 12 Oct 2026 19:57:35 GMT","rem":"4944","used":"56","res":"core"}
+304? #1 {"s":304,"ms":248,"etag":"\"d86f49488e0982e0c8fcd7f21240ef8743192c81825b9d56b24e0e64162b1729\"","cc":"private, max-age=60, s-maxage=60","vary":"Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With","lm":"Mon, 12 Oct 2026 19:57:35 GMT","rem":"4944","used":"56","res":"core"}
+304? #2 {"s":304,"ms":229,"etag":"\"d86f49488e0982e0c8fcd7f21240ef8743192c81825b9d56b24e0e64162b1729\"","cc":"private, max-age=60, s-maxage=60","vary":"Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With","lm":"Mon, 12 Oct 2026 19:57:35 GMT","rem":"4944","used":"56","res":"core"}
+plain 200 again {"s":200,"ms":273,"etag":"W/\"d86f49488e0982e0c8fcd7f21240ef8743192c81825b9d56b24e0e64162b1729\"","cc":"private, max-age=60, s-maxage=60","vary":"Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With","lm":"Mon, 12 Oct 2026 19:57:35 GMT","rem":"4943","used":"57","res":"core"}
+etag w/o W/ prefix {"s":304,"ms":223,"etag":"\"d86f49488e0982e0c8fcd7f21240ef8743192c81825b9d56b24e0e64162b1729\"","cc":"private, max-age=60, s-maxage=60","vary":"Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With","lm":"Mon, 12 Oct 2026 19:57:35 GMT","rem":"4943","used":"57","res":"core"}
+commits sha 200 {"s":200,"ms":226,"etag":"\"d2621ecf063ded7b28b8cdb761369fee3d81db37\"","cc":"private, max-age=60, s-maxage=60","vary":"Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With","lm":"Mon, 12 Oct 2026 20:02:31 GMT","rem":"4932","used":"68","res":"core"} body d2621ecf063ded7b28b8cdb761369fee3d81db37
+commits sha 304? {"s":304,"ms":277,"etag":"\"d2621ecf063ded7b28b8cdb761369fee3d81db37\"","cc":"private, max-age=60, s-maxage=60","vary":"Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With","lm":"Mon, 12 Oct 2026 20:02:31 GMT","rem":"4932","used":"68","res":"core"}
+PATCH 200 new etag in PATCH response W/"787630cd5beb543ba57efe60da07b33ae769de042302d9de491a8966ba752627"
+t+747ms cond: 200 true | uncond: 200 true | commits-sha cond: 200 true
+t+2469ms cond: 200 true | uncond: 200 true | commits-sha cond: 200 true
+t+4280ms cond: 200 true | uncond: 200 true | commits-sha cond: 200 true
+t+6015ms cond: 200 true | uncond: 200 true | commits-sha cond: 200 true
+t+7839ms cond: 200 true | uncond: 200 true | commits-sha cond: 200 true
+t+9637ms cond: 200 true | uncond: 200 true | commits-sha cond: 200 true
+rate after {"limit":5000,"used":72,"remaining":4928,"reset":1791838731}

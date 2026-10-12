@@ -11,9 +11,9 @@
     { "id": "oauth", "kind": "component", "name": "OAuth exchange fn", "fields": [] },
     { "id": "branch", "kind": "ref", "name": "refs/heads/<branch>", "focus": true, "fields": [
       { "name": "<path>", "type": "markdown" } ] },
-    { "id": "docref", "kind": "ref", "name": "refs/red-letter/<branch>/<path>", "fields": [
-      { "name": "automerge", "type": "blob" },
-      { "name": "commit_sha", "type": "text" } ] },
+    { "id": "docref", "kind": "ref", "name": "refs/red-letter/v1/<sha1 branch>/<sha1 path>", "fields": [
+      { "name": "doc.automerge", "type": "blob" },
+      { "name": "meta.json", "type": "docId, commit, heads" } ] },
     { "id": "comments", "kind": "branch", "name": "red-letter-comments (orphan)", "fields": [
       { "name": "id", "type": "ulid", "key": "PK" },
       { "name": "doc", "type": "branch/path" },
@@ -28,8 +28,8 @@
     { "from": "agent", "to": "comments", "label": "git read" },
     { "from": "browser", "to": "relay", "label": "ws ops" },
     { "from": "browser", "to": "oauth", "label": "token" },
-    { "from": "browser", "to": "branch", "label": "poll ref / CAS commit", "focus": true },
-    { "from": "browser", "to": "docref", "label": "load / save blob" },
+    { "from": "browser", "to": "branch", "label": "poll ref / updateRefs", "focus": true },
+    { "from": "browser", "to": "docref", "label": "load / updateRefs" },
     { "from": "browser", "to": "comments", "label": "read / write" }
   ]
 }

@@ -1,0 +1,10 @@
+1 REST PATCH custom ref non-FF force:false 200 ref now == unrelated? true
+1b REST PATCH branch non-FF force:false 422 Update is not a fast forward
+2a advance custom ref {"data":{"updateRefs":{"clientMutationId":null}}}
+2b custom ref: stale(ancestor) beforeOid, FF afterOid -> {"errors":[{"message":"Something went wrong while executing your query on 2026-10-12T20:03:27Z. Please include `9510:3B2B6E:4CBA561:7164DB3:6ACD3D0E` when reporting this issue."}]} moved? false
+2c branch: stale(ancestor) beforeOid, FF afterOid -> {"errors":[{"message":"Something went wrong while executing your query on 2026-10-12T20:03:29Z. Please include `9510:3B2B6E:4CBB72C:716682B:6ACD3D10` when reporting this issue."}]} moved? false
+3 custom ref: correct beforeOid, non-FF, no force -> {"data":{"updateRefs":null},"errors":[{"type":"UNPROCESSABLE","path":["updateRefs"],"locations":[{"line":1,"column":37}],"message":"rejecting non-fast forward update"}]} moved? false
+3b custom ref: correct beforeOid, non-FF, force:true -> {"data":{"updateRefs":{"clientMutationId":null}}}
+4 create-if-absent on existing ref -> {"errors":[{"message":"Something went wrong while executing your query on 2026-10-12T20:03:32Z. Please include `9510:3B2B6E:4CBD95F:7169BE3:6ACD3D14` when reporting this issue."}]}
+4b create-if-absent new ref -> {"data":{"updateRefs":{"clientMutationId":null}}} 200
+4c delete via updateRefs -> {"data":{"updateRefs":{"clientMutationId":null}}} 404

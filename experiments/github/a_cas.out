@@ -1,0 +1,7 @@
+create branch 201 665
+seq(blob separate) [["blob",201,425],["tree",201,378],["commit",201,363],["patch",200,752]] total_ms 1920 calls 4
+seq(inline content) [["tree(inline content)",201,463],["commit",201,816],["patch",200,665]] total_ms(excl. head/tree lookups) 1944
+writer A PATCH 200 4f92ac97846f58bbf570e5b832d2d74c6746719b
+writer B PATCH (stale parent) 422 {"message":"Update is not a fast forward","documentation_url":"https://docs.github.com/rest/git/refs#update-a-reference","status":"422"}
+writer B retry PATCH 200 true
+PATCH same sha (no-op) 200

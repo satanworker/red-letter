@@ -1,0 +1,14 @@
+write [["blob",201,529],["blob",201,1465],["tree",201,382],["commit",201,333]] big bytes 1258334
+create branch 201
+spike/small.md contents(json) 200 240 ms {"size":19,"encoding":"base64","contentLen":29,"sha":"1c46e5b13ef3cc462d548db36616107da7e594db","equal":true,"cc":"private, max-age=60, s-maxage=60"}
+spike/small.md contents(raw) 200 218 ms equal true etag "1c46e5b13ef3cc462d548db36616107da7e594db" ct application/vnd.github.raw+json; charset=utf-8
+spike/small.md contents(object) 200 205 ms {"encoding":"base64","contentLen":29}
+spike/small.md git/blobs(json) 200 263 ms {"size":19,"encoding":"base64","equal":true,"cc":"private, max-age=86400, s-maxage=86400"}
+spike/small.md git/blobs(raw) 200 251 ms equal true rem 4916
+spike/small.md raw.githubusercontent 200 265 ms equal true cc max-age=300 ratelimit hdr null
+spike/big.md contents(json) 200 239 ms {"size":1258334,"encoding":"none","contentLen":0,"sha":"92d467563ce39fc439c73d0551de07e1a7306052","equal":null,"cc":"private, max-age=60, s-maxage=60"}
+spike/big.md contents(raw) 200 250 ms equal true etag "92d467563ce39fc439c73d0551de07e1a7306052" ct application/vnd.github.raw+json; charset=utf-8
+spike/big.md contents(object) 200 250 ms {"encoding":"none","contentLen":0}
+spike/big.md git/blobs(json) 200 284 ms {"size":1258334,"encoding":"base64","equal":true,"cc":"private, max-age=86400, s-maxage=86400"}
+spike/big.md git/blobs(raw) 200 272 ms equal true rem 4911
+spike/big.md raw.githubusercontent 200 283 ms equal true cc max-age=300 ratelimit hdr null

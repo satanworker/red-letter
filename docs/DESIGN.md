@@ -73,6 +73,9 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 - Agent→browser latency is the poll interval, not ~1s webhook.
 - `@automerge/automerge-codemirror` is 0.2.0 vs `y-codemirror.next` at 171k/wk. Price of the right primitive. Works in the smoke test.
 - `updateRefs` with a GitHub App user-to-server token is untested (spikes used a PAT). Verify first.
+- Replay determinism is a cross-version contract: change bytes depend on the Automerge version, the diff and the actor recipe. Mixed builds duplicate text (Jupyter's duplication bugs are this). Pin Automerge exactly; put `replayVersion` in `meta.json` and the trailer, and reload instead of replaying on mismatch.
+- The relay accepts ops from anyone holding a docId, and an honest tab later commits them under its own name. The relay must check the GitHub token's repo access on connect (still stateless).
+- Replayed agent changes must stay off the human's undo stack; one Ctrl-Z must not revert an agent commit.
 
 ## Spikes
 
@@ -80,4 +83,4 @@ Done 2026-10-12, all passing: `experiments/RESULTS.md` (merge quality, determini
 
 ## Research
 
-`docs/research/` — five reports, 2026-10-12: prior art (Patchwork, Jupyter RTC, pushwork), CRDT comparison, markdown editors, existing products, GitHub integration mechanics.
+`docs/research/` — five reports, 2026-10-12: prior art (Patchwork, Jupyter RTC, pushwork), CRDT comparison, markdown editors, existing products, GitHub integration mechanics. Plus `crdts-in-production.md`, 2026-10-13: Notion, Zed, Figma, Linear, Liveblocks and others, agent-editing patterns, and file→CRDT bridges compared with our replay.

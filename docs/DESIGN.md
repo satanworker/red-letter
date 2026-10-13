@@ -79,25 +79,45 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 - The relay accepts ops from anyone holding a docId, and an honest tab later commits them under its own name. Done: the hub admits a tab only with push access to the repo.
 - Replayed agent changes must stay off the human's undo stack. Done: remote transactions are marked `addToHistory: false`; verified that Ctrl-Z skips the agent's edit.
 
-## Prototype status (2026-10-13)
+## Prototype status (updated 2026-10-13)
 
-Live at `diff.satanworker.com`; code in `web/` and `server/`. Verified end to end with two tabs and a git-pushing "agent" on the `demo` branch of this repo:
-- **Sign-in:** the GitHub App user token (8 h, with refresh) commits through `updateRefs`, which closes the last open risk from the spikes.
-- **Live sync and saving:** edits sync through the Go hub; saves happen 30–40 s after the last edit or on Save / Ctrl-S.
+Live at `diff.satanworker.com`; code in `web/` and `server/`; run/deploy notes in `README.md`. Verified end to end with two tabs and a git-pushing "agent" on the `demo` branch of this repo.
+
+Done:
+- **Sign-in, two options** (tokens only in the browser; the hub exchanges codes and stores nothing):
+  - Default "Continue with GitHub": OAuth App "Red Letter", `repo` scope, expiring tokens with refresh, nothing to install. Verified on localhost.
+  - "Use the GitHub App instead": [`red-letter-diff`](https://github.com/apps/red-letter-diff), per-repo install. Its user token (8 h, with refresh) commits through `updateRefs`, which closed the last open risk from the spikes. A repo without the App routes the user to its install page.
+- **Live sync and saving:** edits sync through the Go hub, one room per file (repo + branch + path) with presence avatars. Saves happen 30–40 s after the last edit or on Save / Ctrl-S.
 - **Agent pushes:**
-  - replayed into both tabs without duplicated text;
+  - replayed into every open tab without duplicated text;
   - shown inline as insertions plus struck-through deletions;
-  - listed in a panel with per-change revert and "mark reviewed";
-  - where they interleave with a human edit, flagged with "keep yours / keep the agent's".
-- **Comments:** written to `red-letter-comments`. The agent read one via `git show` and replied by pushing; the anchor followed the text through edits.
-- **Install flow:** a repo without the App routes the user to its install page.
+  - announced by a banner over the document;
+  - listed in a panel with per-change Revert and "Looks good";
+  - where they interleave with a human edit, flagged with "Keep yours / Keep agent's".
+  - Ctrl-Z never reverts an agent's or a peer's change.
+- **Comments:**
+  - written to `red-letter-comments`, started from a floating "Comment" button on a selection;
+  - shown as threads with replies and resolve;
+  - the agent read one via `git show` and replied by pushing;
+  - the anchor followed the text through edits.
+- **UI:** Notion-style live-preview editor: centered column; headings, emphasis, lists, checkboxes, quotes, code and images rendered inline; markdown syntax shown only on the cursor line. Breadcrumb header with branch pill, save state and Share.
+- **Infra:**
+  - static site on Cloudflare (Workers static assets);
+  - Go hub + OAuth exchange on home-satan as systemd user units behind a Cloudflare Tunnel (`diff-api.satanworker.com`);
+  - secrets in `~/.config/red-letter/`.
 
 Not built yet:
 - IndexedDB replica (offline across reloads);
-- presence cursors;
+- presence cursors inside the text (avatars only today);
 - notifications and mentions;
 - draft branches / publish as PR;
-- read-only viewing without signing in.
+- read-only viewing without signing in;
+- tables rendered in the editor (shown as raw markdown).
+
+Open items:
+- Deployment lives in systemd user units, not home-satan's NixOS config. Moving it there needs the sops key.
+- home-satan has no outbound IPv6. It doesn't affect Red Letter; enabling it (static `/64` + `fe80::1` gateway in `hosts/hetzner`) is optional.
+- Visual design is a first pass; a reference page or Figma would let us match a target.
 
 ## Spikes
 

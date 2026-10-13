@@ -1,7 +1,7 @@
 # Red Letter demo (agent edition)
 
 This file lives on the `demo` branch.
-Edit it in the browser or push with git; both meet in one file.
+Edit it in the browser or push with git; both sides meet in one file.
 
 ## Todo
 

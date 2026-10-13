@@ -35,6 +35,7 @@ func setup(t *testing.T) (hub *httptest.Server, wsURL string) {
 	}))
 	t.Cleanup(gh.Close)
 	s := newServer([]string{origin, "http://localhost:5173"}, gh.URL, gh.URL, "cid", "shh")
+	s.oauthID, s.oauthSecret = "oid", "oauth-shh"
 	hub = httptest.NewServer(s.routes())
 	t.Cleanup(hub.Close)
 	return hub, "ws" + strings.TrimPrefix(hub.URL, "http") + "/sync?repo=Owner/Repo"
@@ -185,6 +186,11 @@ func TestOAuth(t *testing.T) {
 	_, body = post(t, hub.URL+"/oauth/refresh", origin, `{"refresh_token":"r"}`)
 	if !strings.Contains(body, `"grant":"refresh_token"`) {
 		t.Fatalf("refresh: %s", body)
+	}
+	// "client":"oauth" must use the OAuth App's secret, never the GitHub App's
+	_, body = post(t, hub.URL+"/oauth/token", origin, `{"client":"oauth","code":"c0de"}`)
+	if !strings.Contains(body, `"secret":"oauth-shh"`) {
+		t.Fatalf("oauth client: %s", body)
 	}
 
 	res, _ = post(t, hub.URL+"/oauth/token", "https://evil.example", `{"code":"c0de"}`)

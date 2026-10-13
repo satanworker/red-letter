@@ -20,11 +20,12 @@ const TRAILER = "Red-Letter-Heads:";
 const ZERO = "0".repeat(40);
 const lf = (s: string) => s.replaceAll("\r\n", "\n");
 
-export type Status = { saving: boolean; dirty: boolean; error?: string; commit: string; peers: number; online: boolean };
+// people: GitHub logins of other tabs on this file (peer ids are "<login>-<random>")
+export type Status = { saving: boolean; dirty: boolean; error?: string; commit: string; people: string[]; online: boolean };
 
 export class Session {
   handle!: DocHandle<RLDoc>;
-  status: Status = { saving: false, dirty: false, commit: "", peers: 0, online: false };
+  status: Status = { saving: false, dirty: false, commit: "", people: [], online: false };
   onStatus: () => void = () => {};
   log: (...a: unknown[]) => void = (...a) => console.log("[rl]", ...a);
 
@@ -48,9 +49,10 @@ export class Session {
   ) {
     const peerId = `${login}-${crypto.randomUUID().slice(0, 8)}` as PeerId;
     if (canWrite) {
-      this.#hub = new HubAdapter(`${HUB.replace(/^http/, "ws")}/sync?repo=${encodeURIComponent(repoName)}`, token);
+      const doc = encodeURIComponent(`${branch}:${path}`);
+      this.#hub = new HubAdapter(`${HUB.replace(/^http/, "ws")}/sync?repo=${encodeURIComponent(repoName)}&doc=${doc}`, token);
       this.#hub.onStatus = (s) => {
-        Object.assign(this.status, { online: s.connected, peers: s.peers });
+        Object.assign(this.status, { online: s.connected, people: s.peers.map((p) => p.replace(/-[0-9a-f]{8}$/, "")) });
         if (s.error) this.status.error = `live sync: ${s.error}`;
         this.onStatus();
       };

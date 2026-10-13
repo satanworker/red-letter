@@ -1,15 +1,14 @@
-// Routes, editor, side panel. Plain DOM; CodeMirror 6 bound to the Automerge text.
+// Routes, editor, side panel. Plain DOM; CodeMirror 6 (live preview) bound to the Automerge text.
 import { automergeSyncPlugin, type DocHandle as PluginHandle } from "@automerge/automerge-codemirror";
-import { markdown } from "@codemirror/lang-markdown";
 import { EditorState, StateEffect, StateField, Transaction, type Range } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, keymap, type DecorationSet } from "@codemirror/view";
-import { basicSetup } from "codemirror";
-import { marked } from "marked";
+import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip } from "@codemirror/view";
 import { Comments, type Comment } from "./comments.ts";
 import { Session, type Anchor, type RLDoc } from "./doc.ts";
+import { editorExtensions } from "./livePreview.ts";
 import {
   APP_SLUG,
   HttpError,
+  authKind,
   completeSignIn,
   currentUser,
   encPath,
@@ -29,13 +28,34 @@ function h(html: string): HTMLElement {
   t.innerHTML = html.trim();
   return t.content.firstElementChild as HTMLElement;
 }
+const avatar = (login: string, size = 24) =>
+  `<img class="av" width="${size}" height="${size}" src="https://github.com/${encodeURIComponent(login)}.png?size=${size * 2}" alt="${esc(login)}" title="${esc(login)}">`;
+// Git commit authors are names, not GitHub logins: show an initial instead of guessing an avatar.
+const initial = (name: string, size = 22) =>
+  `<span class="av initial" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.5)}px" title="${esc(name)}">${esc((name.trim()[0] ?? "?").toUpperCase())}</span>`;
+const ago = (iso: string) => {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return new Date(iso).toLocaleDateString();
+};
+const LOGO = `<a href="/" class="logo"><span class="pilcrow">¶</span> Red Letter</a>`;
+
+// ---------------------------------------------------------------- icons (inline SVG, currentColor)
+const svg = (d: string, size = 16) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const commentIcon = svg(`<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/>`);
+const checkIcon = svg(`<path d="M3.5 8.5l3 3 6-7"/>`, 14);
+const branchIcon = svg(`<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="5.5" r="1.5"/><path d="M4.5 5v6M11.5 7c0 2.5-7 1.5-7 4"/>`, 12);
+const githubMark = `<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`;
 
 export function start() {
   route().catch((e) => fatal(e instanceof Error ? e.message : String(e)));
 }
 
 function fatal(msg: string) {
-  app.replaceChildren(h(`<div class="screen"><h1>Something went wrong</h1><p class="err">${esc(msg)}</p><p><a href="/">Home</a></p></div>`));
+  app.replaceChildren(h(`<div class="screen"><div class="card-lg"><h1>Something went wrong</h1><p class="err">${esc(msg)}</p><p><a href="/">Back home</a></p></div></div>`));
 }
 
 async function route(): Promise<void> {
@@ -45,28 +65,43 @@ async function route(): Promise<void> {
   }
   const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/blob\/(.+)$/);
   if (!m) return landing();
-  if (!(await token())) return signInScreen();
+  if (!(await token())) return signInScreen(`Sign in to open <b>${esc(m[3].split("/").pop() ?? "")}</b> from ${esc(m[1])}/${esc(m[2])}.`);
   return openFile(m[1], m[2], m[3].split("/").map(decodeURIComponent));
 }
 
 // ---------------------------------------------------------------- screens
+const signInButtons = `
+  <button class="btn primary big" data-signin="oauth">${githubMark} Continue with GitHub</button>
+  <p class="fine">One click, works on every repo you can already access.
+    Prefer to pick repositories? <a href="#" data-signin="app">Use the GitHub App instead</a>.</p>`;
+function wireSignIn(el: HTMLElement) {
+  for (const b of el.querySelectorAll<HTMLElement>("[data-signin]"))
+    b.addEventListener("click", (e) => {
+      e.preventDefault();
+      void signIn(b.dataset.signin === "app" ? "app" : "oauth");
+    });
+}
+
 async function landing() {
   const user = await currentUser().catch(() => null);
   const el = h(`<div class="screen">
-    <h1><span class="red">Red</span> Letter</h1>
-    <p>Edit the markdown files in your GitHub repo together, live, and leave comments in the margin.
-    Git stays the source of truth: agents keep using <code>git pull</code> / <code>git push</code>, and their commits show up here as reviewable changes.</p>
-    <form><input name="u" placeholder="https://github.com/owner/repo/blob/main/README.md" autofocus><button>Open</button></form>
-    <p class="muted">Tip: replace <code>github.com</code> with <code>${esc(location.host)}</code> in any file URL.</p>
-    <p>${user ? `Signed in as <b>${esc(user.login)}</b> · <a href="#" id="out">sign out</a>` : `<button id="in">Sign in with GitHub</button>`}</p>
+    <nav class="topnav">${LOGO}<span class="spacer"></span>${user ? `${avatar(user.login)} <a href="#" id="out" class="muted">Sign out</a>` : ""}</nav>
+    <div class="hero">
+      <h1>Write together.<br><span class="red">Agents included.</span></h1>
+      <p class="lede">Open any markdown file from GitHub, edit it live with your team, and leave comments in the margin.
+        Your agents keep using <code>git push</code>; their changes show up here, ready to review.</p>
+      <form class="open"><input name="u" placeholder="Paste a GitHub file link: github.com/owner/repo/blob/main/README.md" autofocus><button class="btn primary">Open</button></form>
+      <p class="fine">Or swap <code>github.com</code> for <code>${esc(location.host)}</code> in any file URL.</p>
+      ${user ? "" : `<div class="signin">${signInButtons}</div>`}
+    </div>
   </div>`);
   el.querySelector("form")!.onsubmit = (e) => {
     e.preventDefault();
     const u = (el.querySelector("input") as HTMLInputElement).value.trim();
-    const path = u.replace(/^https?:\/\/(www\.)?github\.com/, "").replace(/^https?:\/\/[^/]+/, "");
+    const path = u.replace(/^(https?:\/\/)?(www\.)?github\.com/, "").replace(/^https?:\/\/[^/]+/, "");
     location.assign(path.startsWith("/") ? path : `/${path}`);
   };
-  el.querySelector<HTMLElement>("#in")?.addEventListener("click", () => void signIn());
+  wireSignIn(el);
   el.querySelector<HTMLElement>("#out")?.addEventListener("click", (e) => {
     e.preventDefault();
     signOut();
@@ -75,23 +110,28 @@ async function landing() {
   app.replaceChildren(el);
 }
 
-function signInScreen() {
-  const el = h(`<div class="screen"><h1><span class="red">Red</span> Letter</h1>
-    <p>Sign in with GitHub to open <code>${esc(location.pathname.slice(1))}</code>.</p>
-    <p><button>Sign in with GitHub</button></p></div>`);
-  el.querySelector("button")!.onclick = () => void signIn();
+function signInScreen(why: string) {
+  const el = h(`<div class="screen"><nav class="topnav">${LOGO}</nav><div class="card-lg"><h1>Sign in</h1><p>${why}</p>${signInButtons}</div></div>`);
+  wireSignIn(el);
   app.replaceChildren(el);
 }
 
-function installScreen(owner: string, repo: string) {
-  const el = h(`<div class="screen"><h1>Red Letter isn't set up for ${esc(owner)}/${esc(repo)}</h1>
-    <p>The Red Letter app needs to be installed on this repository before you can edit it here (or your GitHub account has no access to it).</p>
-    <p><button>Install Red Letter on ${esc(owner)}</button></p>
-    <p class="muted">If you don't own the repo, ask its owner to install <a href="https://github.com/apps/${APP_SLUG}">the app</a>.</p></div>`);
-  el.querySelector("button")!.onclick = () => {
+function noAccessScreen(owner: string, repo: string) {
+  const viaApp = authKind() === "app";
+  const el = h(`<div class="screen"><nav class="topnav">${LOGO}</nav><div class="card-lg">
+    <h1>${viaApp ? "Install Red Letter on this repo" : "No access to this repo"}</h1>
+    ${
+      viaApp
+        ? `<p>You signed in with the GitHub App, which only reaches repositories it's installed on. <b>${esc(owner)}/${esc(repo)}</b> isn't one of them yet.</p>
+           <p><button class="btn primary" id="install">Install on ${esc(owner)}</button></p>
+           <p class="fine">Don't own it? Ask the owner, or <a href="#" data-signin="oauth">continue with plain GitHub sign-in</a> instead.</p>`
+        : `<p>Your GitHub account can't see <b>${esc(owner)}/${esc(repo)}</b>. If it belongs to an organization, an owner may need to approve Red Letter under the org's third-party access settings, or you can <a href="#" data-signin="app">use the GitHub App</a>.</p>`
+    }</div></div>`);
+  el.querySelector<HTMLElement>("#install")?.addEventListener("click", () => {
     rememberReturn();
     location.assign(`https://github.com/apps/${APP_SLUG}/installations/new`);
-  };
+  });
+  wireSignIn(el);
   app.replaceChildren(el);
 }
 
@@ -109,15 +149,15 @@ async function appInstalledOn(fullName: string): Promise<boolean> {
 
 // ---------------------------------------------------------------- open a file
 async function openFile(owner: string, repo: string, rest: string[]) {
-  app.replaceChildren(h(`<div class="screen muted">Opening ${esc(rest.join("/"))}…</div>`));
+  app.replaceChildren(h(`<div class="loading"><div class="spinner"></div>Opening ${esc(rest.at(-1) ?? "")}…</div>`));
   const repoName = `${owner}/${repo}`;
   const info = await ghJson<{ node_id: string; full_name: string; permissions?: { push: boolean } }>(`/repos/${repoName}`).catch((e) => {
     if (e instanceof HttpError && (e.status === 404 || e.status === 403)) return null;
     throw e;
   });
-  if (!info) return installScreen(owner, repo);
-  // A user token can only write where the App is installed; public repos read fine without it, so check.
-  if (info.permissions?.push && !(await appInstalledOn(info.full_name))) return installScreen(owner, repo);
+  if (!info) return noAccessScreen(owner, repo);
+  // A GitHub App token can only write where the App is installed; public repos read fine without it, so check.
+  if (authKind() === "app" && info.permissions?.push && !(await appInstalledOn(info.full_name))) return noAccessScreen(owner, repo);
   // branch names may contain "/": try the shortest prefix that is a branch, like GitHub does
   let branch = "";
   for (let i = 1; i < rest.length && !branch; i++) {
@@ -169,52 +209,101 @@ const remoteNotUndoable = EditorState.transactionExtender.of((tr) =>
   tr.docChanged && !tr.annotation(Transaction.userEvent) ? { annotations: Transaction.addToHistory.of(false) } : null,
 );
 
+// Notion-style floating "Comment" button above a non-empty selection.
+function commentTooltip(onComment: () => void) {
+  const make = (state: EditorState): Tooltip | null => {
+    const sel = state.selection.main;
+    if (sel.empty) return null;
+    return {
+      pos: sel.from,
+      end: sel.to,
+      above: true,
+      create: () => {
+        const dom = h(`<div class="sel-tip"><button>${commentIcon} Comment</button></div>`);
+        dom.querySelector("button")!.onmousedown = (e) => {
+          e.preventDefault(); // keep the editor selection
+          onComment();
+        };
+        return { dom };
+      },
+    };
+  };
+  return StateField.define<Tooltip | null>({
+    create: make,
+    update: (t, tr) => (tr.docChanged || tr.selection ? make(tr.state) : t),
+    provide: (f) => showTooltip.from(f),
+  });
+}
+
 type Thread = { root: Comment; replies: Comment[]; range: { from: number; to: number } | null; moved: boolean };
 
 function editorScreen(session: Session, comments: Comments, user: User) {
   const { repoName, branch, path, canWrite } = session;
+  const [owner, repo] = repoName.split("/");
+  const file = path.split("/").pop()!;
   const el = h(`<div class="editor-screen">
     <header>
-      <a href="/" class="logo"><span class="red">Red</span> Letter</a>
-      <span class="crumbs"><a href="https://github.com/${esc(repoName)}" target="_blank">${esc(repoName)}</a> · <b>${esc(branch)}</b> · ${esc(path)}</span>
-      <span id="status" class="muted"></span>
+      ${LOGO}
+      <span class="crumbs">
+        <a href="https://github.com/${esc(repoName)}" target="_blank" class="crumb">${esc(owner)}</a><span class="sep">/</span>
+        <a href="https://github.com/${esc(repoName)}/tree/${encPath(branch)}" target="_blank" class="crumb">${esc(repo)}</a><span class="sep">/</span>
+        <a href="https://github.com/${esc(repoName)}/blob/${encPath(branch)}/${encPath(path)}" target="_blank" class="crumb file" title="${esc(path)}">${esc(file)}</a>
+        <span class="pill" title="branch">${branchIcon}${esc(branch)}</span>
+        ${canWrite ? "" : `<span class="pill">read-only</span>`}
+      </span>
       <span class="spacer"></span>
-      <button id="b-preview">Preview</button>
-      <button id="b-comment" disabled>Comment</button>
-      ${canWrite ? `<button id="b-save">Save</button>` : `<span class="badge">read-only</span>`}
-      <img class="avatar" src="${esc(user.avatar_url)}" title="${esc(user.login)}">
+      <span id="status" class="status"></span>
+      <span id="people" class="people"></span>
+      <button class="btn ghost" id="b-share">Share</button>
+      <button class="btn ghost icon" id="b-panel" title="Comments and changes">${commentIcon}<span id="count"></span></button>
+      <span class="me">${avatar(user.login, 26)}</span>
     </header>
     <main>
-      <div id="editor"></div>
-      <iframe id="preview" sandbox="allow-popups allow-popups-to-escape-sandbox" hidden></iframe>
-      <aside><div id="changes"></div><div id="comments"></div></aside>
+      <div id="doc"><div id="banner"></div><div id="editor"></div></div>
+      <aside id="panel" hidden>
+        <div class="tabs"><button data-tab="comments">Comments</button><button data-tab="changes">Agent changes</button></div>
+        <div id="changes"></div><div id="comments"></div>
+      </aside>
     </main>
   </div>`);
   app.replaceChildren(el);
+  document.title = `${file} · Red Letter`;
   const $ = (id: string) => el.querySelector<HTMLElement>(`#${id}`)!;
+
+  let composing: { anchor: Anchor; quote: string } | null = null;
+  let activeThread = "";
+  let tab: "comments" | "changes" = "comments";
+  let panelOpen: boolean | null = null; // null = automatic (open when there's something to look at)
+
+  const startComment = () => {
+    const sel = view.state.selection.main;
+    if (sel.empty || !canWrite) return;
+    composing = { anchor: session.anchor(sel.from, sel.to), quote: view.state.sliceDoc(sel.from, sel.to) };
+    tab = "comments";
+    panelOpen = true;
+    refresh();
+    // the panel renders on the next frame
+    requestAnimationFrame(() => requestAnimationFrame(() => el.querySelector<HTMLElement>('[data-draft="new"]')?.focus()));
+  };
 
   // automerge-repo's handle.doc() may be undefined before ready; it is ready here
   const handle = session.handle as unknown as PluginHandle<RLDoc>;
   const view = new EditorView({
     doc: session.doc.text,
     extensions: [
-      basicSetup,
-      markdown(),
-      EditorView.lineWrapping,
+      ...editorExtensions(),
       decoField,
       remoteNotUndoable,
       EditorState.readOnly.of(!canWrite),
-      keymap.of([{ key: "Mod-s", preventDefault: true, run: () => (void session.save(), true) }]),
-      EditorView.updateListener.of((u) => {
-        if (u.selectionSet) ($("b-comment") as HTMLButtonElement).disabled = !canWrite || u.state.selection.main.empty;
-      }),
+      canWrite ? commentTooltip(startComment) : [],
+      keymap.of([
+        { key: "Mod-s", preventDefault: true, run: () => (void session.save(), true) },
+        { key: "Mod-Alt-m", preventDefault: true, run: () => (startComment(), true) },
+      ]),
       automergeSyncPlugin({ handle, path: ["text"] }),
     ],
     parent: $("editor"),
   });
-
-  let composing: { anchor: Anchor; quote: string } | null = null;
-  let activeThread = "";
 
   // ---- render loop (coalesced per frame) ----
   let queued = false;
@@ -227,25 +316,25 @@ function editorScreen(session: Session, comments: Comments, user: User) {
       if (view.state.doc.length !== session.doc.text.length) return refresh(); // binding hasn't caught up yet
       const threads = buildThreads();
       renderDecorations(threads);
-      renderChanges();
-      renderComments(threads);
-      if (!$("preview").hidden) renderPreview();
+      renderPanel(threads);
     });
   };
 
   function renderStatus() {
     const s = session.status;
-    const parts = [
-      s.saving ? "saving…" : s.dirty ? "unsaved changes" : `saved <a href="https://github.com/${esc(repoName)}/commit/${s.commit}" target="_blank">${s.commit.slice(0, 7)}</a>`,
-      canWrite ? (s.online ? (s.peers ? `${s.peers} other${s.peers > 1 ? "s" : ""} here` : "live") : "offline") : "",
-    ].filter(Boolean);
-    $("status").innerHTML = parts.join(" · ") + (s.error ? ` · <span class="err">${esc(s.error)}</span>` : "");
+    const commit = `<a href="https://github.com/${esc(repoName)}/commit/${s.commit}" target="_blank" title="Last commit on ${esc(branch)}">${s.commit.slice(0, 7)}</a>`;
+    const state = s.saving ? "Saving…" : s.dirty ? "Edited" : `Saved · ${commit}`;
+    const live = canWrite && !s.online ? ` · <span class="warn" title="Live sync is reconnecting; edits are kept and saved to git">offline</span>` : "";
+    $("status").innerHTML = state + live + (s.error ? ` · <span class="err" title="${esc(s.error)}">error</span>` : "");
+    const people = [...new Set(s.people)];
+    $("people").innerHTML = people.map((p) => avatar(p, 24)).join("");
+    $("people").title = people.length ? `Also here: ${people.join(", ")}` : "";
   }
 
   function buildThreads(): Thread[] {
     const text = session.doc.text;
-    const roots = comments.list.filter((c) => !c.parent);
-    return roots
+    return comments.list
+      .filter((c) => !c.parent)
       .map((root) => {
         let range: Thread["range"] = null;
         if (root.docId === session.docId && root.from && root.to) range = session.resolve({ from: root.from, to: root.to });
@@ -262,24 +351,25 @@ function editorScreen(session: Session, comments: Comments, user: User) {
   function renderDecorations(threads: Thread[]) {
     const len = view.state.doc.length;
     const out: Range<Decoration>[] = [];
-    const mark = (from: number, to: number, cls: string) => {
+    const mark = (from: number, to: number, cls: string, attrs?: Record<string, string>) => {
       from = Math.min(from, len);
       to = Math.min(to, len);
-      if (to > from) out.push(Decoration.mark({ class: cls }).range(from, to));
+      if (to > from) out.push(Decoration.mark({ class: cls, attributes: attrs }).range(from, to));
     };
     for (const m of Object.values(session.doc.marks ?? {})) {
       for (const hk of m.hunks) {
         const r = session.resolve(hk);
         if (!r) continue;
         if (hk.before) out.push(Decoration.widget({ widget: new DelWidget(hk.before), side: -1 }).range(Math.min(r.from, len)));
-        mark(r.from, r.to, "rl-agent");
+        mark(r.from, r.to, "rl-agent", { title: `${m.author}: ${m.message}` });
       }
       for (const c of m.conflicts) {
         const r = session.resolve(c);
-        if (r) mark(r.from, r.to, "rl-conflict");
+        if (r) mark(r.from, r.to, "rl-conflict", { title: "You and the agent both edited this. Pick a version in the panel." });
       }
     }
-    for (const t of threads) if (t.range && !t.root.resolved) mark(t.range.from, t.range.to, t.root.id === activeThread ? "rl-comment active" : "rl-comment");
+    for (const t of threads)
+      if (t.range && !t.root.resolved) mark(t.range.from, t.range.to, t.root.id === activeThread ? "rl-comment active" : "rl-comment", { "data-thread": t.root.id });
     view.dispatch({ effects: setDecos.of(Decoration.set(out, true)) });
   }
 
@@ -288,24 +378,51 @@ function editorScreen(session: Session, comments: Comments, user: User) {
     view.focus();
   }
 
-  function renderChanges() {
+  function renderPanel(threads: Thread[]) {
     const marks = Object.values(session.doc.marks ?? {}).sort((a, b) => a.at.localeCompare(b.at));
+    const open = threads.filter((t) => !t.root.resolved);
+    const conflicts = marks.reduce((n, m) => n + m.conflicts.length, 0);
+    // banner over the document: agent work waiting for review
+    $("banner").innerHTML = marks.length
+      ? `<div class="banner${conflicts ? " bad" : ""}">${initial(marks.at(-1)!.author, 20)}
+          <span><b>${esc(marks.at(-1)!.author)}</b> pushed ${marks.length > 1 ? `${marks.length} commits` : "changes"}${conflicts ? ` · <b>${conflicts} need${conflicts > 1 ? "" : "s"} a decision</b>` : ""}</span>
+          <button class="btn ghost small" data-review>Review</button></div>`
+      : "";
+    $("banner").querySelector<HTMLElement>("[data-review]")?.addEventListener("click", () => {
+      tab = "changes";
+      panelOpen = true;
+      refresh();
+    });
+    const auto = open.length > 0 || marks.length > 0 || !!composing;
+    const visible = panelOpen ?? auto;
+    $("panel").hidden = !visible;
+    $("count").textContent = open.length ? String(open.length) : "";
+    if (!visible) return;
+    if (tab === "changes" && !marks.length && (open.length || composing)) tab = "comments";
+    if (tab === "comments" && !open.length && !composing && marks.length && panelOpen === null) tab = "changes";
+    for (const b of el.querySelectorAll<HTMLElement>("[data-tab]")) {
+      b.classList.toggle("on", b.dataset.tab === tab);
+      b.innerHTML = b.dataset.tab === "comments" ? `Comments${open.length ? ` <i>${open.length}</i>` : ""}` : `Agent changes${marks.length ? ` <i>${marks.length}</i>` : ""}`;
+    }
+    $("changes").hidden = tab !== "changes";
+    $("comments").hidden = tab !== "comments";
+    if (tab === "changes") renderChanges(marks);
+    else renderComments(threads);
+  }
+
+  function renderChanges(marks: NonNullable<RLDoc["marks"]>[string][]) {
     const box = $("changes");
-    if (!marks.length) return box.replaceChildren();
+    if (!marks.length) return box.replaceChildren(h(`<p class="empty">No agent changes waiting for review. Commits pushed with git show up here.</p>`));
     const text = session.doc.text;
     box.replaceChildren(
-      h(`<h3>Agent changes</h3>`),
       ...marks.map((m) => {
         const card = h(`<div class="card">
-          <div class="meta"><b>${esc(m.author)}</b> pushed <a href="https://github.com/${esc(repoName)}/commit/${m.sha}" target="_blank">${m.sha.slice(0, 7)}</a>
-            ${canWrite ? `<button class="link" data-dismiss>mark reviewed</button>` : ""}</div>
+          <div class="who">${initial(m.author, 22)}<div><b>${esc(m.author)}</b><div class="meta">${ago(m.at)} · <a href="https://github.com/${esc(repoName)}/commit/${m.sha}" target="_blank">${m.sha.slice(0, 7)}</a></div></div></div>
           <div class="msg">${esc(m.message)}</div></div>`);
-        card.querySelector<HTMLElement>("[data-dismiss]")?.addEventListener("click", () => session.dismiss(m.sha));
         m.conflicts.forEach((c, i) => {
           const r = session.resolve(c);
-          const row = h(`<div class="hunk conflict" title="Jump to text">⚠ You and the agent both edited: <q>${esc(r ? text.slice(r.from, r.to).slice(0, 80) : "")}</q>
-            ${canWrite && c.human !== undefined ? `<div>keep <button class="link" data-side="human">yours: <b>${esc(c.human.slice(0, 60) || "(nothing)")}</b></button>
-            or <button class="link" data-side="agent">the agent's: <b>${esc(c.agent.slice(0, 60) || "(nothing)")}</b></button></div>` : ""}</div>`);
+          const row = h(`<div class="hunk conflict"><div class="label">⚠ You both edited this</div><q>${esc(r ? text.slice(r.from, r.to).slice(0, 80) : "")}</q>
+            ${canWrite && c.human !== undefined ? `<div class="choices"><button class="btn small" data-side="human">Keep yours: <b>${esc(c.human.slice(0, 50) || "(nothing)")}</b></button><button class="btn small" data-side="agent">Keep agent's: <b>${esc(c.agent.slice(0, 50) || "(nothing)")}</b></button></div>` : ""}</div>`);
           if (r) row.onclick = () => jump(r.from, r.to);
           for (const b of row.querySelectorAll<HTMLElement>("[data-side]"))
             b.onclick = (e) => {
@@ -317,8 +434,8 @@ function editorScreen(session: Session, comments: Comments, user: User) {
         m.hunks.forEach((hk, i) => {
           const r = session.resolve(hk);
           const after = r ? text.slice(r.from, r.to) : "";
-          const row = h(`<div class="hunk" title="Jump to text">${hk.before ? `<del>${esc(hk.before.slice(0, 80))}</del> ` : ""}${after ? `<ins>${esc(after.slice(0, 80))}</ins>` : ""}
-            ${canWrite ? `<button class="link" data-revert>revert</button>` : ""}</div>`);
+          const row = h(`<div class="hunk"><div class="diff">${hk.before ? `<del>${esc(hk.before.slice(0, 120))}</del>` : ""}${after ? `<ins>${esc(after.slice(0, 120))}</ins>` : ""}</div>
+            ${canWrite ? `<button class="link" data-revert title="Undo this change">Revert</button>` : ""}</div>`);
           if (r) row.onclick = () => jump(r.from, r.to);
           row.querySelector<HTMLElement>("[data-revert]")?.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -326,6 +443,11 @@ function editorScreen(session: Session, comments: Comments, user: User) {
           });
           card.append(row);
         });
+        if (canWrite) {
+          const done = h(`<button class="btn small wide">${checkIcon} Looks good</button>`);
+          done.onclick = () => session.dismiss(m.sha);
+          card.append(done);
+        }
         return card;
       }),
     );
@@ -346,16 +468,23 @@ function editorScreen(session: Session, comments: Comments, user: User) {
     field.dataset.draft = key;
     field.value = drafts[key] ?? "";
     field.oninput = () => (drafts[key] = field.value);
+    field.onkeydown = (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey || field instanceof HTMLInputElement)) {
+        e.preventDefault();
+        field.form?.requestSubmit();
+      }
+    };
   };
 
   function renderComments(threads: Thread[]) {
     const box = $("comments");
     const focused = (document.activeElement as HTMLElement | null)?.dataset?.draft;
-    const nodes: HTMLElement[] = [h(`<h3>Comments</h3>`)];
+    const nodes: HTMLElement[] = [];
     if (composing) {
       const c = composing;
-      const form = h(`<form class="card compose"><q>${esc(c.quote.slice(0, 200))}</q><textarea placeholder="Comment" required></textarea>
-        <div><button>Comment</button> <button type="button" class="link" data-cancel>cancel</button></div></form>`);
+      const form = h(`<form class="card compose"><q>${esc(c.quote.slice(0, 200))}</q>
+        <div class="who">${avatar(user.login, 22)}<textarea placeholder="Add a comment…" rows="2"></textarea></div>
+        <div class="actions"><button type="button" class="link" data-cancel>Cancel</button><button class="btn primary small">Comment</button></div></form>`);
       draftInput(form.querySelector("textarea")!, "new");
       form.onsubmit = (e) => {
         e.preventDefault();
@@ -371,14 +500,14 @@ function editorScreen(session: Session, comments: Comments, user: User) {
     }
     const open = threads.filter((t) => !t.root.resolved);
     const resolved = threads.filter((t) => t.root.resolved);
-    if (!open.length && !composing) nodes.push(h(`<p class="muted">Select text and press Comment.</p>`));
+    if (!open.length && !composing) nodes.push(h(`<p class="empty">Select text and click <b>Comment</b> to start a discussion.</p>`));
     for (const t of open) nodes.push(threadCard(t));
     if (resolved.length) {
-      const d = h(`<details><summary>${resolved.length} resolved</summary></details>`);
+      const d = h(`<details class="resolved"><summary>${resolved.length} resolved</summary></details>`);
       for (const t of resolved) d.append(threadCard(t));
       nodes.push(d);
     }
-    nodes.push(h(`<p class="muted small">Agents read these with <code>git show origin/red-letter-comments:${esc(comments.file)}</code></p>`));
+    nodes.push(h(`<p class="fine">Agents read comments with<br><code>git show origin/red-letter-comments:${esc(comments.file)}</code></p>`));
     box.replaceChildren(...nodes);
     const refocus = focused && box.querySelector<HTMLInputElement>(`[data-draft="${focused}"]`);
     if (refocus) {
@@ -388,12 +517,17 @@ function editorScreen(session: Session, comments: Comments, user: User) {
   }
 
   function threadCard(t: Thread): HTMLElement {
-    const msg = (c: Comment) => `<div class="c"><b>${esc(c.author)}</b> <span class="muted small">${new Date(c.createdAt).toLocaleString()}</span><div>${esc(c.body)}</div></div>`;
-    const where = t.range ? (t.moved ? `<span class="muted small">text changed since</span>` : "") : `<span class="muted small">detached: text is gone</span>`;
+    const msg = (c: Comment) =>
+      `<div class="c"><div class="who">${avatar(c.author, 22)}<b>${esc(c.author)}</b><span class="meta">${ago(c.createdAt)}</span></div><div class="body">${esc(c.body)}</div></div>`;
+    const where = t.range ? (t.moved ? `<span class="meta">· text changed since</span>` : "") : `<span class="meta">· text was removed</span>`;
     const card = h(`<div class="card thread${t.root.id === activeThread ? " active" : ""}">
-      <q>${esc((t.root.quote ?? "").slice(0, 120))}</q> ${where}
+      <div class="quote"><q>${esc((t.root.quote ?? "").slice(0, 120))}</q>${where}</div>
       ${msg(t.root)}${t.replies.map(msg).join("")}
-      ${canWrite ? `<form class="reply"><input placeholder="Reply"><button class="link">reply</button><button type="button" class="link" data-resolve>${t.root.resolved ? "reopen" : "resolve"}</button></form>` : ""}
+      ${
+        canWrite
+          ? `<form class="reply"><input placeholder="Reply…"><button type="button" class="link" data-resolve>${t.root.resolved ? "Reopen" : `${checkIcon} Resolve`}</button></form>`
+          : ""
+      }
     </div>`);
     card.onclick = (e) => {
       if ((e.target as HTMLElement).closest("form")) return;
@@ -420,27 +554,30 @@ function editorScreen(session: Session, comments: Comments, user: User) {
     return card;
   }
 
-  function renderPreview() {
-    const html = marked.parse(session.doc.text, { async: false });
-    ($("preview") as HTMLIFrameElement).srcdoc =
-      `<!doctype html><base target="_blank"><style>body{font:15px/1.6 system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#1f2328}pre,code{background:#f6f8fa;border-radius:4px}pre{padding:12px;overflow:auto}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:4px 8px}</style>${html}`;
-  }
-
   // ---- wiring ----
-  $("b-preview").onclick = () => {
-    $("preview").hidden = !$("preview").hidden;
-    $("b-preview").classList.toggle("on", !$("preview").hidden);
+  $("b-panel").onclick = () => {
+    panelOpen = $("panel").hidden === true;
     refresh();
   };
-  $("b-comment").onclick = () => {
-    const sel = view.state.selection.main;
-    if (sel.empty) return;
-    composing = { anchor: session.anchor(sel.from, sel.to), quote: view.state.sliceDoc(sel.from, sel.to) };
-    refresh();
-    // the panel renders on the next frame
-    requestAnimationFrame(() => requestAnimationFrame(() => el.querySelector<HTMLElement>('[data-draft="new"]')?.focus()));
+  for (const b of el.querySelectorAll<HTMLElement>("[data-tab]"))
+    b.onclick = () => {
+      tab = b.dataset.tab === "changes" ? "changes" : "comments";
+      refresh();
+    };
+  $("b-share").onclick = async () => {
+    await navigator.clipboard.writeText(location.href);
+    $("b-share").textContent = "Link copied";
+    setTimeout(() => ($("b-share").textContent = "Share"), 1500);
   };
-  el.querySelector<HTMLElement>("#b-save")?.addEventListener("click", () => void session.save());
+  // clicking a comment highlight opens its thread
+  $("editor").addEventListener("click", (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-thread]")?.dataset.thread;
+    if (!id) return;
+    activeThread = id;
+    tab = "comments";
+    panelOpen = true;
+    refresh();
+  });
   session.onStatus = refresh;
   session.handle.on("change", refresh);
   const tick = () => {
@@ -450,7 +587,7 @@ function editorScreen(session: Session, comments: Comments, user: User) {
   setInterval(tick, 15_000);
   window.addEventListener("focus", tick);
   window.addEventListener("beforeunload", (e) => {
-    if (canWrite && session.status.dirty && session.status.peers === 0) {
+    if (canWrite && session.status.dirty && session.status.people.length === 0) {
       void session.save();
       e.preventDefault();
     }

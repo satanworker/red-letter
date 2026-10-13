@@ -60,10 +60,9 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 | decision | pick | why |
 |---|---|---|
 | CRDT | Automerge 3.5 | deterministic fork-at-heads replay (spiked: dedupes across tabs); `getCursor` for anchors; `getAuthors` for `Co-authored-by`. Loro char merges identically and is the swap if needed. Yjs: no historical-edit primitive, default GC drops the history we key on. |
-| Editor v1 | CodeMirror 6 `lang-markdown` + split preview bound to the Automerge text | every tree editor (Tiptap, Milkdown, Outline, GitBook, Tina) canonicalises or corrupts markdown on round-trip; agents would see diff noise. |
-| Editor later | Obsidian-style live preview as decorations over the same string | never a ProseMirror tree as the CRDT doc |
+| Editor | CodeMirror 6 with an Obsidian-style live preview (`web/src/livePreview.ts`): decorations over the raw markdown string; syntax markers hidden except on the cursor line | every tree editor (Tiptap, Milkdown, Outline, GitBook, Tina) canonicalises or corrupts markdown on round-trip; agents would see diff noise. Never a ProseMirror tree as the CRDT doc |
 | Comments | out of band, anchored by Automerge cursors + context | marks live in the doc and would serialise into the file |
-| Auth | GitHub App, user-to-server tokens in the browser; no OAuth App, no PAT | native install screen, short-lived scoped tokens, orgs can approve. Token = installed repos ∩ user access. |
+| Auth | Two options, both with tokens kept only in the browser. Default: classic OAuth App (`repo` scope, expiring tokens with refresh): one click, any repo the user can reach, nothing to install. Alternative: GitHub App user-to-server tokens, which see only repos where the App is installed | The OAuth App removes install friction when sharing links. The GitHub App suits people and orgs who want per-repo scoping. Orgs with OAuth access restrictions must approve the OAuth App. |
 | Commit | Git Data API + GraphQL `updateRefs` | atomic file + snapshot move with real CAS on both refs |
 | Transport | websocket relay | WebRTC adds signalling/NAT pain for nothing; offline merge is a CRDT property, not a transport property |
 

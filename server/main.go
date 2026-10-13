@@ -35,7 +35,9 @@ type server struct {
 	origins          map[string]bool
 	api, web         string
 	clientID, secret string
-	client           *http.Client
+	// optional classic OAuth App ("client":"oauth"): one-click sign-in without installing the GitHub App
+	oauthID, oauthSecret string
+	client               *http.Client
 
 	mu    sync.Mutex
 	rooms map[string]map[string]*peer
@@ -155,7 +157,13 @@ func (s *server) handleSync(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad repo", http.StatusBadRequest)
 		return
 	}
-	room := strings.ToLower(repo)
+	// room = repo + document (branch/path), so presence means "on this file"; access is still checked per repo
+	doc := r.URL.Query().Get("doc")
+	if len(doc) > 1024 {
+		http.Error(w, "bad doc", http.StatusBadRequest)
+		return
+	}
+	room := strings.ToLower(repo) + " " + doc
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true}) // origin checked above
 	if err != nil {
 		return
@@ -319,6 +327,7 @@ func (s *server) oauth(refresh bool) http.HandlerFunc {
 			return
 		}
 		var in struct {
+			Client       string `json:"client"`
 			Code         string `json:"code"`
 			CodeVerifier string `json:"code_verifier"`
 			RedirectURI  string `json:"redirect_uri"`
@@ -329,6 +338,13 @@ func (s *server) oauth(refresh bool) http.HandlerFunc {
 			return
 		}
 		form := url.Values{"client_id": {s.clientID}, "client_secret": {s.secret}}
+		if in.Client == "oauth" {
+			if s.oauthID == "" {
+				http.Error(w, "oauth app not configured", http.StatusNotFound)
+				return
+			}
+			form = url.Values{"client_id": {s.oauthID}, "client_secret": {s.oauthSecret}}
+		}
 		if refresh {
 			if in.RefreshToken == "" {
 				http.Error(w, "missing refresh_token", http.StatusBadRequest)
@@ -385,6 +401,7 @@ func main() {
 		env("RL_GITHUB_API", "https://api.github.com"), env("RL_GITHUB_WEB", "https://github.com"),
 		os.Getenv("RL_GITHUB_CLIENT_ID"), os.Getenv("RL_GITHUB_CLIENT_SECRET"))
 	addr := env("RL_ADDR", "127.0.0.1:8787")
+	s.oauthID, s.oauthSecret = os.Getenv("RL_OAUTH_CLIENT_ID"), os.Getenv("RL_OAUTH_CLIENT_SECRET")
 	srv := &http.Server{Addr: addr, Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("listening on %s", addr)
 	log.Fatal(srv.ListenAndServe())

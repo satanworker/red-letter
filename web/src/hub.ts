@@ -13,7 +13,7 @@ export class HubAdapter extends NetworkAdapter {
   #readyWaiters: (() => void)[] = [];
   #peers = new Set<PeerId>();
   #closed = false;
-  onStatus: (s: { connected: boolean; peers: number; error?: string }) => void = () => {};
+  onStatus: (s: { connected: boolean; peers: PeerId[]; error?: string }) => void = () => {};
 
   constructor(
     private url: string,
@@ -55,7 +55,7 @@ export class HubAdapter extends NetworkAdapter {
     ws.onclose = (ev) => {
       for (const p of this.#peers) this.emit("peer-disconnected", { peerId: p });
       this.#peers.clear();
-      this.onStatus({ connected: false, peers: 0, error: ev.code >= 4000 ? ev.reason : undefined });
+      this.onStatus({ connected: false, peers: [], error: ev.code >= 4000 ? ev.reason : undefined });
       // 4403/4409: auth or identity problem, don't hammer the hub
       if (!this.#closed && ev.code < 4000) setTimeout(() => void this.#open(), 2000 + Math.random() * 3000);
     };
@@ -67,7 +67,7 @@ export class HubAdapter extends NetworkAdapter {
     else if (m.type === "peer-joined") this.#candidate(m.peerId!, m.peerMetadata ?? {});
     else if (m.type === "peer-left" && this.#peers.delete(m.peerId!)) this.emit("peer-disconnected", { peerId: m.peerId! });
     else if (m.type === "error") console.warn("hub:", m.message);
-    this.onStatus({ connected: true, peers: this.#peers.size });
+    this.onStatus({ connected: true, peers: [...this.#peers] });
   }
 
   #candidate(peerId: PeerId, peerMetadata: PeerMetadata) {

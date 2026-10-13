@@ -1,10 +1,13 @@
-// GitHub App user-to-server auth (tokens live only in this browser) and thin REST/GraphQL helpers.
+// GitHub sign-in (tokens live only in this browser) and thin REST/GraphQL helpers. Two ways in:
+// - "app":   GitHub App user token: access = repos where the App is installed ∩ the user's access.
+// - "oauth": classic OAuth App with `repo` scope: every repo the user can reach, nothing to install.
 export const APP_SLUG = "red-letter-diff";
-const CLIENT_ID = "Iv23liTw70O2dgREat8o";
+const CLIENT_IDS = { app: "Iv23liTw70O2dgREat8o", oauth: "Ov23liCuqRqQVEAWuFcA" };
+export type AuthKind = keyof typeof CLIENT_IDS;
 export const HUB = location.hostname === "localhost" ? "http://localhost:8787" : "https://diff-api.satanworker.com";
 const API = "https://api.github.com";
 
-type Auth = { access_token: string; expires_at: number; refresh_token?: string };
+type Auth = { kind: AuthKind; access_token: string; expires_at: number; refresh_token?: string };
 const AUTH_KEY = "rl_auth";
 const RETURN_KEY = "rl_return";
 
@@ -14,18 +17,19 @@ export function rememberReturn(path = location.pathname + location.search) {
   sessionStorage.setItem(RETURN_KEY, path);
 }
 
-export async function signIn() {
+export async function signIn(kind: AuthKind = "oauth") {
   const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
   const state = b64url(crypto.getRandomValues(new Uint8Array(16)));
-  sessionStorage.setItem("rl_pkce", JSON.stringify({ state, verifier }));
+  sessionStorage.setItem("rl_pkce", JSON.stringify({ state, verifier, kind }));
   rememberReturn();
   const q = new URLSearchParams({
-    client_id: CLIENT_ID,
+    client_id: CLIENT_IDS[kind],
     redirect_uri: `${location.origin}/auth/callback`,
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
+    ...(kind === "oauth" ? { scope: "repo" } : {}),
   });
   location.assign(`https://github.com/login/oauth/authorize?${q}`);
 }
@@ -35,30 +39,39 @@ export function signOut() {
   localStorage.removeItem("rl_user");
 }
 
-async function exchange(route: "token" | "refresh", body: Record<string, string>): Promise<Auth> {
-  const res = await fetch(`${HUB}/oauth/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+export const authKind = (): AuthKind | null => (JSON.parse(localStorage.getItem(AUTH_KEY) ?? "null") as Auth | null)?.kind ?? null;
+
+async function exchange(kind: AuthKind, route: "token" | "refresh", body: Record<string, string>): Promise<Auth> {
+  const res = await fetch(`${HUB}/oauth/${route}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...body, client: kind }),
+  });
   // GitHub's token endpoint shape (passed through verbatim by the hub)
   const j: { access_token?: string; expires_in?: number; refresh_token?: string; error_description?: string; error?: string } = await res.json();
   if (!j.access_token) throw new Error(j.error_description ?? j.error ?? `token exchange failed (${res.status})`);
-  // Tokens without expiry (expiration disabled on the App) are treated as valid for a year.
-  const auth = { access_token: j.access_token, expires_at: Date.now() + (j.expires_in ?? 365 * 86400) * 1000, refresh_token: j.refresh_token };
+  // Tokens without expiry are treated as valid for a year.
+  const auth: Auth = { kind, access_token: j.access_token, expires_at: Date.now() + (j.expires_in ?? 365 * 86400) * 1000, refresh_token: j.refresh_token };
   localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+  localStorage.removeItem("rl_user");
   return auth;
 }
 
-// /auth/callback: both the sign-in redirect (state + PKCE) and the App install redirect (no state) land here.
+// /auth/callback: the sign-in redirect (state + PKCE) and the GitHub App install redirect (no state) land here.
 export async function completeSignIn(): Promise<string> {
   const q = new URLSearchParams(location.search);
   const code = q.get("code");
   if (!code) throw new Error(q.get("error_description") ?? "missing code");
-  const pkce: { state: string; verifier: string } | null = JSON.parse(sessionStorage.getItem("rl_pkce") ?? "null");
+  const pkce: { state: string; verifier: string; kind: AuthKind } | null = JSON.parse(sessionStorage.getItem("rl_pkce") ?? "null");
   sessionStorage.removeItem("rl_pkce");
   const body: Record<string, string> = { code, redirect_uri: `${location.origin}/auth/callback` };
+  let kind: AuthKind = "app"; // the install redirect only comes from the GitHub App
   if (q.get("state")) {
     if (!pkce || pkce.state !== q.get("state")) throw new Error("sign-in state mismatch; try again");
     body.code_verifier = pkce.verifier;
+    kind = pkce.kind ?? "app";
   }
-  await exchange("token", body);
+  await exchange(kind, "token", body);
   const back = sessionStorage.getItem(RETURN_KEY) ?? "/";
   sessionStorage.removeItem(RETURN_KEY);
   return back.startsWith("/auth/") ? "/" : back;
@@ -70,7 +83,7 @@ export async function token(): Promise<string | null> {
   if (!auth) return null;
   if (auth.expires_at - Date.now() > 5 * 60_000) return auth.access_token;
   if (!auth.refresh_token) return null;
-  refreshing ??= exchange("refresh", { refresh_token: auth.refresh_token })
+  refreshing ??= exchange(auth.kind ?? "app", "refresh", { refresh_token: auth.refresh_token })
     .catch(() => (signOut(), null))
     .finally(() => (refreshing = undefined));
   return (await refreshing)?.access_token ?? null;

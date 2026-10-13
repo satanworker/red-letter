@@ -6,6 +6,6 @@ Edit it in the browser or push with git; both sides meet in one file.
 ## Todo
 
 - open a link
-- edit together
+- edit together, live
 - leave a comment
 - review agent changes

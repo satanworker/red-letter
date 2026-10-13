@@ -100,6 +100,7 @@ Done:
   - shown as threads with replies and resolve;
   - the agent read one via `git show` and replied by pushing;
   - the anchor followed the text through edits.
+- **URLs and file browser:** `/owner/repo` opens the default branch's README with a sidebar listing the branch's markdown files (collapsible tree + filter); `/owner/repo/tree/<branch>`, `/owner/repo/blob/<branch>/<path>` (GitHub's shape) and `/owner/repo/<path>` (default branch) all work. Missing files show the sidebar with a not-found note.
 - **UI:** Notion-style live-preview editor: centered column; headings, emphasis, lists, checkboxes, quotes, code and images rendered inline; markdown syntax shown only on the cursor line. Breadcrumb header with branch pill, save state and Share.
 - **Infra:**
   - static site on Cloudflare (Workers static assets);

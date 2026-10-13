@@ -49,6 +49,9 @@ const commentIcon = svg(`<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/>`);
 const checkIcon = svg(`<path d="M3.5 8.5l3 3 6-7"/>`, 14);
 const branchIcon = svg(`<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="5.5" r="1.5"/><path d="M4.5 5v6M11.5 7c0 2.5-7 1.5-7 4"/>`, 12);
 const githubMark = `<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`;
+const folderIcon = svg(`<path d="M2 4.5a1 1 0 011-1h3l1.5 1.5H13a1 1 0 011 1v5.5a1 1 0 01-1 1H3a1 1 0 01-1-1z"/>`, 14);
+const fileIcon = svg(`<path d="M4 2h5.5L12 4.5V14H4zM9.5 2v2.5H12M6 8h4M6 10.5h4"/>`, 14);
+const sidebarIcon = svg(`<rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M6 3v10"/>`);
 
 export function start() {
   route().catch((e) => fatal(e instanceof Error ? e.message : String(e)));
@@ -63,10 +66,11 @@ async function route(): Promise<void> {
     history.replaceState(null, "", await completeSignIn());
     return route();
   }
-  const m = location.pathname.match(/^\/([^/]+)\/([^/]+)\/blob\/(.+)$/);
-  if (!m) return landing();
-  if (!(await token())) return signInScreen(`Sign in to open <b>${esc(m[3].split("/").pop() ?? "")}</b> from ${esc(m[1])}/${esc(m[2])}.`);
-  return openFile(m[1], m[2], m[3].split("/").map(decodeURIComponent));
+  // /owner/repo · /owner/repo/tree/<branch> · /owner/repo/blob/<branch>/<path> · /owner/repo/<path> (default branch)
+  const parts = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (parts.length < 2) return landing();
+  if (!(await token())) return signInScreen(`Sign in to open <b>${esc(parts.at(-1)!)}</b>${parts.length > 2 ? ` from ${esc(parts[0])}/${esc(parts[1])}` : ""}.`);
+  return openRepo(parts[0], parts[1], parts.slice(2));
 }
 
 // ---------------------------------------------------------------- screens
@@ -125,7 +129,10 @@ function noAccessScreen(owner: string, repo: string) {
         ? `<p>You signed in with the GitHub App, which only reaches repositories it's installed on. <b>${esc(owner)}/${esc(repo)}</b> isn't one of them yet.</p>
            <p><button class="btn primary" id="install">Install on ${esc(owner)}</button></p>
            <p class="fine">Don't own it? Ask the owner, or <a href="#" data-signin="oauth">continue with plain GitHub sign-in</a> instead.</p>`
-        : `<p>Your GitHub account can't see <b>${esc(owner)}/${esc(repo)}</b>. If it belongs to an organization, an owner may need to approve Red Letter under the org's third-party access settings, or you can <a href="#" data-signin="app">use the GitHub App</a>.</p>`
+        : `<p>Your GitHub account can't see <b>${esc(owner)}/${esc(repo)}</b> through Red Letter.</p>
+           <p>If it belongs to an organization, Red Letter needs that org's approval: open
+           <a href="https://github.com/settings/connections/applications/Ov23liCuqRqQVEAWuFcA" target="_blank">Red Letter's GitHub settings</a>
+           and click <b>Request</b> (or <b>Grant</b> if you're an owner) next to <b>${esc(owner)}</b>, then reload. Or <a href="#" data-signin="app">use the GitHub App</a>.</p>`
     }</div></div>`);
   el.querySelector<HTMLElement>("#install")?.addEventListener("click", () => {
     rememberReturn();
@@ -147,32 +154,118 @@ async function appInstalledOn(fullName: string): Promise<boolean> {
   return repositories.some((r) => r.full_name.toLowerCase() === fullName.toLowerCase());
 }
 
-// ---------------------------------------------------------------- open a file
-async function openFile(owner: string, repo: string, rest: string[]) {
-  app.replaceChildren(h(`<div class="loading"><div class="spinner"></div>Opening ${esc(rest.at(-1) ?? "")}…</div>`));
-  const repoName = `${owner}/${repo}`;
-  const info = await ghJson<{ node_id: string; full_name: string; permissions?: { push: boolean } }>(`/repos/${repoName}`).catch((e) => {
+// ---------------------------------------------------------------- open a repo / file
+type RepoInfo = { node_id: string; full_name: string; default_branch: string; permissions?: { push: boolean } };
+const blobUrl = (repo: string, branch: string, path: string) => `/${repo}/blob/${encPath(branch)}/${encPath(path)}`;
+const isDoc = (p: string) => /\.(md|markdown|mdx|txt)$/i.test(p);
+
+// Branch names may contain "/": the shortest prefix of `parts` that is a branch, like GitHub does.
+async function resolveBranch(repo: string, parts: string[], wholeAllowed: boolean): Promise<string> {
+  for (let i = 1; i <= parts.length - (wholeAllowed ? 0 : 1); i++) {
+    const cand = parts.slice(0, i).join("/");
+    if ((await gh(`/repos/${repo}/git/ref/heads/${encPath(cand)}`)).ok) return cand;
+  }
+  throw new Error(`No branch found in ${parts.join("/")}`);
+}
+
+async function listDocs(repo: string, branch: string): Promise<string[]> {
+  // ponytail: one recursive tree call; GitHub truncates past ~100k entries
+  const t = await ghJson<{ tree: { path: string; type: string }[] }>(`/repos/${repo}/git/trees/${encPath(branch)}?recursive=1`);
+  return t.tree.filter((e) => e.type === "blob" && isDoc(e.path)).map((e) => e.path);
+}
+
+async function openRepo(owner: string, repo: string, rest: string[]) {
+  app.replaceChildren(h(`<div class="loading"><div class="spinner"></div>Opening ${esc(rest.at(-1) ?? `${owner}/${repo}`)}…</div>`));
+  const info = await ghJson<RepoInfo>(`/repos/${owner}/${repo}`).catch((e) => {
     if (e instanceof HttpError && (e.status === 404 || e.status === 403)) return null;
     throw e;
   });
   if (!info) return noAccessScreen(owner, repo);
   // A GitHub App token can only write where the App is installed; public repos read fine without it, so check.
   if (authKind() === "app" && info.permissions?.push && !(await appInstalledOn(info.full_name))) return noAccessScreen(owner, repo);
-  // branch names may contain "/": try the shortest prefix that is a branch, like GitHub does
-  let branch = "";
-  for (let i = 1; i < rest.length && !branch; i++) {
-    const cand = rest.slice(0, i).join("/");
-    if ((await gh(`/repos/${info.full_name}/git/ref/heads/${encPath(cand)}`)).ok) branch = cand;
+  const full = info.full_name;
+  let branch = info.default_branch;
+  let path = rest.join("/");
+  if (rest[0] === "blob" || rest[0] === "tree") {
+    branch = await resolveBranch(full, rest.slice(1), rest[0] === "tree");
+    path = rest.slice(1 + branch.split("/").length).join("/");
   }
-  if (!branch) throw new Error(`No branch found in ${rest.join("/")}`);
-  const path = rest.slice(branch.split("/").length).join("/");
+  const docs = await listDocs(full, branch);
+  // no file in the URL: open the README (or the first document) of the branch
+  path ||= docs.find((p) => /^readme\.md$/i.test(p)) ?? docs.find((p) => /(^|\/)readme\.md$/i.test(p)) ?? docs[0] ?? "";
   const user = (await currentUser())!;
+  if (!path) return emptyRepoScreen(full, branch, user, docs, "This branch has no markdown files yet.");
+  history.replaceState(null, "", blobUrl(full, branch, path));
   const canWrite = info.permissions?.push === true;
-  const session = new Session(info.full_name, info.node_id, branch, path, canWrite, user.login);
-  await session.open();
-  const comments = new Comments(info.full_name, branch, path);
+  const session = new Session(full, info.node_id, branch, path, canWrite, user.login);
+  try {
+    await session.open();
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 404) return emptyRepoScreen(full, branch, user, docs, `${path} doesn't exist on ${branch}.`);
+    throw e;
+  }
+  const comments = new Comments(full, branch, path);
   await comments.refresh().catch(() => {});
-  editorScreen(session, comments, user);
+  editorScreen(session, comments, user, docs);
+}
+
+// ---------------------------------------------------------------- file sidebar
+// Collapsible tree of the branch's markdown files; folders on the current file's path start open.
+function fileTree(repo: string, branch: string, docs: string[], current: string): HTMLElement {
+  type Dir = { dirs: Record<string, Dir>; files: string[] };
+  const root: Dir = { dirs: {}, files: [] };
+  for (const p of docs) {
+    const segs = p.split("/");
+    let d = root;
+    for (const s of segs.slice(0, -1)) d = d.dirs[s] ??= { dirs: {}, files: [] };
+    d.files.push(p);
+  }
+  const render = (d: Dir, prefix: string, depth: number): string =>
+    Object.keys(d.dirs)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => {
+        const dir = `${prefix}${name}/`;
+        return `<details${current.startsWith(dir) ? " open" : ""}><summary style="padding-left:${8 + depth * 14}px">${folderIcon}<span>${esc(name)}</span></summary>${render(d.dirs[name], dir, depth + 1)}</details>`;
+      })
+      .join("") +
+    d.files
+      .sort((a, b) => a.localeCompare(b))
+      .map(
+        (p) =>
+          `<a class="file${p === current ? " on" : ""}" href="${esc(blobUrl(repo, branch, p))}" style="padding-left:${8 + depth * 14}px" data-path="${esc(p.toLowerCase())}">${fileIcon}<span>${esc(p.split("/").pop()!)}</span></a>`,
+      )
+      .join("");
+  const el = h(`<nav id="files">
+    <div class="files-head"><input type="search" placeholder="Find a file…"><span class="meta">${docs.length} docs</span></div>
+    <div class="tree">${render(root, "", 0)}</div>
+    <div class="flat" hidden></div>
+  </nav>`);
+  const input = el.querySelector("input")!;
+  const tree = el.querySelector<HTMLElement>(".tree")!;
+  const flat = el.querySelector<HTMLElement>(".flat")!;
+  input.oninput = () => {
+    const q = input.value.trim().toLowerCase();
+    tree.hidden = !!q;
+    flat.hidden = !q;
+    if (!q) return;
+    const hits = docs.filter((p) => p.toLowerCase().includes(q)).slice(0, 200);
+    flat.innerHTML = hits.length
+      ? hits.map((p) => `<a class="file" href="${esc(blobUrl(repo, branch, p))}">${fileIcon}<span>${esc(p)}</span></a>`).join("")
+      : `<p class="empty">No files match.</p>`;
+  };
+  // ponytail: picking a file is a full page load (wasm and assets are cached); an in-place switch needs Session teardown
+  requestAnimationFrame(() => el.querySelector(".file.on")?.scrollIntoView({ block: "center" }));
+  return el;
+}
+
+function emptyRepoScreen(repo: string, branch: string, user: User, docs: string[], message: string) {
+  const el = h(`<div class="editor-screen">
+    <header>${LOGO}<span class="crumbs"><span class="crumb file">${esc(repo)}</span><span class="pill">${branchIcon}${esc(branch)}</span></span>
+      <span class="spacer"></span><span class="me">${avatar(user.login, 26)}</span></header>
+    <main><div id="doc"><div class="empty-doc"><p>${esc(message)}</p><p class="fine">Pick a file on the left.</p></div></div></main>
+  </div>`);
+  el.querySelector("main")!.prepend(fileTree(repo, branch, docs, ""));
+  app.replaceChildren(el);
 }
 
 // ---------------------------------------------------------------- editor
@@ -237,17 +330,19 @@ function commentTooltip(onComment: () => void) {
 
 type Thread = { root: Comment; replies: Comment[]; range: { from: number; to: number } | null; moved: boolean };
 
-function editorScreen(session: Session, comments: Comments, user: User) {
+function editorScreen(session: Session, comments: Comments, user: User, docs: string[]) {
   const { repoName, branch, path, canWrite } = session;
   const [owner, repo] = repoName.split("/");
   const file = path.split("/").pop()!;
+  const dir = path.split("/").slice(0, -1);
   const el = h(`<div class="editor-screen">
     <header>
+      <button class="btn ghost icon" id="b-files" title="Files">${sidebarIcon}</button>
       ${LOGO}
       <span class="crumbs">
-        <a href="https://github.com/${esc(repoName)}" target="_blank" class="crumb">${esc(owner)}</a><span class="sep">/</span>
-        <a href="https://github.com/${esc(repoName)}/tree/${encPath(branch)}" target="_blank" class="crumb">${esc(repo)}</a><span class="sep">/</span>
-        <a href="https://github.com/${esc(repoName)}/blob/${encPath(branch)}/${encPath(path)}" target="_blank" class="crumb file" title="${esc(path)}">${esc(file)}</a>
+        <a href="/${esc(repoName)}/tree/${encPath(branch)}" class="crumb">${esc(owner)}/${esc(repo)}</a><span class="sep">/</span>
+        ${dir.length ? `<span class="crumb dir" title="${esc(dir.join("/"))}">${esc(dir.length > 2 ? `…/${dir.slice(-2).join("/")}` : dir.join("/"))}</span><span class="sep">/</span>` : ""}
+        <a href="https://github.com/${esc(repoName)}/blob/${encPath(branch)}/${encPath(path)}" target="_blank" class="crumb file" title="Open on GitHub">${esc(file)}</a>
         <span class="pill" title="branch">${branchIcon}${esc(branch)}</span>
         ${canWrite ? "" : `<span class="pill">read-only</span>`}
       </span>
@@ -269,6 +364,13 @@ function editorScreen(session: Session, comments: Comments, user: User) {
   app.replaceChildren(el);
   document.title = `${file} · Red Letter`;
   const $ = (id: string) => el.querySelector<HTMLElement>(`#${id}`)!;
+  const sidebar = fileTree(repoName, branch, docs, path);
+  el.querySelector("main")!.prepend(sidebar);
+  sidebar.hidden = localStorage.getItem("rl_files") === "hidden" || innerWidth < 900;
+  $("b-files").onclick = () => {
+    sidebar.hidden = !sidebar.hidden;
+    localStorage.setItem("rl_files", sidebar.hidden ? "hidden" : "shown");
+  };
 
   let composing: { anchor: Anchor; quote: string } | null = null;
   let activeThread = "";

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Red Letter</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14' fill='%23c0392b'>¶</text></svg>">
+<style>
+  :root { --red: #c0392b; --fg: #1f2328; --muted: #656d76; --border: #d0d7de; --bg2: #f6f8fa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; color: var(--fg); }
+  a { color: #0969da; }
+  .red { color: var(--red); }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .err { color: var(--red); }
+  code { background: var(--bg2); padding: 1px 4px; border-radius: 4px; font-size: 12px; }
+  button { font: inherit; padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.on { background: var(--bg2); }
+  button.link { border: 0; background: none; padding: 0 4px; color: #0969da; }
+  .screen { max-width: 640px; margin: 12vh auto; padding: 0 16px; }
+  .screen h1 { font-size: 32px; }
+  .screen form { display: flex; gap: 8px; }
+  .screen input { flex: 1; font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; }
+  .editor-screen { display: flex; flex-direction: column; height: 100vh; }
+  header { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  header .logo { font-weight: 700; text-decoration: none; color: var(--fg); }
+  header .crumbs { overflow: hidden; text-overflow: ellipsis; }
+  header .spacer { flex: 1; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; }
+  .badge { border: 1px solid var(--border); border-radius: 10px; padding: 0 8px; font-size: 12px; color: var(--muted); }
+  main { flex: 1; display: flex; min-height: 0; }
+  #editor { flex: 1; min-width: 0; overflow: auto; }
+  #editor .cm-editor { height: 100%; }
+  #preview { flex: 1; border: 0; border-left: 1px solid var(--border); }
+  aside { width: 340px; overflow: auto; border-left: 1px solid var(--border); padding: 8px 12px; background: #fcfcfd; }
+  aside h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 6px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin-bottom: 8px; background: #fff; }
+  .card.active { border-color: #d4a72c; box-shadow: 0 0 0 2px #fff8c5; }
+  .card q { display: block; color: var(--muted); border-left: 3px solid #d4a72c; padding-left: 6px; margin-bottom: 4px; white-space: pre-wrap; }
+  .card .msg { color: var(--muted); }
+  .card .c { margin-top: 6px; }
+  .card textarea, .card input { width: 100%; font: inherit; border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; margin: 4px 0; }
+  .card textarea { min-height: 60px; }
+  .reply { display: flex; gap: 4px; align-items: center; }
+  .hunk { font-family: ui-monospace, monospace; font-size: 12px; padding: 4px; border-top: 1px dashed var(--border); cursor: pointer; }
+  .hunk del { background: #ffebe9; color: #82071e; }
+  .hunk ins { background: #dafbe1; text-decoration: none; }
+  .hunk.conflict { color: var(--red); }
+  .hunk del, .hunk ins { white-space: pre-wrap; }
+  .rl-agent { background: #dafbe1; }
+  .rl-del { background: #ffebe9; color: #82071e; }
+  .rl-conflict { background: #ffd8d3; outline: 1px solid var(--red); }
+  .rl-comment { background: #fff8c5; border-bottom: 2px solid #d4a72c; }
+  .rl-comment.active { background: #ffe58a; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module" src="%ENTRY%"></script>
+</body>
+</html>

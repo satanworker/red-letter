@@ -1,0 +1,11 @@
+[Unit]
+Description=Red Letter hub (sync router + GitHub OAuth exchange)
+
+[Service]
+EnvironmentFile=%h/.config/red-letter/env
+ExecStart=%h/.config/red-letter/rl-hub
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

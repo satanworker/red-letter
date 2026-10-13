@@ -20,7 +20,7 @@ Git is canonical. The CRDT is the live working copy of one file on one branch. G
 
 Infra we run, none of it a source of truth, none of it holding user keys:
 
-- static site: `diff.satanworker.com` on R2 (dedicated public bucket + custom domain; no egress fees for the ~3.6 MB wasm). Hashed assets are `immutable`; `index.html` is `no-cache`; `.wasm` is uploaded as `application/wasm`. Deep links need a Cloudflare URL-rewrite rule to `/index.html`, since R2 has no SPA fallback.
+- static site: `diff.satanworker.com`, served as Cloudflare Workers static assets (no Worker code; static requests are free). Chosen over R2 because it has a built-in SPA fallback, sets content types and honours a `_headers` file. Hashed `/assets/*` are `immutable`. The 3.6 MB `automerge.wasm` is a separate cacheable file rather than base64 inside the JS.
 - `diff-api.satanworker.com`: one Go binary on home-satan, reached through a Cloudflare Tunnel (`cloudflared` dials out), so no inbound ports open. A first-level subdomain is required because Universal SSL doesn't cover `*.diff.satanworker.com`. Cloudflare drops idle WebSockets after 100 s, so the hub pings every 30 s.
   - sync hub: a dumb room router that doesn't know about CRDTs. Room = repo. Tabs mesh-sync through it, using our own ~80-line automerge-repo `NetworkAdapter` (multi-peer, routes by `targetId`). We can't use the stock websocket adapter: it assumes a single remote peer that is itself an automerge-repo server. The first message carries the GitHub token; the hub admits a tab only with push access to the room's repo (checked via the GitHub API, cached briefly). Read-only viewers get no live sync, because any sync peer can inject ops that a writer later commits. In-memory only. A tab alone has no peer; it loads from the snapshot ref.
   - `POST /oauth/token` and `/oauth/refresh`: exchanges the code using the GitHub App `client_secret` and returns tokens to the browser without storing them. CORS allows the site origin only.
@@ -31,7 +31,7 @@ GitHub holds all state:
 
 - `refs/heads/<branch>` — the file. Truth.
 - `refs/red-letter/v1/<sha1(branch)>/<sha1(path)>` — parentless commit holding `doc.automerge` + `meta.json {docId, branch, path, commit, heads}`. Doc identity and history. Hashed names: `<branch>/<path>` collides and hits ref directory/file conflicts.
-- orphan branch `red-letter-comments` — comment JSON: cursor pair, context snippet, author, parent.
+- orphan branch `red-letter-comments`: one JSON array per file at `<branch>/<path>.json` with cursor pair, quote, author and parent. Agents read it with `git show origin/red-letter-comments:<branch>/<path>.json` and can reply by pushing to it.
 
 ## Browser, per open file
 
@@ -75,10 +75,30 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 - Doc identity: comment anchors are op IDs in one specific Automerge doc. Lose the snapshot ref, lose the anchors; hence the context snippet. An agent's `git push --mirror` deletes `refs/red-letter/*`; a default clone doesn't fetch them.
 - Agent→browser latency is the poll interval, not ~1s webhook.
 - `@automerge/automerge-codemirror` is 0.2.0 vs `y-codemirror.next` at 171k/wk. Price of the right primitive. Works in the smoke test.
-- `updateRefs` with a GitHub App user-to-server token is untested (spikes used a PAT). Verify first.
-- Replay determinism is a cross-version contract: change bytes depend on the Automerge version, the diff and the actor recipe. Mixed builds duplicate text (Jupyter's duplication bugs are this). Pin Automerge exactly; put `replayVersion` in `meta.json` and the trailer, and reload instead of replaying on mismatch.
-- The relay accepts ops from anyone holding a docId, and an honest tab later commits them under its own name. The relay must check the GitHub token's repo access on connect (still stateless).
-- Replayed agent changes must stay off the human's undo stack; one Ctrl-Z must not revert an agent commit.
+- `updateRefs` with a GitHub App user-to-server token: verified working in the prototype (autosave commits on `demo`).
+- Replay determinism is a cross-version contract: change bytes depend on the Automerge version, the diff and the actor recipe. Mixed builds duplicate text (Jupyter's duplication bugs are this). Done: Automerge pinned to exactly 3.5.0, `replayVersion` in `meta.json`, and a tab refuses a snapshot from a newer version.
+- The relay accepts ops from anyone holding a docId, and an honest tab later commits them under its own name. Done: the hub admits a tab only with push access to the repo.
+- Replayed agent changes must stay off the human's undo stack. Done: remote transactions are marked `addToHistory: false`; verified that Ctrl-Z skips the agent's edit.
+
+## Prototype status (2026-10-13)
+
+Live at `diff.satanworker.com`; code in `web/` and `server/`. Verified end to end with two tabs and a git-pushing "agent" on the `demo` branch of this repo:
+- **Sign-in:** the GitHub App user token (8 h, with refresh) commits through `updateRefs`, which closes the last open risk from the spikes.
+- **Live sync and saving:** edits sync through the Go hub; saves happen 30–40 s after the last edit or on Save / Ctrl-S.
+- **Agent pushes:**
+  - replayed into both tabs without duplicated text;
+  - shown inline as insertions plus struck-through deletions;
+  - listed in a panel with per-change revert and "mark reviewed";
+  - where they interleave with a human edit, flagged with "keep yours / keep the agent's".
+- **Comments:** written to `red-letter-comments`. The agent read one via `git show` and replied by pushing; the anchor followed the text through edits.
+- **Install flow:** a repo without the App routes the user to its install page.
+
+Not built yet:
+- IndexedDB replica (offline across reloads);
+- presence cursors;
+- notifications and mentions;
+- draft branches / publish as PR;
+- read-only viewing without signing in.
 
 ## Spikes
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Cloudflare Tunnel for diff-api.satanworker.com
+After=red-letter-hub.service
+
+[Service]
+ExecStart=%h/.config/red-letter/cloudflared/bin/cloudflared --no-autoupdate tunnel --config %h/.config/red-letter/tunnel.yml run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

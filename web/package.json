@@ -1,0 +1,21 @@
+{
+  "name": "red-letter-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build.ts",
+    "dev": "bun dev.ts",
+    "deploy": "bun build.ts && bunx wrangler@4 deploy"
+  },
+  "dependencies": {
+    "@automerge/automerge": "3.5.0",
+    "@automerge/automerge-codemirror": "0.2.0",
+    "@automerge/automerge-repo": "2.6.0-alpha.3",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.14",
+    "codemirror": "6.0.2",
+    "marked": "^18.1.1"
+  }
+}

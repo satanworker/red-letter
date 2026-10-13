@@ -1,0 +1,8 @@
+// Static site only (no Worker code): Cloudflare serves dist/ with an SPA fallback. Static asset requests are free.
+{
+  "name": "red-letter-site",
+  "compatibility_date": "2026-10-01",
+  "account_id": "e5ae26a7b6ae8bdd60c04e128ce4fb83",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "routes": [{ "pattern": "diff.satanworker.com", "custom_domain": true }],
+}

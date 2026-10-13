@@ -1,10 +1,11 @@
-# Red Letter demo
+# Red Letter demo (agent edition)
 
 This file lives on the `demo` branch.
-Edit it here, or push to it with git, and watch both meet.
+Edit it in the browser or push with git; both meet in one file.
 
 ## Todo
 
 - open a link
 - edit together
 - leave a comment
+- review agent changes

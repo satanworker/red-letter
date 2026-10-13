@@ -20,8 +20,8 @@ Git is canonical. The CRDT is the live working copy of one file on one branch. G
 
 Infra we run, none of it a source of truth, none of it holding user keys:
 
-- static site on R2 (public bucket + custom domain; no egress fees for the ~3.6 MB wasm). Hashed assets are `immutable`; `index.html` is `no-cache`; `.wasm` is uploaded as `application/wasm`. Deep links need a Cloudflare URL-rewrite rule to `/index.html`, since R2 has no SPA fallback.
-- one Go binary on a VPS, behind Caddy for TLS:
+- static site: `diff.satanworker.com` on R2 (dedicated public bucket + custom domain; no egress fees for the ~3.6 MB wasm). Hashed assets are `immutable`; `index.html` is `no-cache`; `.wasm` is uploaded as `application/wasm`. Deep links need a Cloudflare URL-rewrite rule to `/index.html`, since R2 has no SPA fallback.
+- `diff-api.satanworker.com`: one Go binary on home-satan, reached through a Cloudflare Tunnel (`cloudflared` dials out), so no inbound ports open. A first-level subdomain is required because Universal SSL doesn't cover `*.diff.satanworker.com`. Cloudflare drops idle WebSockets after 100 s, so the hub pings every 30 s.
   - sync hub: a dumb room router that doesn't know about CRDTs. Room = repo. Tabs mesh-sync through it, using our own ~80-line automerge-repo `NetworkAdapter` (multi-peer, routes by `targetId`). We can't use the stock websocket adapter: it assumes a single remote peer that is itself an automerge-repo server. The first message carries the GitHub token; the hub admits a tab only with push access to the room's repo (checked via the GitHub API, cached briefly). Read-only viewers get no live sync, because any sync peer can inject ops that a writer later commits. In-memory only. A tab alone has no peer; it loads from the snapshot ref.
   - `POST /oauth/token` and `/oauth/refresh`: exchanges the code using the GitHub App `client_secret` and returns tokens to the browser without storing them. CORS allows the site origin only.
 

@@ -39,7 +39,11 @@ export function signOut() {
   localStorage.removeItem("rl_user");
 }
 
-export const authKind = (): AuthKind | null => (JSON.parse(localStorage.getItem(AUTH_KEY) ?? "null") as Auth | null)?.kind ?? null;
+// Tokens saved before `kind` existed all came from the GitHub App.
+export const authKind = (): AuthKind | null => {
+  const auth: Auth | null = JSON.parse(localStorage.getItem(AUTH_KEY) ?? "null");
+  return auth ? (auth.kind ?? "app") : null;
+};
 
 async function exchange(kind: AuthKind, route: "token" | "refresh", body: Record<string, string>): Promise<Auth> {
   const res = await fetch(`${HUB}/oauth/${route}`, {

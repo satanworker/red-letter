@@ -14,15 +14,18 @@ Red-letter Bibles print the important words in red on top of the plain text: an 
 
 Git is canonical. The CRDT is the live working copy of one file on one branch. Git conflicts become CRDT merges.
 
-## Topology (serverless)
+## Topology (no stateful server)
 
 ![architecture](diagrams/architecture.svg)
 
-Infra we run, all stateless, holding no user keys:
+Infra we run, none of it a source of truth, none of it holding user keys:
 
-- static site
-- sync relay (`automerge-repo` sync server, no storage)
-- OAuth exchange/refresh function (holds the GitHub App `client_secret` only)
+- static site on R2 (public bucket + custom domain; no egress fees for the ~3.6 MB wasm). Hashed assets are `immutable`; `index.html` is `no-cache`; `.wasm` is uploaded as `application/wasm`. Deep links need a Cloudflare URL-rewrite rule to `/index.html`, since R2 has no SPA fallback.
+- one Bun process on a VPS, behind Caddy for TLS:
+  - sync relay: `automerge-repo` websocket server, in-memory only, so a restart loses nothing. Checks the GitHub token's repo access on connect.
+  - `POST /oauth/token` and `/oauth/refresh`: exchanges the code using the GitHub App `client_secret` and returns tokens to the browser without storing them. CORS allows the site origin only.
+
+GitHub's callback goes to the static site (`/auth/callback`). The page POSTs `{code, code_verifier}` to the VPS.
 
 GitHub holds all state:
 

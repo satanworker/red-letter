@@ -21,8 +21,8 @@ Git is canonical. The CRDT is the live working copy of one file on one branch. G
 Infra we run, none of it a source of truth, none of it holding user keys:
 
 - static site on R2 (public bucket + custom domain; no egress fees for the ~3.6 MB wasm). Hashed assets are `immutable`; `index.html` is `no-cache`; `.wasm` is uploaded as `application/wasm`. Deep links need a Cloudflare URL-rewrite rule to `/index.html`, since R2 has no SPA fallback.
-- one Bun process on a VPS, behind Caddy for TLS:
-  - sync relay: `automerge-repo` websocket server, in-memory only, so a restart loses nothing. Checks the GitHub token's repo access on connect.
+- one Go binary on a VPS, behind Caddy for TLS:
+  - sync hub: a dumb room router that doesn't know about CRDTs. Room = repo. Tabs mesh-sync through it, using our own ~80-line automerge-repo `NetworkAdapter` (multi-peer, routes by `targetId`). We can't use the stock websocket adapter: it assumes a single remote peer that is itself an automerge-repo server. The first message carries the GitHub token; the hub admits a tab only with push access to the room's repo (checked via the GitHub API, cached briefly). Read-only viewers get no live sync, because any sync peer can inject ops that a writer later commits. In-memory only. A tab alone has no peer; it loads from the snapshot ref.
   - `POST /oauth/token` and `/oauth/refresh`: exchanges the code using the GitHub App `client_secret` and returns tokens to the browser without storing them. CORS allows the site origin only.
 
 GitHub's callback goes to the static site (`/auth/callback`). The page POSTs `{code, code_verifier}` to the VPS.

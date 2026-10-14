@@ -22,9 +22,4 @@ dsfdfdsf - asdsadsa
 sdfdfdf and here goes another one 
 bfjgg
 - bgnn
-- sdfdfdf
-- sdfdsfdsf
-- sdfdsfdsfd
-
-  
-
+- поапрвлоарпловап

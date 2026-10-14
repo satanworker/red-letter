@@ -7,13 +7,21 @@ declare const ASSETS: string[];
 declare const VERSION: string;
 
 const CACHE = `rl-${VERSION}`;
+// A missing asset gets the SPA fallback (index.html, status 200). Caching that under a hashed asset name would
+// break the app until the next deploy, so only real assets count.
+const isAsset = (res: Response) => res.ok && !res.headers.get("content-type")?.includes("text/html");
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches
-      .open(CACHE)
-      .then((c) => c.addAll(["/", ...ASSETS]))
-      .then(() => self.skipWaiting()),
+    caches.open(CACHE).then(async (c) => {
+      await c.add("/");
+      for (const a of ASSETS) {
+        const res = await fetch(a, { cache: "reload" });
+        if (!isAsset(res)) throw new Error(`asset not deployed yet: ${a}`); // install again on the next visit
+        await c.put(a, res);
+      }
+      await self.skipWaiting();
+    }),
   );
 });
 
@@ -30,7 +38,7 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
   if (url.pathname.startsWith("/assets/")) {
-    e.respondWith(caches.match(e.request).then((hit) => hit ?? fetch(e.request)));
+    e.respondWith(caches.match(e.request).then((hit) => (hit && isAsset(hit) ? hit : fetch(e.request))));
   } else if (e.request.mode === "navigate") {
     e.respondWith(
       fetch(e.request)

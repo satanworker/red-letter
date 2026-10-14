@@ -3,7 +3,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
-import { StateField, type EditorState, type Extension, type Range } from "@codemirror/state";
+import type { Extension, Range } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -16,6 +16,8 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
+import { tableField, tableTheme } from "./tables.ts";
+
 const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
 const theme = EditorView.theme({
@@ -47,11 +49,6 @@ const theme = EditorView.theme({
   ".cm-lp-prefix": { display: "inline-block", width: "var(--lp-in)", textIndent: "0", textAlign: "right", whiteSpace: "pre" },
   ".cm-lp-bullet": { display: "inline-block", width: "1.1em", textAlign: "center" },
   ".cm-lp-num": { color: "rgba(55,53,47,.65)", paddingRight: "0.35em" },
-  ".cm-lp-tablewrap": { overflowX: "auto", margin: "6px 0", cursor: "text" },
-  ".cm-lp-table": { borderCollapse: "collapse", fontSize: "14px", lineHeight: "1.5", minWidth: "60%" },
-  ".cm-lp-table th, .cm-lp-table td": { border: "1px solid rgba(55,53,47,.16)", padding: "6px 10px", verticalAlign: "top" },
-  ".cm-lp-table th": { background: "#f7f6f3", fontWeight: "600" },
-  ".cm-lp-table code": { fontFamily: mono, fontSize: "85%", color: "#eb5757", background: "rgba(135,131,120,.15)", borderRadius: "4px", padding: "0.1em 0.3em" },
   ".cm-lp-task": { margin: "0 0.35em 0 0", verticalAlign: "-2px", width: "16px", height: "16px", accentColor: "#2383e2", cursor: "pointer" },
   ".cm-lp-quote": { borderLeft: "3px solid #37352f", paddingLeft: "14px !important" },
   ".cm-lp-codeblock": { background: "#f7f6f3", fontFamily: mono, fontSize: "14px", padding: "0 16px !important" },
@@ -302,71 +299,6 @@ const preview = ViewPlugin.fromClass(
   },
 );
 
-// ---- tables: rendered as an HTML table unless the selection is in it, then shown as raw markdown ----
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
-// Cell text -> HTML: code spans, bold, italic, link text. Link targets are dropped; nothing from the doc is
-// inserted unescaped.
-const cellHtml = (s: string) =>
-  s
-    .split(/(`[^`]+`)/)
-    .map((part, i) =>
-      i % 2
-        ? `<code>${esc(part.slice(1, -1))}</code>`
-        : esc(part)
-            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-            .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
-            .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1"),
-    )
-    .join("");
-// GFM: unescaped pipes split cells, even inside code spans.
-const cells = (row: string) =>
-  row
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/(?<!\\)\|$/, "")
-    .split(/(?<!\\)\|/)
-    .map((c) => c.trim().replaceAll("\\|", "|"));
-
-class TableWidget extends WidgetType {
-  constructor(readonly src: string) { super(); }
-  eq(o: TableWidget) { return o.src === this.src; }
-  toDOM() {
-    const [head = "", delim = "", ...body] = this.src.split("\n");
-    const align = cells(delim).map((d) => (d.endsWith(":") ? (d.startsWith(":") ? "center" : "right") : "left"));
-    const row = (r: string, tag: "th" | "td") =>
-      `<tr>${cells(r).map((c, i) => `<${tag} style="text-align:${align[i] ?? "left"}">${cellHtml(c)}</${tag}>`).join("")}</tr>`;
-    const wrap = document.createElement("div");
-    wrap.className = "cm-lp-tablewrap";
-    wrap.innerHTML = `<table class="cm-lp-table"><thead>${row(head, "th")}</thead><tbody>${body.map((r) => row(r, "td")).join("")}</tbody></table>`;
-    return wrap;
-  }
-  ignoreEvent() { return false; } // a click puts the cursor at the table, which shows it raw for editing
-}
-
-function tables(state: EditorState): DecorationSet {
-  const doc = state.doc;
-  const out: Range<Decoration>[] = [];
-  syntaxTree(state).iterate({
-    enter: (n) => {
-      if (n.name === "Paragraph" || n.name === "FencedCode" || n.name.includes("Heading")) return false; // no tables inside
-      if (n.name !== "Table") return;
-      const first = doc.lineAt(n.from), last = doc.lineAt(n.to);
-      const touched = state.selection.ranges.some((r) => r.to >= first.from && r.from <= last.to);
-      if (!touched) out.push(Decoration.replace({ widget: new TableWidget(doc.sliceString(first.from, last.to)), block: true }).range(first.from, last.to));
-      return false;
-    },
-  });
-  return Decoration.set(out, true);
-}
-
-// Block widgets can't come from a view plugin, so tables live in a state field.
-// ponytail: rebuilt on every selection change by walking the block tree; fine for docs of a few thousand lines.
-const tableField = StateField.define<DecorationSet>({
-  create: tables,
-  update: (deco, tr) => (tr.docChanged || tr.selection || syntaxTree(tr.state) !== syntaxTree(tr.startState) ? tables(tr.state) : deco),
-  provide: (f) => EditorView.decorations.from(f),
-});
-
 // Shift-Enter in a list item: a new line inside the same item, indented to its text, instead of a new bullet.
 // (GitHub renders such a line as part of the same paragraph.) Elsewhere: a plain line break.
 function lineInItem(view: EditorView): boolean {
@@ -396,5 +328,6 @@ export function editorExtensions(): Extension[] {
     theme,
     preview,
     tableField,
+    tableTheme,
   ];
 }

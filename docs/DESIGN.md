@@ -101,7 +101,7 @@ Done:
   - the agent read one via `git show` and replied by pushing;
   - the anchor followed the text through edits.
 - **URLs and file browser:** `/owner/repo` opens the default branch's README with a sidebar listing the branch's markdown files (collapsible tree + filter); `/owner/repo/tree/<branch>`, `/owner/repo/blob/<branch>/<path>` (GitHub's shape) and `/owner/repo/<path>` (default branch) all work. Missing files show the sidebar with a not-found note.
-- **UI:** Notion-style live-preview editor: centered column; headings, emphasis, lists (wrapped lines and Shift-Enter continuations align with the item's text), checkboxes, quotes, code, images and GFM tables (raw markdown while the cursor is in them) rendered inline; markdown syntax shown only on the cursor line. Breadcrumb header with branch pill, save state and Share. Built with Solid 1.9 (compiled by `@dschz/bun-plugin-solid` under `bun build`); state lives in per-feature stores (`repoStore`, `docStore`, `commentsStore`), components only render and call actions.
+- **UI:** Notion-style live-preview editor: centered column; headings, emphasis, lists (wrapped lines and Shift-Enter continuations align with the item's text), checkboxes, quotes, code and images rendered inline; markdown syntax shown only on the cursor line. GFM tables are edited Obsidian-style (`web/src/doc/tables.ts`): cells are edited in place (the focused cell shows its raw markdown), Tab / Shift-Tab / Enter move between cells and add a row past the end, arrows and Escape leave the table, right-click inserts or deletes rows and columns, Ctrl-Z/Y go to the editor's history. A cell edit writes only the changed characters of that cell. Breadcrumb header with branch pill, save state and Share. Built with Solid 1.9 (compiled by `@dschz/bun-plugin-solid` under `bun build`); state lives in per-feature stores (`repoStore`, `docStore`, `commentsStore`), components only render and call actions.
 - **No page reloads:** links, back/forward and the landing form go through the Navigation API; switching files keeps the page, the sign-in and the file list, and swaps only the doc (the old file leaves live sync at once). Browsers without the Navigation API get page loads.
 - **Browser storage** (one IndexedDB database, `red-letter`; everything in it is a copy, GitHub stays the source of truth):
   - `docs`: each opened doc, saved at most once a second. A file reopens from it at once, then merges the snapshot if someone saved since and replays agent commits. Text edited offline survives reloads and goes to git when the connection is back (verified: offline edit → offline reload → online → saved).
@@ -124,6 +124,7 @@ Not built yet:
 - draft branches / publish as PR;
 - read-only viewing without signing in;
 - git authors (agents) get a GitHub avatar by name, which can be a stranger's account; show an initial instead.
+- tables: agent-change and comment highlights inside a table aren't shown (the table is one widget); after some undos the caret leaves the table; no column resizing or drag to reorder.
 
 Open items:
 - Deployment lives in systemd user units, not home-satan's NixOS config. Moving it there needs the sops key.

@@ -1,0 +1,10 @@
+{
+ "docId": "dq6Zeg24gR5kBheLgRHzao6PsUc",
+ "branch": "demo",
+ "path": "docs/research/prior-art-patchwork-git-bridges.md",
+ "commit": "da10b4dcb8f98ebe21b85a00729f7a5b7a8e6b30",
+ "heads": [
+  "84384a395107c81e86569bfd84b96e180d643ace2a02eb0ce2a0c20194bb081c"
+ ],
+ "replayVersion": 1
+}

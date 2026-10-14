@@ -6,7 +6,10 @@ type Store = "docs" | "http";
 let db: Promise<IDBDatabase | null> | undefined;
 
 function open(): Promise<IDBDatabase | null> {
-  db ??= new Promise<IDBDatabase | null>((resolve) => {
+  if (db) return db;
+  const { promise, resolve } = Promise.withResolvers<IDBDatabase | null>();
+  db = promise;
+  try {
     const req = indexedDB.open("red-letter", 1);
     req.onupgradeneeded = () => {
       req.result.createObjectStore("docs");
@@ -23,21 +26,23 @@ function open(): Promise<IDBDatabase | null> {
     };
     req.onerror = () => resolve(null);
     req.onblocked = () => resolve(null);
-  }).catch(() => null); // no indexedDB at all
-  return db;
+  } catch {
+    resolve(null); // no indexedDB at all
+  }
+  return promise;
 }
 
 async function run<T>(store: Store, mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<T>, retry = true): Promise<T | undefined> {
   const d = await open();
   if (!d) return undefined;
   try {
-    return await new Promise<T>((resolve, reject) => {
-      const tx = d.transaction(store, mode);
-      const req = op(tx.objectStore(store));
-      tx.oncomplete = () => resolve(req.result);
-      tx.onerror = () => reject(tx.error ?? req.error);
-      tx.onabort = () => reject(tx.error ?? req.error);
-    });
+    const { promise, resolve, reject } = Promise.withResolvers<T>();
+    const tx = d.transaction(store, mode);
+    const req = op(tx.objectStore(store));
+    tx.oncomplete = () => resolve(req.result);
+    tx.onerror = () => reject(tx.error ?? req.error);
+    tx.onabort = () => reject(tx.error ?? req.error);
+    return await promise;
   } catch (e) {
     // a dead connection throws InvalidStateError from transaction(), or fails the transaction with UnknownError
     if (retry && e instanceof DOMException && (e.name === "InvalidStateError" || e.name === "UnknownError")) {

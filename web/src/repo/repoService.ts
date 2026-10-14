@@ -6,10 +6,11 @@ export type RepoInfo = { node_id: string; full_name: string; default_branch: str
 export const blobUrl = (repo: string, branch: string, path: string) => `/${repo}/blob/${encPath(branch)}/${encPath(path)}`;
 const isDoc = (p: string) => /\.(md|markdown|mdx|txt)$/i.test(p);
 
-// null: the user's token can't see it (GitHub answers 404 for private repos it can't see)
+// null: the user's token can't see it (GitHub answers 404 for private repos it can't see).
+// Stale-first: permissions and the default branch rarely change; the copy is revalidated behind it.
 export async function getRepo(owner: string, name: string): Promise<RepoInfo | null> {
   try {
-    return JSON.parse(await cachedGet(`/repos/${owner}/${name}`));
+    return JSON.parse(await cachedGet(`/repos/${owner}/${name}`, { stale: true }));
   } catch (e) {
     if (e instanceof HttpError && (e.status === 404 || e.status === 403)) return null;
     throw e;
@@ -21,7 +22,7 @@ export async function resolveBranch(repo: string, parts: string[], wholeAllowed:
   for (let i = 1; i <= parts.length - (wholeAllowed ? 0 : 1); i++) {
     const cand = parts.slice(0, i).join("/");
     try {
-      await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(cand)}`);
+      await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(cand)}`, { stale: true });
       return cand;
     } catch (e) {
       if (!(e instanceof HttpError)) throw e;
@@ -30,21 +31,30 @@ export async function resolveBranch(repo: string, parts: string[], wholeAllowed:
   throw new Error(`No branch found in ${parts.join("/")}`);
 }
 
-export async function listDocs(repo: string, branch: string): Promise<string[]> {
+export async function branchHead(repo: string, branch: string): Promise<string> {
+  const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(branch)}`));
+  return ref.object.sha;
+}
+
+// stale: the list this browser saw last, at once (background sync refreshes it)
+export async function listDocs(repo: string, branch: string, stale = false): Promise<string[]> {
   // ponytail: one recursive tree call; GitHub truncates past ~100k entries
-  const t: { tree: { path: string; type: string }[] } = JSON.parse(await cachedGet(`/repos/${repo}/git/trees/${encPath(branch)}?recursive=1`));
+  const t: { tree: { path: string; type: string }[] } = JSON.parse(await cachedGet(`/repos/${repo}/git/trees/${encPath(branch)}?recursive=1`, { stale }));
   return t.tree.filter((e) => e.type === "blob" && isDoc(e.path)).map((e) => e.path);
 }
 
-// A GitHub App token can only write where the App is installed.
-export async function appInstalledOn(fullName: string): Promise<boolean> {
+// A GitHub App token can only write where the App is installed. Answered from this browser's copy first (it
+// revalidates behind); a "no" is rechecked with GitHub, so a fresh install is seen right away.
+export async function appInstalledOn(fullName: string, stale = true): Promise<boolean> {
   const owner = fullName.split("/")[0].toLowerCase();
   type Inst = { id: number; account: { login: string }; repository_selection: "all" | "selected" };
-  const { installations } = await ghJson<{ installations: Inst[] }>("/user/installations?per_page=100");
+  const { installations }: { installations: Inst[] } = JSON.parse(await cachedGet("/user/installations?per_page=100", { stale }));
   const inst = installations.find((i) => i.account.login.toLowerCase() === owner);
-  if (!inst) return false;
-  if (inst.repository_selection === "all") return true;
-  // ponytail: first 100 selected repos only
-  const { repositories } = await ghJson<{ repositories: { full_name: string }[] }>(`/user/installations/${inst.id}/repositories?per_page=100`);
-  return repositories.some((r) => r.full_name.toLowerCase() === fullName.toLowerCase());
+  let ok = inst?.repository_selection === "all";
+  if (inst && !ok) {
+    // ponytail: first 100 selected repos only
+    const { repositories }: { repositories: { full_name: string }[] } = JSON.parse(await cachedGet(`/user/installations/${inst.id}/repositories?per_page=100`, { stale }));
+    ok = repositories.some((r) => r.full_name.toLowerCase() === fullName.toLowerCase());
+  }
+  return ok || (stale && appInstalledOn(fullName, false));
 }

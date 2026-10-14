@@ -3,7 +3,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
-import type { Extension, Range } from "@codemirror/state";
+import { StateField, type EditorState, type Extension, type Range } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -16,7 +16,6 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
-
 const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
 const theme = EditorView.theme({
@@ -42,8 +41,18 @@ const theme = EditorView.theme({
     borderRadius: "4px", padding: "0.2em 0.4em",
   },
   ".cm-lp-link": { color: "inherit", borderBottom: "1px solid rgba(55,53,47,.4)", cursor: "pointer" },
+  // List items: the marker (bullet, number, checkbox, or the raw "- " on the cursor line) sits in a box as wide as
+  // the item's indent, inside the line's padding, so wrapped and continuation lines align with the item's text.
+  ".cm-lp-li": { paddingLeft: "calc(var(--lp-in) + 2px) !important", textIndent: "calc(-1 * var(--lp-in))" },
+  ".cm-lp-prefix": { display: "inline-block", width: "var(--lp-in)", textIndent: "0", textAlign: "right", whiteSpace: "pre" },
   ".cm-lp-bullet": { display: "inline-block", width: "1.1em", textAlign: "center" },
-  ".cm-lp-task": { margin: "0 0.4em 0 0.1em", verticalAlign: "-2px", width: "16px", height: "16px", accentColor: "#2383e2", cursor: "pointer" },
+  ".cm-lp-num": { color: "rgba(55,53,47,.65)", paddingRight: "0.35em" },
+  ".cm-lp-tablewrap": { overflowX: "auto", margin: "6px 0", cursor: "text" },
+  ".cm-lp-table": { borderCollapse: "collapse", fontSize: "14px", lineHeight: "1.5", minWidth: "60%" },
+  ".cm-lp-table th, .cm-lp-table td": { border: "1px solid rgba(55,53,47,.16)", padding: "6px 10px", verticalAlign: "top" },
+  ".cm-lp-table th": { background: "#f7f6f3", fontWeight: "600" },
+  ".cm-lp-table code": { fontFamily: mono, fontSize: "85%", color: "#eb5757", background: "rgba(135,131,120,.15)", borderRadius: "4px", padding: "0.1em 0.3em" },
+  ".cm-lp-task": { margin: "0 0.35em 0 0", verticalAlign: "-2px", width: "16px", height: "16px", accentColor: "#2383e2", cursor: "pointer" },
   ".cm-lp-quote": { borderLeft: "3px solid #37352f", paddingLeft: "14px !important" },
   ".cm-lp-codeblock": { background: "#f7f6f3", fontFamily: mono, fontSize: "14px", padding: "0 16px !important" },
   ".cm-lp-fence": { color: "rgba(55,53,47,.4)", fontSize: "12px" },
@@ -51,14 +60,24 @@ const theme = EditorView.theme({
   ".cm-lp-img": { display: "block", maxWidth: "100%", margin: "4px 0", borderRadius: "3px" },
 });
 
-class BulletWidget extends WidgetType {
-  eq() { return true; }
-  toDOM() {
-    const s = document.createElement("span");
-    s.className = "cm-lp-bullet";
-    s.textContent = "•";
-    return s;
+type Prefix = { kind: "bullet" | "number" | "task" | "none"; text: string; checked: boolean };
+
+class PrefixWidget extends WidgetType {
+  constructor(readonly p: Prefix) { super(); }
+  eq(o: PrefixWidget) { return o.p.kind === this.p.kind && o.p.text === this.p.text && o.p.checked === this.p.checked; }
+  toDOM(view: EditorView) {
+    const box = document.createElement("span");
+    box.className = "cm-lp-prefix";
+    if (this.p.kind === "task") box.append(taskBox(view, box, this.p.checked));
+    else if (this.p.kind !== "none") {
+      const s = document.createElement("span");
+      s.className = this.p.kind === "bullet" ? "cm-lp-bullet" : "cm-lp-num";
+      s.textContent = this.p.text;
+      box.append(s);
+    }
+    return box;
   }
+  ignoreEvent() { return this.p.kind === "task"; }
 }
 
 class HrWidget extends WidgetType {
@@ -82,27 +101,24 @@ class ImageWidget extends WidgetType {
   }
 }
 
-class TaskWidget extends WidgetType {
-  constructor(readonly checked: boolean) { super(); }
-  eq(o: TaskWidget) { return o.checked === this.checked; }
-  toDOM(view: EditorView) {
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.className = "cm-lp-task";
-    box.checked = this.checked;
-    box.disabled = view.state.readOnly;
-    box.addEventListener("mousedown", (e) => e.preventDefault()); // keep the cursor where it is
-    box.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (view.state.readOnly) return;
-      const pos = view.posAtDOM(box) + 1; // the char inside "[ ]"
-      const cur = view.state.doc.sliceString(pos, pos + 1);
-      if (!/[ xX]/.test(cur)) return;
-      view.dispatch({ changes: { from: pos, to: pos + 1, insert: cur === " " ? "x" : " " }, userEvent: "input" });
-    });
-    return box;
-  }
-  ignoreEvent() { return true; }
+// A checkbox that toggles the "[ ]" of the list item on its line.
+function taskBox(view: EditorView, owner: HTMLElement, checked: boolean) {
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.className = "cm-lp-task";
+  box.checked = checked;
+  box.disabled = view.state.readOnly;
+  box.addEventListener("mousedown", (e) => e.preventDefault()); // keep the cursor where it is
+  box.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (view.state.readOnly) return;
+    const line = view.state.doc.lineAt(view.posAtDOM(owner));
+    const m = /^\s*(?:[-*+]|\d+[.)])\s+\[([ xX])\]/.exec(line.text);
+    if (!m) return;
+    const pos = line.from + m[0].length - 2;
+    view.dispatch({ changes: { from: pos, to: pos + 1, insert: m[1] === " " ? "x" : " " }, userEvent: "input" });
+  });
+  return box;
 }
 
 const hide = Decoration.replace({});
@@ -115,7 +131,6 @@ const marks: Record<string, Decoration> = {
 };
 const link = Decoration.mark({ class: "cm-lp-link" });
 const line = (cls: string) => Decoration.line({ class: cls });
-const bullet = Decoration.replace({ widget: new BulletWidget() });
 const hr = Decoration.replace({ widget: new HrWidget() });
 
 function build(view: EditorView): DecorationSet {
@@ -136,6 +151,47 @@ function build(view: EditorView): DecorationSet {
     const first = doc.lineAt(from).number, last = doc.lineAt(to).number;
     for (let l = doc.lineAt(Math.max(from, vfrom)).number; l <= doc.lineAt(Math.min(to, vto)).number; l++)
       out.push(deco(l, first, last).range(doc.line(l).from));
+  };
+  const listed = new Set<number>(); // line starts already given a list prefix (items can span visible ranges)
+  const prefix = (from: number, to: number, style: string, p: Prefix) => {
+    if (listed.has(from)) return;
+    listed.add(from);
+    out.push(Decoration.line({ attributes: { class: "cm-lp-li", style } }).range(from));
+    if (to > from && onActive(from)) out.push(Decoration.mark({ class: "cm-lp-prefix cm-lp-mark" }).range(from, to));
+    else if (to > from) out.push(Decoration.replace({ widget: new PrefixWidget(p) }).range(from, to));
+    else out.push(Decoration.widget({ widget: new PrefixWidget({ kind: "none", text: "", checked: false }), side: -1 }).range(from));
+  };
+  // One item: its first line gets the marker; later lines of its own text (soft-wrapped in the source, or
+  // Shift-Enter) get an empty box of the same width. Nested lists are their own items.
+  const listItem = (item: SyntaxNode, vfrom: number, vto: number) => {
+    const mark = item.getChild("ListMark");
+    if (!mark) return;
+    let depth = 0;
+    for (let p = item.parent; p; p = p.parent) if (p.name === "BulletList" || p.name === "OrderedList") depth++;
+    const task = item.getChild("Task")?.getChild("TaskMarker");
+    const ordered = item.parent?.name === "OrderedList";
+    const style = `--lp-in:${(depth - 1) * 1.5 + (task ? 2 : ordered ? 1.6 : 1.1)}em`;
+    const first = doc.lineAt(mark.from);
+    let start = (task ?? mark).to;
+    while (start < first.to && doc.sliceString(start, start + 1) === " ") start++;
+    if (first.from >= vfrom && first.from <= vto) {
+      const text = doc.sliceString(mark.from, mark.to);
+      const p: Prefix = task
+        ? { kind: "task", text: "", checked: /x/i.test(doc.sliceString(task.from, task.to)) }
+        : ordered
+          ? { kind: "number", text, checked: false }
+          : { kind: "bullet", text: ["•", "◦", "▪"][(depth - 1) % 3]!, checked: false };
+      prefix(first.from, start, style, p);
+    }
+    for (let c = item.firstChild; c; c = c.nextSibling) {
+      if (c.name !== "Paragraph" && c.name !== "Task") continue;
+      for (let l = doc.lineAt(c.from).number; l <= doc.lineAt(c.to).number; l++) {
+        const ln = doc.line(l);
+        if (l === first.number || ln.from < vfrom || ln.from > vto) continue;
+        const ws = /^\s*/.exec(ln.text)![0].length;
+        prefix(ln.from, ln.from + ws, style, { kind: "none", text: "", checked: false });
+      }
+    }
   };
 
   for (const { from: vfrom, to: vto } of view.visibleRanges) {
@@ -186,19 +242,11 @@ function build(view: EditorView): DecorationSet {
             } else out.push(muted.range(n.from, n.to));
             return false;
           }
-          case "ListMark": {
-            const item = n.parent;
-            const listName = item?.parent?.name;
-            if (listName === "OrderedList") out.push(muted.range(n.from, n.to));
-            else if (item?.getChild("Task")) marker(n, true); // Notion: checkbox replaces the bullet
-            else if (onActive(n.from)) out.push(muted.range(n.from, n.to));
-            else out.push(bullet.range(n.from, n.to));
+          case "ListItem":
+            listItem(n, vfrom, vto);
             return;
-          }
-          case "TaskMarker":
-            if (onActive(n.from)) out.push(muted.range(n.from, n.to));
-            else out.push(Decoration.replace({ widget: new TaskWidget(/x/i.test(doc.sliceString(n.from, n.to))) }).range(n.from, n.to));
-            return;
+          case "Table":
+            return false; // tableField renders it
           case "Blockquote":
             lines(n.from, n.to, vfrom, vto, () => line("cm-lp-quote"));
             return;
@@ -254,15 +302,99 @@ const preview = ViewPlugin.fromClass(
   },
 );
 
+// ---- tables: rendered as an HTML table unless the selection is in it, then shown as raw markdown ----
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+// Cell text -> HTML: code spans, bold, italic, link text. Link targets are dropped; nothing from the doc is
+// inserted unescaped.
+const cellHtml = (s: string) =>
+  s
+    .split(/(`[^`]+`)/)
+    .map((part, i) =>
+      i % 2
+        ? `<code>${esc(part.slice(1, -1))}</code>`
+        : esc(part)
+            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+            .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+            .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1"),
+    )
+    .join("");
+// GFM: unescaped pipes split cells, even inside code spans.
+const cells = (row: string) =>
+  row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/(?<!\\)\|$/, "")
+    .split(/(?<!\\)\|/)
+    .map((c) => c.trim().replaceAll("\\|", "|"));
+
+class TableWidget extends WidgetType {
+  constructor(readonly src: string) { super(); }
+  eq(o: TableWidget) { return o.src === this.src; }
+  toDOM() {
+    const [head = "", delim = "", ...body] = this.src.split("\n");
+    const align = cells(delim).map((d) => (d.endsWith(":") ? (d.startsWith(":") ? "center" : "right") : "left"));
+    const row = (r: string, tag: "th" | "td") =>
+      `<tr>${cells(r).map((c, i) => `<${tag} style="text-align:${align[i] ?? "left"}">${cellHtml(c)}</${tag}>`).join("")}</tr>`;
+    const wrap = document.createElement("div");
+    wrap.className = "cm-lp-tablewrap";
+    wrap.innerHTML = `<table class="cm-lp-table"><thead>${row(head, "th")}</thead><tbody>${body.map((r) => row(r, "td")).join("")}</tbody></table>`;
+    return wrap;
+  }
+  ignoreEvent() { return false; } // a click puts the cursor at the table, which shows it raw for editing
+}
+
+function tables(state: EditorState): DecorationSet {
+  const doc = state.doc;
+  const out: Range<Decoration>[] = [];
+  syntaxTree(state).iterate({
+    enter: (n) => {
+      if (n.name === "Paragraph" || n.name === "FencedCode" || n.name.includes("Heading")) return false; // no tables inside
+      if (n.name !== "Table") return;
+      const first = doc.lineAt(n.from), last = doc.lineAt(n.to);
+      const touched = state.selection.ranges.some((r) => r.to >= first.from && r.from <= last.to);
+      if (!touched) out.push(Decoration.replace({ widget: new TableWidget(doc.sliceString(first.from, last.to)), block: true }).range(first.from, last.to));
+      return false;
+    },
+  });
+  return Decoration.set(out, true);
+}
+
+// Block widgets can't come from a view plugin, so tables live in a state field.
+// ponytail: rebuilt on every selection change by walking the block tree; fine for docs of a few thousand lines.
+const tableField = StateField.define<DecorationSet>({
+  create: tables,
+  update: (deco, tr) => (tr.docChanged || tr.selection || syntaxTree(tr.state) !== syntaxTree(tr.startState) ? tables(tr.state) : deco),
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+// Shift-Enter in a list item: a new line inside the same item, indented to its text, instead of a new bullet.
+// (GitHub renders such a line as part of the same paragraph.) Elsewhere: a plain line break.
+function lineInItem(view: EditorView): boolean {
+  const { state } = view;
+  let insert = "\n";
+  for (let n: SyntaxNode | null = syntaxTree(state).resolveInner(state.selection.main.head, -1); n; n = n.parent) {
+    const mark = n.name === "ListItem" ? n.getChild("ListMark") : null;
+    if (!mark) continue;
+    const line = state.doc.lineAt(mark.from);
+    let start = mark.to;
+    while (start < line.to && state.doc.sliceString(start, start + 1) === " ") start++;
+    insert += " ".repeat(start - line.from);
+    break;
+  }
+  view.dispatch({ ...state.replaceSelection(insert), scrollIntoView: true, userEvent: "input" });
+  return true;
+}
+
 export function editorExtensions(): Extension[] {
   return [
     history(),
     drawSelection(),
     dropCursor(),
-    keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+    keymap.of([{ key: "Shift-Enter", run: lineInItem }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
     markdown({ base: markdownLanguage }),
     EditorView.lineWrapping,
     theme,
     preview,
+    tableField,
   ];
 }

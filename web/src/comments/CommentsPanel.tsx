@@ -31,6 +31,11 @@ export function CommentsPanel(props: { canWrite: boolean; threads: Accessor<Thre
           <For each={resolved()}>{row}</For>
         </details>
       </Show>
+      <Show when={comments.error}>
+        <p class="fine err" title={comments.error}>
+          Some comments aren't on GitHub yet ({comments.error}). Kept in this browser; retrying.
+        </p>
+      </Show>
       <p class="fine">
         Agents read comments with
         <br />
@@ -46,7 +51,7 @@ function Compose(props: { quote: string }) {
   const submit = (e: Submit) => {
     e.preventDefault();
     const body = input.value.trim();
-    if (body) void submitComment(body);
+    if (body) submitComment(body);
   };
   return (
     <form class="card compose" onSubmit={submit}>
@@ -79,7 +84,7 @@ const Message = (props: { c: Comment }) => (
     <div class="who">
       <Avatar login={props.c.author} size={22} />
       <b>{props.c.author}</b>
-      <span class="meta">{ago(props.c.createdAt)}</span>
+      <span class="meta">{comments.sending.includes(props.c.id) ? "sending…" : ago(props.c.createdAt)}</span>
     </div>
     <div class="body">{props.c.body}</div>
   </div>
@@ -94,7 +99,7 @@ function ThreadCard(props: { thread: Accessor<Thread>; canWrite: boolean }) {
     const body = input.value.trim();
     if (!body) return;
     input.value = "";
-    void submitReply(t().root.id, body);
+    submitReply(t().root.id, body);
   };
   return (
     <div
@@ -115,7 +120,7 @@ function ThreadCard(props: { thread: Accessor<Thread>; canWrite: boolean }) {
       <Show when={props.canWrite}>
         <form class="reply" onSubmit={reply}>
           <input ref={input} placeholder="Reply…" />
-          <button type="button" class="link" onClick={() => void toggleResolved(t().root)}>
+          <button type="button" class="link" onClick={() => toggleResolved(t().root)}>
             <Show when={t().root.resolved} fallback={<><CheckIcon /> Resolve</>}>
               Reopen
             </Show>

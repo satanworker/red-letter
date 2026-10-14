@@ -2,7 +2,7 @@
 // The CRDT doc isn't copied into the store: `version` ticks (once per frame) when it changes, selectors re-read it.
 import type { EditorView } from "@codemirror/view";
 import { createStore } from "solid-js/store";
-import { clearComments, loadComments, refreshComments, writeComments } from "../comments/commentsStore.ts";
+import { addComment, clearComments, loadComments, refreshComments, setResolved } from "../comments/commentsStore.ts";
 import type { Comment } from "../comments/commentsService.ts";
 import type { Thread } from "../comments/commentsSelectors.ts";
 import { HttpError, type User } from "../github.ts";
@@ -50,7 +50,7 @@ export function docChanged() {
 
 let ticker: number | undefined;
 export function tick() {
-  void state.session?.poll();
+  void state.session?.poll(true);
   void refreshComments();
 }
 
@@ -130,26 +130,19 @@ export function selectThread(t: Thread) {
   if (t.range) jump(t.range.from, t.range.to);
 }
 
-// ---- comments ----
-export async function submitComment(body: string) {
+// ---- comments (shown at once; commentsStore writes them in the background) ----
+export function submitComment(body: string) {
   const s = state.session;
   const c = state.composing;
   if (!s || !c) return;
   set("composing", null);
   const root: Comment = { id: crypto.randomUUID(), author: state.login, body, createdAt: new Date().toISOString(), docId: s.docId, ...c.anchor, quote: c.quote };
-  await writeComments(`Comment on ${s.path}`, (l) => [...l, root]);
+  addComment(root);
+  set("activeThread", root.id);
 }
 
-export async function submitReply(rootId: string, body: string) {
-  const s = state.session;
-  if (!s) return;
-  const reply: Comment = { id: crypto.randomUUID(), parent: rootId, author: state.login, body, createdAt: new Date().toISOString() };
-  await writeComments(`Reply on ${s.path}`, (l) => [...l, reply]);
+export function submitReply(rootId: string, body: string) {
+  addComment({ id: crypto.randomUUID(), parent: rootId, author: state.login, body, createdAt: new Date().toISOString() });
 }
 
-export async function toggleResolved(root: Comment) {
-  const s = state.session;
-  if (!s) return;
-  const resolved = !root.resolved;
-  await writeComments(`${resolved ? "Resolve" : "Reopen"} comment on ${s.path}`, (l) => l.map((c) => (c.id === root.id ? { ...c, resolved } : c)));
-}
+export const toggleResolved = (root: Comment) => setResolved(root.id, !root.resolved);

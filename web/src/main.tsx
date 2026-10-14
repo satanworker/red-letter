@@ -21,6 +21,7 @@ window.navigation?.addEventListener("navigate", (e) => {
 void openRoute(new URL(location.href));
 
 addEventListener("focus", tick);
+addEventListener("online", tick); // queued comments and failed saves go out as soon as the network is back
 addEventListener("beforeunload", (e) => {
   if (leavingWithUnsaved()) e.preventDefault();
 });

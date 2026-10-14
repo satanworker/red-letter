@@ -133,23 +133,53 @@ export async function ghJson<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// GET with a copy in IndexedDB. Sha-addressed URLs never change, so their copy is used without a request.
-// Others revalidate with the ETag (a 304 doesn't count against the rate limit) and fall back to the copy offline.
-export async function cachedGet(path: string, opts: { raw?: boolean; immutable?: boolean } = {}): Promise<string> {
+type Copy = { etag: string; body: string };
+type GetOpts = {
+  raw?: boolean;
+  immutable?: boolean; // sha-addressed: a copy is never revalidated
+  stale?: boolean; // return the copy at once and revalidate behind it (first paint never waits on GitHub)
+  fresh?: boolean; // compare-and-swap reads: always ask GitHub, never reuse a recent answer or an offline copy
+};
+const inflight = new Map<string, Promise<string>>(); // one request per URL at a time
+const answered = new Map<string, number>(); // when GitHub last answered for a URL
+const REUSE_MS = 2000; // a burst of callers (route, open, background sync) shares one answer
+
+// GET with a copy in IndexedDB. Others revalidate with the ETag (a 304 doesn't count against the rate limit),
+// and fall back to the copy offline.
+export async function cachedGet(path: string, opts: GetOpts = {}): Promise<string> {
   const key = `${opts.raw ? "raw " : ""}${path}`;
-  const copy = await idbGet<{ etag: string; body: string }>("http", key);
-  if (copy && opts.immutable) return copy.body;
+  if (opts.stale) {
+    const copy = await idbGet<Copy>("http", key);
+    if (copy) {
+      void cachedGet(path, { raw: opts.raw }).catch(() => {});
+      return copy.body;
+    }
+  }
+  const flight = inflight.get(key);
+  if (flight && !opts.fresh) return flight;
+  const p = load(path, key, opts).finally(() => inflight.get(key) === p && inflight.delete(key));
+  inflight.set(key, p);
+  return p;
+}
+
+async function load(path: string, key: string, opts: GetOpts): Promise<string> {
+  const copy = await idbGet<Copy>("http", key);
+  if (copy && (opts.immutable || (!opts.fresh && Date.now() - (answered.get(key) ?? 0) < REUSE_MS))) return copy.body;
   let res: Response;
   try {
     res = await gh(path, { raw: opts.raw, headers: copy?.etag ? { "if-none-match": copy.etag } : {} });
   } catch (e) {
-    if (copy) return copy.body;
+    if (copy && !opts.fresh) return copy.body;
     throw e;
   }
-  if (res.status === 304 && copy) return copy.body;
+  if (res.status === 304 && copy) {
+    answered.set(key, Date.now());
+    return copy.body;
+  }
   if (!res.ok) throw new HttpError(res.status, `GET ${path} -> ${res.status} ${await res.text()}`);
   const body = await res.text();
-  void idbPut("http", key, { etag: res.headers.get("etag") ?? "", body });
+  answered.set(key, Date.now());
+  await idbPut("http", key, { etag: res.headers.get("etag") ?? "", body });
   return body;
 }
 

@@ -95,26 +95,27 @@ Done:
   - listed in a panel with per-change Revert and "Looks good";
   - where they interleave with a human edit, flagged with "Keep yours / Keep agent's".
   - Ctrl-Z never reverts an agent's or a peer's change.
-- **Comments:**
+- **Comments** (optimistic: shown at once, written to git in the background in order; pending writes and the last list are kept in IndexedDB, so they survive reloads and offline and go out when the network is back):
   - written to `red-letter-comments`, started from a floating "Comment" button on a selection;
   - shown as threads with replies and resolve;
   - the agent read one via `git show` and replied by pushing;
   - the anchor followed the text through edits.
 - **URLs and file browser:** `/owner/repo` opens the default branch's README with a sidebar listing the branch's markdown files (collapsible tree + filter); `/owner/repo/tree/<branch>`, `/owner/repo/blob/<branch>/<path>` (GitHub's shape) and `/owner/repo/<path>` (default branch) all work. Missing files show the sidebar with a not-found note.
-- **UI:** Notion-style live-preview editor: centered column; headings, emphasis, lists, checkboxes, quotes, code and images rendered inline; markdown syntax shown only on the cursor line. Breadcrumb header with branch pill, save state and Share. Built with Solid 1.9 (compiled by `@dschz/bun-plugin-solid` under `bun build`); state lives in per-feature stores (`repoStore`, `docStore`, `commentsStore`), components only render and call actions.
+- **UI:** Notion-style live-preview editor: centered column; headings, emphasis, lists (wrapped lines and Shift-Enter continuations align with the item's text), checkboxes, quotes, code, images and GFM tables (raw markdown while the cursor is in them) rendered inline; markdown syntax shown only on the cursor line. Breadcrumb header with branch pill, save state and Share. Built with Solid 1.9 (compiled by `@dschz/bun-plugin-solid` under `bun build`); state lives in per-feature stores (`repoStore`, `docStore`, `commentsStore`), components only render and call actions.
 - **No page reloads:** links, back/forward and the landing form go through the Navigation API; switching files keeps the page, the sign-in and the file list, and swaps only the doc (the old file leaves live sync at once). Browsers without the Navigation API get page loads.
 - **Browser storage** (one IndexedDB database, `red-letter`; everything in it is a copy, GitHub stays the source of truth):
   - `docs`: each opened doc, saved at most once a second. A file reopens from it at once, then merges the snapshot if someone saved since and replays agent commits. Text edited offline survives reloads and goes to git when the connection is back (verified: offline edit → offline reload → online → saved).
   - `http`: GitHub GET responses. Sha-addressed ones (commits, trees, blobs, file contents at a sha) are never refetched; the rest revalidate with ETags and are used as-is offline.
   - Safari can drop the connection: every operation reopens once and retries; without IndexedDB the app runs as before, from the network. `navigator.storage.persist()` is requested after the first file opens. Sign-out clears both stores.
 - **Service worker** (`web/src/sw.ts`): precaches this build's hashed assets (the 3.6 MB Automerge wasm included), serves them from the cache, and fetches pages network-first with the cached shell as the offline fallback. A repo opened before loads fully offline.
+- **Background sync:** after a repo opens, every doc of the branch (snapshot merged into this browser's copy) and its comments are fetched, four at a time, pausing while a file opens. Any file then opens from the copy (measured: 200 ms to switch, ~0.7 s for a reload).
+- **Network:** first paint never waits on GitHub (repo info, branch, file list and App install checks come from this browser's copy and revalidate behind it); concurrent reads of one URL share a request, and reads within 2 s share the answer; compare-and-swap paths (saves, comment writes, lost races) always ask GitHub.
 - **Infra:**
   - static site on Cloudflare (Workers static assets);
   - Go hub + OAuth exchange on home-satan as systemd user units behind a Cloudflare Tunnel (`diff-api.satanworker.com`);
   - secrets in `~/.config/red-letter/`.
 
 Not built yet:
-- offline commenting (a queue of pending comment writes in IndexedDB);
 - automerge-repo's incremental IndexedDB adapter instead of whole-doc saves, if docs get large;
 - BroadcastChannel between tabs: skipped, the hub already syncs tabs on the same file, and adding a second adapter would announce the same peer twice;
 - strip the wasm's 687 KB name section (−19% raw, −6% brotli);
@@ -122,7 +123,7 @@ Not built yet:
 - notifications and mentions;
 - draft branches / publish as PR;
 - read-only viewing without signing in;
-- tables rendered in the editor (shown as raw markdown).
+- git authors (agents) get a GitHub avatar by name, which can be a stranger's account; show an initial instead.
 
 Open items:
 - Deployment lives in systemd user units, not home-satan's NixOS config. Moving it there needs the sops key.

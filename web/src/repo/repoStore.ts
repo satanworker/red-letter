@@ -1,9 +1,12 @@
 // Which screen is showing, and the open repo + branch: info, the branch's markdown files, the current path.
 // openRoute is the one entry point: page load, links, back/forward (see main.tsx).
 import { createStore } from "solid-js/store";
-import { closeFile, openFile } from "../doc/docStore.ts";
+import { commentsHead } from "../comments/commentsService.ts";
+import { warmComments } from "../comments/commentsStore.ts";
+import { closeFile, doc, openFile } from "../doc/docStore.ts";
+import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy } from "../doc/session.ts";
 import { authKind, completeSignIn, currentUser, token, type User } from "../github.ts";
-import { appInstalledOn, blobUrl, getRepo, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
+import { appInstalledOn, blobUrl, branchHead, getRepo, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
 type RepoState = {
@@ -92,7 +95,8 @@ export async function openRoute(url: URL): Promise<void> {
       branch = same && tail.startsWith(`${state.branch}/`) ? state.branch : await resolveBranch(full, rest.slice(1), rest[0] === "tree");
       path = rest.slice(1 + branch.split("/").length).join("/");
     }
-    const docs = same && branch === state.branch ? state.docs : await listDocs(full, branch);
+    const fresh = !(same && branch === state.branch); // another repo or branch: sync its files in the background
+    const docs = fresh ? await listDocs(full, branch, true) : state.docs;
     // no file in the URL: the README (or the first document) of the branch
     path ||= docs.find((p) => /^readme\.md$/i.test(p)) ?? docs.find((p) => /(^|\/)readme\.md$/i.test(p)) ?? docs[0] ?? "";
     const user = state.user ?? (await currentUser());
@@ -105,7 +109,45 @@ export async function openRoute(url: URL): Promise<void> {
     }
     if (url.pathname !== blobUrl(full, branch, path)) history.replaceState(null, "", blobUrl(full, branch, path));
     if (!(await openFile(info, branch, path, user)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
+    if (fresh && !stale()) void syncAll(full, branch, docs);
   } catch (e) {
     if (!stale()) set({ screen: "error", message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+let syncRun = 0;
+function sleep(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
+}
+
+// After a repo opens: bring every doc of the branch (and its comments) into this browser, one at a time, so any
+// file then opens at once. Opening a file always goes first: the loop waits while one is opening. Read-only:
+// it never creates snapshots. Stops when another repo or branch opens, or when GitHub can't be reached.
+async function syncAll(repo: string, branch: string, cached: string[]) {
+  const run = ++syncRun;
+  try {
+    const [docs, heads, head, comments] = await Promise.all([listDocs(repo, branch), snapshotHeads(repo, branch), branchHead(repo, branch), commentsHead(repo)]);
+    // the sidebar showed this browser's last list; files added or removed since show up now
+    if (run === syncRun && docs.join("\n") !== cached.join("\n")) set("docs", docs);
+    // four at a time: GitHub's latency (~400 ms per request), not bandwidth, is the limit
+    const queue = docs.slice();
+    const worker = async () => {
+      for (let path = queue.shift(); path !== undefined; path = queue.shift()) {
+        while (doc.opening) await sleep(200);
+        if (run !== syncRun) return;
+        const p = path;
+        const isOpen = () => doc.opening === p || doc.session?.path === p;
+        if (isOpen()) continue;
+        await syncCopy(repo, branch, p, heads.get(await snapshotRef(branch, p)) ?? NO_SNAPSHOT, head, isOpen);
+        if (comments) await warmComments(repo, branch, p, comments);
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    if (run !== syncRun) return;
+    console.log(`[rl] synced ${docs.length} docs of ${repo}@${branch} in the background`);
+  } catch (e) {
+    console.warn("[rl] background sync stopped:", e);
   }
 }

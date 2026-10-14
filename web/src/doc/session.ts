@@ -31,6 +31,52 @@ export type Status = { saving: boolean; dirty: boolean; error?: string; commit: 
 // The snapshot ref now holds a different doc (the ref was deleted and recreated): this browser's copy is stale.
 export class DocReset extends Error {}
 
+export const NO_SNAPSHOT = ZERO;
+const docKey = (repo: string, branch: string, path: string) => `${repo.toLowerCase()} ${branch} ${path}`;
+export const snapshotRef = async (branch: string, path: string) => `refs/red-letter/v1/${await sha1(branch)}/${await sha1(path)}`;
+
+// Every snapshot ref of a branch in one request (ETag-revalidated): ref name -> snapshot commit.
+// fresh: after losing a race, when a recent shared answer would be stale.
+export async function snapshotHeads(repo: string, branch: string, fresh = false): Promise<Map<string, string>> {
+  const refs: { ref: string; object: { sha: string } }[] = JSON.parse(await cachedGet(`/repos/${repo}/git/matching-refs/red-letter/v1/${await sha1(branch)}/`, { fresh }));
+  return new Map(refs.map((r) => [r.ref, r.object.sha]));
+}
+
+// Everything a snapshot is made of is addressed by sha, so it's cached for good.
+async function object<T>(repo: string, kind: "commits" | "trees" | "blobs", sha: string): Promise<T> {
+  return JSON.parse(await cachedGet(`/repos/${repo}/git/${kind}/${sha}`, { immutable: true }));
+}
+
+async function readSnapshot(repo: string, sha: string): Promise<{ meta: Meta; bytes: Uint8Array }> {
+  const c = await object<GitCommit>(repo, "commits", sha);
+  const tree = await object<{ tree: { path: string; sha: string }[] }>(repo, "trees", c.tree.sha);
+  const blob = async (name: string) => unb64((await object<{ content: string }>(repo, "blobs", tree.tree.find((e) => e.path === name)!.sha)).content);
+  const [metaBytes, bytes] = await Promise.all([blob("meta.json"), blob("doc.automerge")]);
+  const meta: Meta = JSON.parse(new TextDecoder().decode(metaBytes));
+  if ((meta.replayVersion ?? 1) > REPLAY_VERSION) throw new Error("This file was saved by a newer Red Letter. Reload the page.");
+  return { meta, bytes };
+}
+
+const fileAt = (repo: string, path: string, sha: string) => cachedGet(`/repos/${repo}/contents/${encPath(path)}?ref=${sha}`, { raw: true, immutable: true });
+
+// Background sync, read-only: bring this browser's copy of a doc up to its snapshot so opening it is instant.
+// Files nobody opened yet have no snapshot; their text at `branchHead` is fetched so the first open is quicker.
+// `isOpen` is checked right before writing: an open file's Session owns its copy.
+export async function syncCopy(repo: string, branch: string, path: string, snapshot: string, branchHead: string, isOpen: () => boolean) {
+  if (snapshot === ZERO) {
+    await fileAt(repo, path, branchHead);
+    return;
+  }
+  const key = docKey(repo, branch, path);
+  const local = await idbGet<Local>("docs", key);
+  if (local?.crdtHead === snapshot) return;
+  const snap = await readSnapshot(repo, snapshot);
+  const same = local?.docId === snap.meta.docId; // a different doc means the ref was recreated: theirs wins
+  const bytes = local && same ? A.save(A.merge(A.load<RLDoc>(local.bytes), A.load<RLDoc>(snap.bytes))) : snap.bytes;
+  const crlf = local && same ? local.crlf : (await fileAt(repo, path, snap.meta.commit).catch(() => "")).includes("\r\n");
+  if (!isOpen()) await idbPut("docs", key, { docId: snap.meta.docId, bytes, crlf, crdtHead: snapshot } satisfies Local);
+}
+
 export class Session {
   handle!: DocHandle<RLDoc>;
   status: Status = { saving: false, dirty: false, commit: "", people: [], online: false };
@@ -44,7 +90,6 @@ export class Session {
   #crdtRef = "";
   #crdtHead = ZERO;
   #crlf = false;
-  #etag = "";
   #polling?: Promise<void>;
   #saving?: Promise<void>;
   #autosave: number | undefined;
@@ -59,7 +104,7 @@ export class Session {
     readonly canWrite: boolean,
     login: string,
   ) {
-    this.#key = `${repoName.toLowerCase()} ${branch} ${path}`;
+    this.#key = docKey(repoName, branch, path);
     const peerId = `${login}-${crypto.randomUUID().slice(0, 8)}` as PeerId;
     if (canWrite) {
       const doc = encodeURIComponent(`${branch}:${path}`);
@@ -82,7 +127,7 @@ export class Session {
   }
 
   async #file(sha: string): Promise<string> {
-    const text = await cachedGet(`/repos/${this.repoName}/contents/${encPath(this.path)}?ref=${sha}`, { raw: true, immutable: true });
+    const text = await fileAt(this.repoName, this.path, sha);
     this.#crlf = text.includes("\r\n");
     return lf(text);
   }
@@ -91,26 +136,8 @@ export class Session {
     return (await ghJson<{ object: { sha: string } }>(`/repos/${this.repoName}/git/ref/heads/${encPath(this.branch)}`)).object.sha;
   }
 
-  async #crdtRefSha(): Promise<string> {
-    const res = await gh(`/repos/${this.repoName}/git/ref/${this.#crdtRef.slice("refs/".length)}`);
-    if (res.status === 404) return ZERO;
-    if (!res.ok) throw new HttpError(res.status, `snapshot ref: ${res.status}`);
-    const ref: { object: { sha: string } } = await res.json();
-    return ref.object.sha;
-  }
-
-  // Everything a snapshot is made of is addressed by sha, so it's cached for good.
-  async #object<T>(kind: "commits" | "trees" | "blobs", sha: string): Promise<T> {
-    return JSON.parse(await cachedGet(`/repos/${this.repoName}/git/${kind}/${sha}`, { immutable: true }));
-  }
-
-  async #readSnapshot(sha: string): Promise<{ meta: Meta; bytes: Uint8Array }> {
-    const c = await this.#object<GitCommit>("commits", sha);
-    const tree = await this.#object<{ tree: { path: string; sha: string }[] }>("trees", c.tree.sha);
-    const blob = async (name: string) => unb64((await this.#object<{ content: string }>("blobs", tree.tree.find((e) => e.path === name)!.sha)).content);
-    const meta: Meta = JSON.parse(new TextDecoder().decode(await blob("meta.json")));
-    if ((meta.replayVersion ?? 1) > REPLAY_VERSION) throw new Error("This file was saved by a newer Red Letter. Reload the page.");
-    return { meta, bytes: await blob("doc.automerge") };
+  async #crdtRefSha(fresh = false): Promise<string> {
+    return (await snapshotHeads(this.repoName, this.branch, fresh)).get(this.#crdtRef) ?? ZERO;
   }
 
   async #snapshotCommit(commit: string, heads: string[]): Promise<string> {
@@ -127,7 +154,7 @@ export class Session {
   }
 
   async open() {
-    this.#crdtRef = `refs/red-letter/v1/${await sha1(this.branch)}/${await sha1(this.path)}`;
+    this.#crdtRef = await snapshotRef(this.branch, this.path);
     const local = await idbGet<Local>("docs", this.#key);
     if (local) {
       this.handle = this.#repo.import<RLDoc>(local.bytes, { docId: local.docId as DocumentId });
@@ -140,7 +167,7 @@ export class Session {
     }
     this.#crdtHead = await this.#crdtRefSha();
     if (this.#crdtHead !== ZERO) {
-      const snap = await this.#readSnapshot(this.#crdtHead);
+      const snap = await readSnapshot(this.repoName, this.#crdtHead);
       this.handle = this.#repo.import<RLDoc>(snap.bytes, { docId: snap.meta.docId as DocumentId });
       await this.#file(snap.meta.commit).catch(() => {}); // learn the file's EOL style
       this.log("loaded snapshot", this.#crdtHead.slice(0, 7), "at", snap.meta.commit.slice(0, 7));
@@ -155,8 +182,8 @@ export class Session {
         const res = await gh(`/repos/${this.repoName}/git/refs`, { method: "POST", body: JSON.stringify({ ref: this.#crdtRef, sha: snap }) });
         if (res.status === 422) {
           this.log("another tab created this doc first; loading theirs");
-          this.#crdtHead = await this.#crdtRefSha();
-          const theirs = await this.#readSnapshot(this.#crdtHead);
+          this.#crdtHead = await this.#crdtRefSha(true);
+          const theirs = await readSnapshot(this.repoName, this.#crdtHead);
           this.handle = this.#repo.import<RLDoc>(theirs.bytes, { docId: theirs.meta.docId as DocumentId });
         } else if (!res.ok) throw new HttpError(res.status, `claim snapshot ref: ${res.status} ${await res.text()}`);
         else this.#crdtHead = snap;
@@ -172,7 +199,7 @@ export class Session {
     try {
       const head = await this.#crdtRefSha();
       if (head !== ZERO && head !== this.#crdtHead) {
-        const snap = await this.#readSnapshot(head);
+        const snap = await readSnapshot(this.repoName, head);
         if (snap.meta.docId !== this.docId) {
           await idbDelete("docs", this.#key);
           throw new DocReset(`${this.path} was recreated by someone else`);
@@ -242,20 +269,16 @@ export class Session {
   }
 
   // ---- git -> CRDT ----
-  poll(): Promise<void> {
-    return (this.#polling ??= this.#poll().finally(() => (this.#polling = undefined)));
+  // fresh: ask GitHub (the 15 s tick, saves). Otherwise share a recent answer: opening a file, the route and
+  // background sync all look at the branch head within the same second.
+  poll(fresh = false): Promise<void> {
+    return (this.#polling ??= this.#poll(fresh).finally(() => (this.#polling = undefined)));
   }
 
-  async #poll() {
+  async #poll(fresh: boolean) {
     try {
-      const res = await gh(`/repos/${this.repoName}/git/ref/heads/${encPath(this.branch)}`, {
-        headers: this.#etag ? { "if-none-match": this.#etag } : {},
-      });
-      if (res.status !== 304 && !res.ok) throw new HttpError(res.status, `branch ${this.branch}: ${res.status}`);
-      this.status.error = undefined; // GitHub answered: an earlier "can't reach" is over
-      if (res.status === 304) return;
-      this.#etag = res.headers.get("etag") ?? "";
-      const ref: { object: { sha: string } } = await res.json();
+      const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${this.repoName}/git/ref/heads/${encPath(this.branch)}`, { fresh }));
+      if (fresh) this.status.error = undefined; // GitHub answered: an earlier "can't reach" is over
       const head = ref.object.sha;
       const git = this.doc.git!;
       if (head === git.commit) return;
@@ -267,7 +290,7 @@ export class Session {
           connected = true;
           break;
         }
-        const c = await this.#object<GitCommit>("commits", sha);
+        const c = await object<GitCommit>(this.repoName, "commits", sha);
         chain.unshift(c);
         if (!c.parents.length) break;
         sha = c.parents[0].sha;
@@ -283,8 +306,8 @@ export class Session {
           const own = trailer.slice(TRAILER.length).trim().split(",");
           if (!A.hasHeads(this.doc, own)) {
             // that tab's ops haven't reached us via the hub; the snapshot written with that commit has them
-            this.#crdtHead = await this.#crdtRefSha();
-            const snap = await this.#readSnapshot(this.#crdtHead);
+            this.#crdtHead = await this.#crdtRefSha(true);
+            const snap = await readSnapshot(this.repoName, this.#crdtHead);
             this.handle.update((d) => A.merge(d, A.load<RLDoc>(snap.bytes)));
             if (!A.hasHeads(this.doc, own)) break;
           }
@@ -387,13 +410,13 @@ export class Session {
     this.status.saving = true;
     this.onStatus();
     try {
-      await this.poll(); // build on the newest head we can see
+      await this.poll(true); // build on the newest head
       const d = this.doc;
       const heads = A.getHeads(d);
       const parent = d.git!.commit;
       if (d.text === this.#committedText()) return;
       const content = this.#crlf ? d.text.replaceAll("\n", "\r\n") : d.text;
-      const pc = await ghJson<GitCommit>(`/repos/${this.repoName}/git/commits/${parent}`);
+      const pc = await object<GitCommit>(this.repoName, "commits", parent);
       const tree = await post<{ sha: string }>(`/repos/${this.repoName}/git/trees`, {
         base_tree: pc.tree.sha,
         tree: [{ path: this.path, mode: "100644", type: "blob", content }],
@@ -408,7 +431,7 @@ export class Session {
       if (err) {
         if (attempt >= 4) throw new Error(`save failed after ${attempt} attempts: ${err}`);
         this.log("save lost a race, replaying and retrying:", err);
-        this.#crdtHead = await this.#crdtRefSha();
+        this.#crdtHead = await this.#crdtRefSha(true);
         return this.#save(attempt + 1);
       }
       this.#crdtHead = snap;
@@ -418,6 +441,7 @@ export class Session {
       this.log("saved", c.sha.slice(0, 7));
     } catch (e) {
       this.status.error = errText(e);
+      if (e instanceof TypeError) this.#scheduleAutosave(); // offline: try again later, edits stay in this browser
     } finally {
       this.status.saving = false;
       this.#markDirty();

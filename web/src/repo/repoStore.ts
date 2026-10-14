@@ -47,6 +47,25 @@ export function navigateTo(path: string) {
   else location.assign(path);
 }
 
+// Paths created in this tab and not opened yet: openRoute creates them instead of loading them.
+const creating = new Set<string>();
+
+// New markdown file in the current branch. Optimistic: it joins the file list and opens at once; the file is
+// committed in the background. Returns an error message for an unusable path.
+export function createFile(input: string): string | null {
+  let path = input.trim().replace(/^\/+/, "").replace(/\/{2,}/g, "/");
+  if (!path || path.endsWith("/")) return "Type a file name";
+  if (path.split("/").some((s) => s === "." || s === "..")) return "No . or .. in the path";
+  if (!/\.(md|markdown|mdx|txt)$/i.test(path)) path += ".md";
+  if (!state.repo) return "No repository open";
+  if (!state.docs.includes(path)) {
+    creating.add(path);
+    set("docs", [...state.docs, path]);
+  }
+  navigateTo(blobUrl(state.repo.full_name, state.branch, path));
+  return null;
+}
+
 let current = 0;
 
 // /owner/repo · /owner/repo/tree/<branch> · /owner/repo/blob/<branch>/<path> · /owner/repo/<path> (default branch)
@@ -108,7 +127,9 @@ export async function openRoute(url: URL): Promise<void> {
       return;
     }
     if (url.pathname !== blobUrl(full, branch, path)) history.replaceState(null, "", blobUrl(full, branch, path));
-    if (!(await openFile(info, branch, path, user)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
+    const isNew = creating.delete(path); // created here: start it with a title instead of loading it
+    const title = `# ${path.split("/").pop()!.replace(/\.[^.]+$/, "")}\n\n`;
+    if (!(await openFile(info, branch, path, user, isNew ? title : undefined)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
     if (fresh && !stale()) void syncAll(full, branch, docs);
   } catch (e) {
     if (!stale()) set({ screen: "error", message: e instanceof Error ? e.message : String(e) });

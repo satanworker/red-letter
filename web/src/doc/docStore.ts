@@ -54,14 +54,14 @@ export function tick() {
   void refreshComments();
 }
 
-// false: the file doesn't exist on that branch
-export async function openFile(repo: RepoInfo, branch: string, path: string, user: User): Promise<boolean> {
+// false: the file doesn't exist on that branch. create: make it, starting with this text.
+export async function openFile(repo: RepoInfo, branch: string, path: string, user: User, create?: string): Promise<boolean> {
   closeFile();
   set({ opening: path, login: user.login, panel: null, tab: "comments", activeThread: "", composing: null });
   document.title = `${path.split("/").pop()} · Red Letter`;
   const session = new Session(repo.full_name, repo.node_id, branch, path, repo.permissions?.push === true, user.login);
   try {
-    await session.open();
+    await session.open(create);
   } catch (e) {
     session.close();
     if (state.opening === path) set("opening", "");

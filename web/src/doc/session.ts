@@ -3,7 +3,7 @@
 // This browser keeps a copy of the doc in IndexedDB: a file opens from it at once and catches up with git after.
 import * as A from "@automerge/automerge";
 import { Repo, type DocHandle, type DocumentId, type PeerId } from "@automerge/automerge-repo";
-import { HUB, HttpError, b64, cachedGet, encPath, gh, ghJson, post, sha1, token, unb64, updateRefs } from "../github.ts";
+import { HUB, HttpError, b64, cachedGet, encPath, gh, post, sha1, token, unb64, updateRefs } from "../github.ts";
 import { idbDelete, idbGet, idbPut } from "../idb.ts";
 import { HubAdapter } from "./hub.ts";
 import { editRegions, findConflicts, type Region } from "./regions.ts";
@@ -133,7 +133,8 @@ export class Session {
   }
 
   async #headSha(): Promise<string> {
-    return (await ghJson<{ object: { sha: string } }>(`/repos/${this.repoName}/git/ref/heads/${encPath(this.branch)}`)).object.sha;
+    const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${this.repoName}/git/ref/heads/${encPath(this.branch)}`));
+    return ref.object.sha;
   }
 
   async #crdtRefSha(fresh = false): Promise<string> {
@@ -153,8 +154,11 @@ export class Session {
     return (await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message: msg, tree: tree.sha, parents: [] })).sha;
   }
 
-  async open() {
+  // create: a new file with this text. It opens at once; the file and its snapshot are committed by a save in
+  // the background (one atomic updateRefs, like any save).
+  async open(create?: string) {
     this.#crdtRef = await snapshotRef(this.branch, this.path);
+    if (create !== undefined) return this.#create(create);
     const local = await idbGet<Local>("docs", this.#key);
     if (local) {
       this.handle = this.#repo.import<RLDoc>(local.bytes, { docId: local.docId as DocumentId });
@@ -192,6 +196,17 @@ export class Session {
     this.#watch();
     this.#flushLocal();
     this.synced = this.poll();
+  }
+
+  async #create(text: string) {
+    const head = await this.#headSha();
+    // committed text = "" (the file doesn't exist yet), so the starting text counts as an unsaved edit
+    this.handle = this.#repo.create<RLDoc>({ text: "" });
+    this.handle.change((d) => (d.git = { commit: head, heads: A.getHeads(d) }));
+    this.handle.change((d) => A.splice(d, ["text"], 0, 0, text));
+    this.#watch();
+    this.#flushLocal();
+    this.synced = this.save();
   }
 
   // Opened from this browser's copy: merge what others saved since (their snapshot), then replay agent commits.
@@ -328,7 +343,8 @@ export class Session {
   }
 
   async #replay(c: GitCommit, from: string, heads: A.Heads): Promise<A.Heads> {
-    const blob = await this.#file(c.sha);
+    // a commit where this file doesn't exist (yet, or any more) has it empty
+    const blob = await this.#file(c.sha).catch((e) => (e instanceof HttpError && e.status === 404 ? "" : Promise.reject(e)));
     const humanHeads = A.getHeads(this.doc);
     const r = replay(this.doc, heads, from, c.sha, blob);
     if (!r.change) return heads; // commit didn't touch this file

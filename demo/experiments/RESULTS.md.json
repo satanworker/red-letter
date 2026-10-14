@@ -1,0 +1,12 @@
+[
+  {
+    "id": "69afec2b-ef04-461f-accd-309a643e112d",
+    "author": "hatevodka",
+    "body": "хуйня",
+    "createdAt": "2026-10-14T12:13:38.194Z",
+    "docId": "qS4Kk1a7Huyr9kmY8kudVm9TcJY",
+    "from": "32@d3a0134c5c2a759c5a2f8322b76e418e",
+    "to": "217@d3a0134c5c2a759c5a2f8322b76e418e",
+    "quote": "Verdict: **the serverless design holds.** Every primitive ran end to end in a real browser against GitHub. Three design changes came out of it (below). Nothing found blocks a prototype."
+  }
+]

@@ -8,5 +8,15 @@
     "from": "32@d3a0134c5c2a759c5a2f8322b76e418e",
     "to": "217@d3a0134c5c2a759c5a2f8322b76e418e",
     "quote": "Verdict: **the serverless design holds.** Every primitive ran end to end in a real browser against GitHub. Three design changes came out of it (below). Nothing found blocks a prototype."
+  },
+  {
+    "id": "94ed9004-94c0-425e-9c1b-7d7020112d98",
+    "author": "hatevodka",
+    "body": "это тоже",
+    "createdAt": "2026-10-14T12:13:47.801Z",
+    "docId": "qS4Kk1a7Huyr9kmY8kudVm9TcJY",
+    "from": "10903@7b58c92026678c3c79e4e41348250838",
+    "to": "557@d3a0134c5c2a759c5a2f8322b76e418e",
+    "quote": "| spike | how | result |e\n|---|---|---|\n| S1 merge quality | `crdt/merge-quality.ts`: 11 human-vs-agent scenarios. Compared against Loro and `git merge-file` | Automerge is as good as Loro char and better than git: ideal in 6/11 and acceptable in 2 more, where git conflicts in 8/11. Every bad merge gets flagged (see table) |"
   }
 ]

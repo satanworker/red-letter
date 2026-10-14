@@ -10,7 +10,7 @@ Design: [`docs/DESIGN.md`](docs/DESIGN.md). Spikes: [`experiments/RESULTS.md`](e
 
 | path | what |
 |---|---|
-| `web/` | the app (TypeScript, CodeMirror 6, Automerge). Static, deployed as Cloudflare static assets |
+| `web/` | the app (TypeScript, Solid, CodeMirror 6, Automerge). Static, deployed as Cloudflare static assets plus a service worker |
 | `server/` | Go hub: WebSocket room router for live sync + GitHub App OAuth code exchange. Holds no data |
 | `deploy/` | systemd user units and the Cloudflare Tunnel config used on home-satan |
 
@@ -18,6 +18,7 @@ Design: [`docs/DESIGN.md`](docs/DESIGN.md). Spikes: [`experiments/RESULTS.md`](e
 
 ```sh
 cd web && bun install && bun dev.ts          # http://localhost:5173 (uses the hub on localhost:8787)
+cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json                 # typecheck app + service worker
 cd server && CGO_ENABLED=0 go test ./...
 ```
 

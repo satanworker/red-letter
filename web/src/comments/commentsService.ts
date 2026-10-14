@@ -2,7 +2,7 @@
 //   <branch>/<path>.json
 // so agents can read them: git fetch origin red-letter-comments && git show FETCH_HEAD:main/docs/x.md.json
 // Anchors are Automerge cursors into this file's doc; `quote` re-anchors by text if the doc identity changes.
-import { HttpError, encPath, gh, ghJson, post } from "./github.ts";
+import { HttpError, encPath, gh, ghJson, post } from "../github.ts";
 
 export type Comment = {
   id: string;

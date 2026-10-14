@@ -60,7 +60,7 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 | decision | pick | why |
 |---|---|---|
 | CRDT | Automerge 3.5 | deterministic fork-at-heads replay (spiked: dedupes across tabs); `getCursor` for anchors; `getAuthors` for `Co-authored-by`. Loro char merges identically and is the swap if needed. Yjs: no historical-edit primitive, default GC drops the history we key on. |
-| Editor | CodeMirror 6 with an Obsidian-style live preview (`web/src/livePreview.ts`): decorations over the raw markdown string; syntax markers hidden except on the cursor line | every tree editor (Tiptap, Milkdown, Outline, GitBook, Tina) canonicalises or corrupts markdown on round-trip; agents would see diff noise. Never a ProseMirror tree as the CRDT doc |
+| Editor | CodeMirror 6 with an Obsidian-style live preview (`web/src/doc/livePreview.ts`): decorations over the raw markdown string; syntax markers hidden except on the cursor line | every tree editor (Tiptap, Milkdown, Outline, GitBook, Tina) canonicalises or corrupts markdown on round-trip; agents would see diff noise. Never a ProseMirror tree as the CRDT doc |
 | Comments | out of band, anchored by Automerge cursors + context | marks live in the doc and would serialise into the file |
 | Auth | Two options, both with tokens kept only in the browser. Default: classic OAuth App (`repo` scope, expiring tokens with refresh): one click, any repo the user can reach, nothing to install. Alternative: GitHub App user-to-server tokens, which see only repos where the App is installed | The OAuth App removes install friction when sharing links. The GitHub App suits people and orgs who want per-repo scoping. Orgs with OAuth access restrictions must approve the OAuth App. |
 | Commit | Git Data API + GraphQL `updateRefs` | atomic file + snapshot move with real CAS on both refs |
@@ -79,7 +79,7 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 - The relay accepts ops from anyone holding a docId, and an honest tab later commits them under its own name. Done: the hub admits a tab only with push access to the repo.
 - Replayed agent changes must stay off the human's undo stack. Done: remote transactions are marked `addToHistory: false`; verified that Ctrl-Z skips the agent's edit.
 
-## Prototype status (updated 2026-10-13)
+## Prototype status (updated 2026-10-14)
 
 Live at `diff.satanworker.com`; code in `web/` and `server/`; run/deploy notes in `README.md`. Verified end to end with two tabs and a git-pushing "agent" on the `demo` branch of this repo.
 
@@ -101,14 +101,23 @@ Done:
   - the agent read one via `git show` and replied by pushing;
   - the anchor followed the text through edits.
 - **URLs and file browser:** `/owner/repo` opens the default branch's README with a sidebar listing the branch's markdown files (collapsible tree + filter); `/owner/repo/tree/<branch>`, `/owner/repo/blob/<branch>/<path>` (GitHub's shape) and `/owner/repo/<path>` (default branch) all work. Missing files show the sidebar with a not-found note.
-- **UI:** Notion-style live-preview editor: centered column; headings, emphasis, lists, checkboxes, quotes, code and images rendered inline; markdown syntax shown only on the cursor line. Breadcrumb header with branch pill, save state and Share.
+- **UI:** Notion-style live-preview editor: centered column; headings, emphasis, lists, checkboxes, quotes, code and images rendered inline; markdown syntax shown only on the cursor line. Breadcrumb header with branch pill, save state and Share. Built with Solid 1.9 (compiled by `@dschz/bun-plugin-solid` under `bun build`); state lives in per-feature stores (`repoStore`, `docStore`, `commentsStore`), components only render and call actions.
+- **No page reloads:** links, back/forward and the landing form go through the Navigation API; switching files keeps the page, the sign-in and the file list, and swaps only the doc (the old file leaves live sync at once). Browsers without the Navigation API get page loads.
+- **Browser storage** (one IndexedDB database, `red-letter`; everything in it is a copy, GitHub stays the source of truth):
+  - `docs`: each opened doc, saved at most once a second. A file reopens from it at once, then merges the snapshot if someone saved since and replays agent commits. Text edited offline survives reloads and goes to git when the connection is back (verified: offline edit → offline reload → online → saved).
+  - `http`: GitHub GET responses. Sha-addressed ones (commits, trees, blobs, file contents at a sha) are never refetched; the rest revalidate with ETags and are used as-is offline.
+  - Safari can drop the connection: every operation reopens once and retries; without IndexedDB the app runs as before, from the network. `navigator.storage.persist()` is requested after the first file opens. Sign-out clears both stores.
+- **Service worker** (`web/src/sw.ts`): precaches this build's hashed assets (the 3.6 MB Automerge wasm included), serves them from the cache, and fetches pages network-first with the cached shell as the offline fallback. A repo opened before loads fully offline.
 - **Infra:**
   - static site on Cloudflare (Workers static assets);
   - Go hub + OAuth exchange on home-satan as systemd user units behind a Cloudflare Tunnel (`diff-api.satanworker.com`);
   - secrets in `~/.config/red-letter/`.
 
 Not built yet:
-- IndexedDB replica (offline across reloads);
+- offline commenting (a queue of pending comment writes in IndexedDB);
+- automerge-repo's incremental IndexedDB adapter instead of whole-doc saves, if docs get large;
+- BroadcastChannel between tabs: skipped, the hub already syncs tabs on the same file, and adding a second adapter would announce the same peer twice;
+- strip the wasm's 687 KB name section (−19% raw, −6% brotli);
 - presence cursors inside the text (avatars only today);
 - notifications and mentions;
 - draft branches / publish as PR;

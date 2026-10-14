@@ -16,7 +16,7 @@ Bun.serve({
   async fetch(req) {
     const { pathname } = new URL(req.url);
     const f = Bun.file(dist + pathname);
-    if (pathname.startsWith("/assets/") && (await f.exists())) return new Response(f);
+    if ((pathname.startsWith("/assets/") || pathname === "/sw.js") && (await f.exists())) return new Response(f);
     return new Response(Bun.file(`${dist}/index.html`), { headers: { "cache-control": "no-cache" } });
   },
 });

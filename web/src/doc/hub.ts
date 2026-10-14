@@ -13,6 +13,9 @@ export class HubAdapter extends NetworkAdapter {
   #readyWaiters: (() => void)[] = [];
   #peers = new Set<PeerId>();
   #closed = false;
+  // Chrome keeps pages with open sockets in the back/forward cache; a hidden page must not stay a live peer.
+  // Closing triggers the normal reconnect, which runs again if the page is restored.
+  #onPageHide = () => this.#ws?.close(1000, "pagehide");
   onStatus: (s: { connected: boolean; peers: PeerId[]; error?: string }) => void = () => {};
 
   constructor(
@@ -32,9 +35,7 @@ export class HubAdapter extends NetworkAdapter {
   connect(peerId: PeerId, peerMetadata?: PeerMetadata) {
     this.peerId = peerId;
     this.peerMetadata = peerMetadata ?? {};
-    // Chrome keeps pages with open sockets in the back/forward cache; a hidden page must not stay a live peer.
-    // Closing triggers the normal reconnect, which runs again if the page is restored.
-    addEventListener("pagehide", () => this.#ws?.close(1000, "pagehide"));
+    addEventListener("pagehide", this.#onPageHide);
     void this.#open();
   }
 
@@ -95,6 +96,7 @@ export class HubAdapter extends NetworkAdapter {
 
   disconnect() {
     this.#closed = true;
+    removeEventListener("pagehide", this.#onPageHide);
     this.#ws?.close();
   }
 }

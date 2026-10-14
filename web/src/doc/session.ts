@@ -1,8 +1,10 @@
 // One open file: CRDT doc <-> git. Snapshot ref load/claim, poll + deterministic replay of agent commits,
 // CAS commit of file + snapshot, agent-change and conflict marks stored in the doc.
+// This browser keeps a copy of the doc in IndexedDB: a file opens from it at once and catches up with git after.
 import * as A from "@automerge/automerge";
 import { Repo, type DocHandle, type DocumentId, type PeerId } from "@automerge/automerge-repo";
-import { HUB, HttpError, b64, encPath, gh, ghJson, post, sha1, token, unb64, updateRefs } from "./github.ts";
+import { HUB, HttpError, b64, cachedGet, encPath, gh, ghJson, post, sha1, token, unb64, updateRefs } from "../github.ts";
+import { idbDelete, idbGet, idbPut } from "../idb.ts";
 import { HubAdapter } from "./hub.ts";
 import { editRegions, findConflicts, type Region } from "./regions.ts";
 import { REPLAY_VERSION, replay } from "./replay.ts";
@@ -14,19 +16,27 @@ export type ConflictMark = Hunk & { human: string; agent: string };
 export type AgentMark = { sha: string; author: string; message: string; at: string; hunks: Hunk[]; conflicts: ConflictMark[] };
 export type RLDoc = { text: string; git?: { commit: string; heads: string[] }; marks?: Record<string, AgentMark> };
 type Meta = { docId: string; branch: string; path: string; commit: string; heads: string[]; replayVersion: number };
+type Local = { docId: string; bytes: Uint8Array; crlf: boolean; crdtHead: string };
 type GitCommit = { sha: string; parents: { sha: string }[]; message: string; author: { name: string; date: string }; tree: { sha: string } };
 
 const TRAILER = "Red-Letter-Heads:";
 const ZERO = "0".repeat(40);
 const lf = (s: string) => s.replaceAll("\r\n", "\n");
+// fetch() throws TypeError when there's no connection at all
+const errText = (e: unknown) => (e instanceof TypeError ? "can't reach GitHub" : String(e instanceof Error ? e.message : e));
 
 // people: GitHub logins of other tabs on this file (peer ids are "<login>-<random>")
 export type Status = { saving: boolean; dirty: boolean; error?: string; commit: string; people: string[]; online: boolean };
+
+// The snapshot ref now holds a different doc (the ref was deleted and recreated): this browser's copy is stale.
+export class DocReset extends Error {}
 
 export class Session {
   handle!: DocHandle<RLDoc>;
   status: Status = { saving: false, dirty: false, commit: "", people: [], online: false };
   onStatus: () => void = () => {};
+  // Resolves once the doc has caught up with git (or failed to: see status.error). Rejects with DocReset.
+  synced: Promise<void> = Promise.resolve();
   log: (...a: unknown[]) => void = (...a) => console.log("[rl]", ...a);
 
   #repo: Repo;
@@ -38,6 +48,8 @@ export class Session {
   #polling?: Promise<void>;
   #saving?: Promise<void>;
   #autosave: number | undefined;
+  #localTimer: number | undefined;
+  readonly #key: string;
 
   constructor(
     readonly repoName: string,
@@ -47,6 +59,7 @@ export class Session {
     readonly canWrite: boolean,
     login: string,
   ) {
+    this.#key = `${repoName.toLowerCase()} ${branch} ${path}`;
     const peerId = `${login}-${crypto.randomUUID().slice(0, 8)}` as PeerId;
     if (canWrite) {
       const doc = encodeURIComponent(`${branch}:${path}`);
@@ -69,9 +82,7 @@ export class Session {
   }
 
   async #file(sha: string): Promise<string> {
-    const res = await gh(`/repos/${this.repoName}/contents/${encPath(this.path)}?ref=${sha}`, { raw: true });
-    if (!res.ok) throw new HttpError(res.status, `${this.path} not found at ${sha.slice(0, 7)} (${res.status})`);
-    const text = await res.text();
+    const text = await cachedGet(`/repos/${this.repoName}/contents/${encPath(this.path)}?ref=${sha}`, { raw: true, immutable: true });
     this.#crlf = text.includes("\r\n");
     return lf(text);
   }
@@ -88,11 +99,15 @@ export class Session {
     return ref.object.sha;
   }
 
+  // Everything a snapshot is made of is addressed by sha, so it's cached for good.
+  async #object<T>(kind: "commits" | "trees" | "blobs", sha: string): Promise<T> {
+    return JSON.parse(await cachedGet(`/repos/${this.repoName}/git/${kind}/${sha}`, { immutable: true }));
+  }
+
   async #readSnapshot(sha: string): Promise<{ meta: Meta; bytes: Uint8Array }> {
-    const c = await ghJson<GitCommit>(`/repos/${this.repoName}/git/commits/${sha}`);
-    const tree = await ghJson<{ tree: { path: string; sha: string }[] }>(`/repos/${this.repoName}/git/trees/${c.tree.sha}`);
-    const blob = async (name: string) =>
-      unb64((await ghJson<{ content: string }>(`/repos/${this.repoName}/git/blobs/${tree.tree.find((e) => e.path === name)!.sha}`)).content);
+    const c = await this.#object<GitCommit>("commits", sha);
+    const tree = await this.#object<{ tree: { path: string; sha: string }[] }>("trees", c.tree.sha);
+    const blob = async (name: string) => unb64((await this.#object<{ content: string }>("blobs", tree.tree.find((e) => e.path === name)!.sha)).content);
     const meta: Meta = JSON.parse(new TextDecoder().decode(await blob("meta.json")));
     if ((meta.replayVersion ?? 1) > REPLAY_VERSION) throw new Error("This file was saved by a newer Red Letter. Reload the page.");
     return { meta, bytes: await blob("doc.automerge") };
@@ -113,6 +128,16 @@ export class Session {
 
   async open() {
     this.#crdtRef = `refs/red-letter/v1/${await sha1(this.branch)}/${await sha1(this.path)}`;
+    const local = await idbGet<Local>("docs", this.#key);
+    if (local) {
+      this.handle = this.#repo.import<RLDoc>(local.bytes, { docId: local.docId as DocumentId });
+      this.#crlf = local.crlf;
+      this.#crdtHead = local.crdtHead;
+      this.log("opened this browser's copy");
+      this.#watch();
+      this.synced = this.#catchUp();
+      return;
+    }
     this.#crdtHead = await this.#crdtRefSha();
     if (this.#crdtHead !== ZERO) {
       const snap = await this.#readSnapshot(this.#crdtHead);
@@ -137,6 +162,34 @@ export class Session {
         else this.#crdtHead = snap;
       }
     }
+    this.#watch();
+    this.#flushLocal();
+    this.synced = this.poll();
+  }
+
+  // Opened from this browser's copy: merge what others saved since (their snapshot), then replay agent commits.
+  async #catchUp() {
+    try {
+      const head = await this.#crdtRefSha();
+      if (head !== ZERO && head !== this.#crdtHead) {
+        const snap = await this.#readSnapshot(head);
+        if (snap.meta.docId !== this.docId) {
+          await idbDelete("docs", this.#key);
+          throw new DocReset(`${this.path} was recreated by someone else`);
+        }
+        this.handle.update((d) => A.merge(d, A.load<RLDoc>(snap.bytes)));
+        this.#crdtHead = head;
+      }
+    } catch (e) {
+      if (e instanceof DocReset) throw e;
+      this.status.error = errText(e);
+      this.onStatus();
+      return;
+    }
+    await this.poll();
+  }
+
+  #watch() {
     this.status.commit = this.doc.git!.commit;
     this.handle.on("change", () => {
       this.status.commit = this.doc.git!.commit;
@@ -144,8 +197,30 @@ export class Session {
       // any tab with unsaved text (its own or peers') saves 30-40 s after the last change; the first save wins,
       // the others find nothing left to commit
       if (this.status.dirty) this.#scheduleAutosave();
+      this.#localTimer ??= window.setTimeout(() => this.#flushLocal(), 1000);
     });
-    await this.poll();
+    // text left unsaved by an earlier visit (offline, tab closed) goes to git like fresh edits
+    this.#markDirty();
+    if (this.status.dirty) this.#scheduleAutosave();
+  }
+
+  // ponytail: saves the whole doc, at most once a second; automerge-repo's incremental IndexedDB adapter if docs get big
+  #flushLocal() {
+    clearTimeout(this.#localTimer);
+    this.#localTimer = undefined;
+    const local: Local = { docId: this.docId, bytes: A.save(this.doc), crlf: this.#crlf, crdtHead: this.#crdtHead };
+    void idbPut("docs", this.#key, local);
+  }
+
+  // Leaving the file without leaving the page: keep the copy, leave live sync at once, and send unsaved text to
+  // git if nobody else is here to (their autosave covers it otherwise).
+  close() {
+    this.onStatus = () => {};
+    if (this.handle) this.#flushLocal(); // open() may have failed before there was a doc
+    clearTimeout(this.#autosave);
+    const alone = this.status.people.length === 0;
+    void this.#repo.shutdown();
+    if (this.canWrite && this.status.dirty && alone) void this.save();
   }
 
   #committedText(): string {
@@ -176,8 +251,9 @@ export class Session {
       const res = await gh(`/repos/${this.repoName}/git/ref/heads/${encPath(this.branch)}`, {
         headers: this.#etag ? { "if-none-match": this.#etag } : {},
       });
+      if (res.status !== 304 && !res.ok) throw new HttpError(res.status, `branch ${this.branch}: ${res.status}`);
+      this.status.error = undefined; // GitHub answered: an earlier "can't reach" is over
       if (res.status === 304) return;
-      if (!res.ok) throw new HttpError(res.status, `branch ${this.branch}: ${res.status}`);
       this.#etag = res.headers.get("etag") ?? "";
       const ref: { object: { sha: string } } = await res.json();
       const head = ref.object.sha;
@@ -191,7 +267,7 @@ export class Session {
           connected = true;
           break;
         }
-        const c = await ghJson<GitCommit>(`/repos/${this.repoName}/git/commits/${sha}`);
+        const c = await this.#object<GitCommit>("commits", sha);
         chain.unshift(c);
         if (!c.parents.length) break;
         sha = c.parents[0].sha;
@@ -219,9 +295,8 @@ export class Session {
         const done = { commit: from, heads };
         this.handle.change((d) => (d.git = done));
       }
-      this.status.error = undefined;
     } catch (e) {
-      this.status.error = String(e instanceof Error ? e.message : e);
+      this.status.error = errText(e);
     } finally {
       this.status.commit = this.doc.git!.commit; // a peer may have advanced it via sync
       this.#markDirty();
@@ -342,7 +417,7 @@ export class Session {
       this.status.error = undefined;
       this.log("saved", c.sha.slice(0, 7));
     } catch (e) {
-      this.status.error = String(e instanceof Error ? e.message : e);
+      this.status.error = errText(e);
     } finally {
       this.status.saving = false;
       this.#markDirty();

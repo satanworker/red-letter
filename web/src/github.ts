@@ -1,6 +1,8 @@
 // GitHub sign-in (tokens live only in this browser) and thin REST/GraphQL helpers. Two ways in:
 // - "app":   GitHub App user token: access = repos where the App is installed ∩ the user's access.
 // - "oauth": classic OAuth App with `repo` scope: every repo the user can reach, nothing to install.
+import { idbClear, idbGet, idbPut } from "./idb.ts";
+
 export const APP_SLUG = "red-letter-diff";
 const CLIENT_IDS = { app: "Iv23liTw70O2dgREat8o", oauth: "Ov23liCuqRqQVEAWuFcA" };
 export type AuthKind = keyof typeof CLIENT_IDS;
@@ -34,9 +36,12 @@ export async function signIn(kind: AuthKind = "oauth") {
   location.assign(`https://github.com/login/oauth/authorize?${q}`);
 }
 
+// Also drops this browser's copies of docs and GitHub responses: the next person on this browser must not see them.
 export function signOut() {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem("rl_user");
+  void idbClear("docs");
+  void idbClear("http");
 }
 
 // Tokens saved before `kind` existed all came from the GitHub App.
@@ -88,14 +93,18 @@ export async function token(): Promise<string | null> {
   if (auth.expires_at - Date.now() > 5 * 60_000) return auth.access_token;
   if (!auth.refresh_token) return null;
   refreshing ??= exchange(auth.kind ?? "app", "refresh", { refresh_token: auth.refresh_token })
-    .catch(() => (signOut(), null))
+    .catch((e) => {
+      // offline: keep the expired token; requests fail and fall back to this browser's copies
+      if (e instanceof TypeError) return auth;
+      localStorage.removeItem(AUTH_KEY);
+      localStorage.removeItem("rl_user");
+      return null;
+    })
     .finally(() => (refreshing = undefined));
   return (await refreshing)?.access_token ?? null;
 }
 
-export let apiCalls = 0;
 export async function gh(path: string, init: RequestInit & { raw?: boolean } = {}): Promise<Response> {
-  apiCalls++;
   const t = await token();
   return fetch(path.startsWith("https://") ? path : API + path, {
     ...init,
@@ -122,6 +131,26 @@ export async function ghJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await gh(path, init);
   if (!res.ok) throw new HttpError(res.status, `${init?.method ?? "GET"} ${path} -> ${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
+}
+
+// GET with a copy in IndexedDB. Sha-addressed URLs never change, so their copy is used without a request.
+// Others revalidate with the ETag (a 304 doesn't count against the rate limit) and fall back to the copy offline.
+export async function cachedGet(path: string, opts: { raw?: boolean; immutable?: boolean } = {}): Promise<string> {
+  const key = `${opts.raw ? "raw " : ""}${path}`;
+  const copy = await idbGet<{ etag: string; body: string }>("http", key);
+  if (copy && opts.immutable) return copy.body;
+  let res: Response;
+  try {
+    res = await gh(path, { raw: opts.raw, headers: copy?.etag ? { "if-none-match": copy.etag } : {} });
+  } catch (e) {
+    if (copy) return copy.body;
+    throw e;
+  }
+  if (res.status === 304 && copy) return copy.body;
+  if (!res.ok) throw new HttpError(res.status, `GET ${path} -> ${res.status} ${await res.text()}`);
+  const body = await res.text();
+  void idbPut("http", key, { etag: res.headers.get("etag") ?? "", body });
+  return body;
 }
 
 export const post = <T>(path: string, body: unknown) => ghJson<T>(path, { method: "POST", body: JSON.stringify(body) });

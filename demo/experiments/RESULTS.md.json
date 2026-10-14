@@ -18,6 +18,7 @@
     "docId": "qS4Kk1a7Huyr9kmY8kudVm9TcJY",
     "from": "10903@7b58c92026678c3c79e4e41348250838",
     "to": "557@d3a0134c5c2a759c5a2f8322b76e418e",
-    "quote": "| spike | how | result |e\n|---|---|---|\n| S1 merge quality | `crdt/merge-quality.ts`: 11 human-vs-agent scenarios. Compared against Loro and `git merge-file` | Automerge is as good as Loro char and better than git: ideal in 6/11 and acceptable in 2 more, where git conflicts in 8/11. Every bad merge gets flagged (see table) |"
+    "quote": "| spike | how | result |e\n|---|---|---|\n| S1 merge quality | `crdt/merge-quality.ts`: 11 human-vs-agent scenarios. Compared against Loro and `git merge-file` | Automerge is as good as Loro char and better than git: ideal in 6/11 and acceptable in 2 more, where git conflicts in 8/11. Every bad merge gets flagged (see table) |",
+    "resolved": true
   }
 ]

@@ -26,5 +26,12 @@
     "from": "239@d82d1ddedd2d7af4ffd9c34084c6617a",
     "to": "245@d82d1ddedd2d7af4ffd9c34084c6617a",
     "quote": "review"
+  },
+  {
+    "id": "e82d766a-8c69-433a-89e7-dd79eb2d10e3",
+    "parent": "f3e45d48-ddac-44c3-b16d-b612a24e5616",
+    "author": "satanworker",
+    "body": "draft reply",
+    "createdAt": "2026-10-14T08:31:36.461Z"
   }
 ]

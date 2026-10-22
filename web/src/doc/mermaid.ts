@@ -1,11 +1,12 @@
-// ```mermaid blocks render as diagrams. Renderer: @vercel/beautiful-mermaid (dagre layout, no DOM), loaded on first
-// use: ~45 KB gzipped and ~5 ms a diagram, against mermaid.js's ~1.5 MB and a DOM render (beautiful-mermaid with
-// ELK: 470 KB, ~24 ms). The diagram replaces the block; with the selection in the block, the source shows and the
-// diagram follows it live underneath.
+// ```mermaid blocks render as diagrams. Renderer: beautiful-mermaid (ELK layout, no DOM), loaded on first use:
+// 470 KB gzipped, 20-70 ms a diagram, against mermaid.js's ~1.5 MB and a DOM render. (@vercel/beautiful-mermaid,
+// 45 KB and ~5 ms, was tried first: it kept the quotes of `A["label"]`, ignored `<br/>` and drew back edges
+// outside the picture.) The diagram replaces the block; with the selection in the block, the source shows and
+// the diagram follows it live underneath.
 import { syntaxTree } from "@codemirror/language";
 import { StateField, type EditorState, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
-import type * as Mermaid from "@vercel/beautiful-mermaid";
+import type * as Mermaid from "beautiful-mermaid";
 
 let lib: Promise<typeof Mermaid> | undefined;
 // Every colour in the SVG derives from --bg/--fg. As an <img> it can't see the page's variables, but it does
@@ -17,9 +18,8 @@ const cache = new Map<string, Promise<string>>(); // source -> SVG, so the sourc
 function svgOf(src: string) {
   let svg = cache.get(src);
   if (!svg) {
-    svg = (lib ??= import("@vercel/beautiful-mermaid"))
-      // this renderer has no multi-line labels: "<br/>" would show literally
-      .then((m) => m.renderMermaid(src.replace(/<br\s*\/?>/gi, " "), { ...light, transparent: true, padding: 16 }))
+    svg = (lib ??= import("beautiful-mermaid"))
+      .then((m) => m.renderMermaidSVG(src, { ...light, transparent: true, padding: 16 }))
       .then((s) => s.replace(/(<svg[^>]*>)/, `$1${dark}`));
     cache.set(src, svg);
     if (cache.size > 50) cache.delete(cache.keys().next().value!);

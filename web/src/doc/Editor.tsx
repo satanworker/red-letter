@@ -8,6 +8,7 @@ import type { Thread } from "../comments/commentsSelectors.ts";
 import { CommentIcon } from "../ui.tsx";
 import { doc, docChanged, openThread, setView, startComment } from "./docStore.ts";
 import { editorExtensions } from "./livePreview.ts";
+import { cellSelection } from "./tables.ts";
 import type { AgentMark, RLDoc, Session } from "./session.ts";
 
 class DelWidget extends WidgetType {
@@ -43,11 +44,12 @@ const remoteNotUndoable = EditorState.transactionExtender.of((tr) =>
   tr.docChanged && !tr.annotation(Transaction.userEvent) ? { annotations: Transaction.addToHistory.of(false) } : null,
 );
 
-// Notion-style floating "Comment" button above a non-empty selection.
+// Notion-style floating "Comment" button above a non-empty selection, or text selected in a table cell.
 function commentTooltip() {
   const make = (state: EditorState): Tooltip | null => {
-    const sel = state.selection.main;
-    if (sel.empty) return null;
+    const cell = state.field(cellSelection);
+    const sel = cell ?? state.selection.main;
+    if (sel.from === sel.to) return null;
     return {
       pos: sel.from,
       end: sel.to,
@@ -65,13 +67,15 @@ function commentTooltip() {
             </button>
           </div>
         ) as HTMLElement;
-        return { dom };
+        // inside a table the position is the whole widget's edge: sit on the selected text instead
+        const coords = () => (getSelection()?.rangeCount ? getSelection()!.getRangeAt(0).getBoundingClientRect() : new DOMRect());
+        return cell ? { dom, getCoords: coords } : { dom };
       },
     };
   };
   return StateField.define<Tooltip | null>({
     create: make,
-    update: (t, tr) => (tr.docChanged || tr.selection ? make(tr.state) : t),
+    update: (t, tr) => (tr.docChanged || tr.selection || tr.state.field(cellSelection) !== tr.startState.field(cellSelection) ? make(tr.state) : t),
     provide: (f) => showTooltip.from(f),
   });
 }

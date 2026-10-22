@@ -4,8 +4,8 @@
 // Editing a cell rewrites only that cell's text in the file (agents' diffs stay one cell wide); column changes
 // rewrite every row of the table.
 import { syntaxTree } from "@codemirror/language";
-import { StateField, type EditorState, type Range } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, runScopeHandlers, type DecorationSet } from "@codemirror/view";
+import { StateEffect, StateField, type EditorState, type Range } from "@codemirror/state";
+import { Decoration, EditorView, ViewPlugin, WidgetType, runScopeHandlers, type DecorationSet } from "@codemirror/view";
 
 type Cell = { from: number; to: number; end: number }; // trimmed text (from === to: empty); end: the next pipe
 type Row = { from: number; to: number; cells: Cell[] };
@@ -116,7 +116,7 @@ class TableWidget extends WidgetType {
   }
   toDOM(view: EditorView) {
     const wrap = document.createElement("div");
-    wrap.className = "cm-lp-tablewrap";
+    wrap.className = "cm-lp-tablewrap cm-lp-wide";
     const table = wrap.appendChild(document.createElement("table"));
     table.className = "cm-lp-table";
     const head = table.createTHead();
@@ -166,6 +166,51 @@ function focusCell(wrap: HTMLElement, r: number, c: number, end = true) {
 }
 
 const cellOf = (t: EventTarget | null) => (t instanceof Element ? t.closest<HTMLElement>("[data-r]") : null);
+
+// Text selected inside the focused cell, as doc positions. The editor's own selection can't point into the
+// table widget, so the Comment button and startComment use this instead while it's set.
+const setCellSelection = StateEffect.define<{ from: number; to: number } | null>();
+export const cellSelection = StateField.define<{ from: number; to: number } | null>({
+  create: () => null,
+  update(v, tr) {
+    for (const e of tr.effects) if (e.is(setCellSelection)) return e.value;
+    return v && tr.docChanged ? { from: tr.changes.mapPos(v.from, 1), to: tr.changes.mapPos(v.to, -1) } : v;
+  },
+});
+
+function selectedInCell(view: EditorView): { from: number; to: number } | null {
+  const sel = getSelection();
+  if (!sel?.rangeCount || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  const node = range.commonAncestorContainer;
+  const el = cellOf(node instanceof Element ? node : node.parentElement);
+  const wrap = el?.closest<HTMLElement>(".cm-lp-tablewrap");
+  if (!el || !wrap || el !== document.activeElement || !view.contentDOM.contains(wrap)) return null;
+  const cell = tableAt(view.state, view.posAtDOM(wrap))?.rows[Number(el.dataset.r)]?.cells[Number(el.dataset.c)];
+  if (!cell) return null;
+  // The focused cell shows its raw text, with "\|" shown as "|": count source characters up to a shown offset.
+  const src = view.state.doc.sliceString(cell.from, cell.to);
+  const pos = (container: Node, offset: number) => {
+    const before = document.createRange();
+    before.selectNodeContents(el);
+    before.setEnd(container, offset);
+    let i = 0;
+    for (let n = before.toString().length; n > 0 && i < src.length; n--) i += src.startsWith("\\|", i) ? 2 : 1;
+    return cell.from + i;
+  };
+  const from = pos(range.startContainer, range.startOffset), to = pos(range.endContainer, range.endOffset);
+  return from < to ? { from, to } : null;
+}
+
+const cellSelectionSync = ViewPlugin.define((view) => {
+  const sync = () => {
+    const next = selectedInCell(view), cur = view.state.field(cellSelection);
+    if (next?.from !== cur?.from || next?.to !== cur?.to) view.dispatch({ effects: setCellSelection.of(next) });
+  };
+  document.addEventListener("selectionchange", sync);
+  return { destroy: () => document.removeEventListener("selectionchange", sync) };
+});
+export const cellComments = [cellSelection, cellSelectionSync];
 
 function wire(wrap: HTMLElement, view: EditorView) {
   const tableNow = () => tableAt(view.state, view.posAtDOM(wrap));
@@ -363,20 +408,28 @@ export const tableField = StateField.define<DecorationSet>({
 });
 
 export const tableTheme = EditorView.theme({
-  ".cm-lp-tablewrap": { overflowX: "auto", margin: "6px 0" },
-  ".cm-lp-table": { borderCollapse: "collapse", fontSize: "14px", lineHeight: "1.5", minWidth: "60%" },
-  ".cm-lp-table th, .cm-lp-table td": { border: "1px solid rgba(55,53,47,.16)", padding: "6px 10px", verticalAlign: "top", outline: "none", cursor: "text", minWidth: "3em" },
-  ".cm-lp-table th": { background: "#f7f6f3", fontWeight: "600" },
+  // A spacer as wide as the breakout keeps a table that fits the text column aligned with the text; a wider one
+  // eats into it and grows into the margins (.cm-lp-wide), then wraps its cells, then scrolls.
+  ".cm-lp-tablewrap": { display: "flex", overflowX: "auto", marginTop: "6px", marginBottom: "6px" },
+  ".cm-lp-tablewrap::before": { content: '""', flex: "0 1 var(--out)" },
+  // CodeMirror's wrapping (overflow-wrap: anywhere, word-break: break-word) makes every column's minimum one
+  // letter, so a squeezed table broke words mid-way
+  ".cm-lp-table": {
+    flex: "none", maxWidth: "100%", borderCollapse: "collapse", fontSize: "14px", lineHeight: "1.5", overflowWrap: "break-word", wordBreak: "normal",
+    minWidth: "calc((100% - 2 * var(--out)) * .6)",
+  },
+  ".cm-lp-table th, .cm-lp-table td": { border: "1px solid var(--rule)", padding: "6px 10px", verticalAlign: "top", outline: "none", cursor: "text", minWidth: "3em" },
+  ".cm-lp-table th": { background: "var(--bg2)", fontWeight: "600" },
   ".cm-lp-table th:focus, .cm-lp-table td:focus": { boxShadow: "inset 0 0 0 2px rgba(35,131,226,.6)", whiteSpace: "pre-wrap" },
   ".cm-lp-table code": {
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: "85%", color: "#eb5757",
-    background: "rgba(135,131,120,.15)", borderRadius: "4px", padding: "0.1em 0.3em",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: "85%", color: "var(--code)",
+    background: "var(--code-bg)", borderRadius: "4px", padding: "0.1em 0.3em",
   },
   ".cm-lp-menu": {
-    position: "fixed", zIndex: "50", display: "flex", flexDirection: "column", padding: "4px", minWidth: "180px", background: "#fff", borderRadius: "6px",
-    boxShadow: "rgba(15,15,15,.05) 0 0 0 1px, rgba(15,15,15,.1) 0 3px 6px, rgba(15,15,15,.2) 0 9px 24px",
+    position: "fixed", zIndex: "50", display: "flex", flexDirection: "column", padding: "4px", minWidth: "180px", background: "var(--card)", borderRadius: "6px",
+    boxShadow: "var(--pop)",
   },
-  ".cm-lp-menu button": { font: "13px ui-sans-serif, -apple-system, sans-serif", textAlign: "left", border: "0", background: "none", padding: "6px 10px", borderRadius: "4px", cursor: "pointer", color: "#37352f" },
-  ".cm-lp-menu button:hover:not(:disabled)": { background: "rgba(55,53,47,.06)" },
-  ".cm-lp-menu button:disabled": { color: "rgba(55,53,47,.35)", cursor: "default" },
+  ".cm-lp-menu button": { font: "13px ui-sans-serif, -apple-system, sans-serif", textAlign: "left", border: "0", background: "none", padding: "6px 10px", borderRadius: "4px", cursor: "pointer", color: "var(--fg)" },
+  ".cm-lp-menu button:hover:not(:disabled)": { background: "var(--hover)" },
+  ".cm-lp-menu button:disabled": { color: "var(--mark)", cursor: "default" },
 });

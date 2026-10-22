@@ -16,44 +16,48 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
-import { tableField, tableTheme } from "./tables.ts";
+import { codeHighlight } from "./highlight.ts";
+import { mermaidField, mermaidTheme } from "./mermaid.ts";
+import { cellComments, tableField, tableTheme } from "./tables.ts";
 
 const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
 const theme = EditorView.theme({
-  "&": { color: "#37352f", backgroundColor: "#fff", fontSize: "16px" },
+  "&": { color: "var(--fg)", backgroundColor: "var(--bg)", fontSize: "16px" },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { fontFamily: 'ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif', lineHeight: "1.7" },
-  ".cm-content": { maxWidth: "720px", margin: "0 auto", padding: "48px 32px 30vh", caretColor: "#2383e2" },
+  ".cm-scroller": { fontFamily: 'ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif', lineHeight: "1.7", containerType: "inline-size" },
+  ".cm-content": { maxWidth: "720px", margin: "0 auto", padding: "48px 32px 30vh", caretColor: "var(--blue)" },
   ".cm-line": { padding: "0 2px" },
-  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#2383e2", borderLeftWidth: "2px" },
+  // Tables and diagrams break out of the 656px text column by up to 160px a side, keeping 24px from the edges.
+  ".cm-lp-wide": { "--out": "clamp(0px, (100cqw - 656px) / 2 - 24px, 160px)", marginLeft: "calc(-1 * var(--out))", marginRight: "calc(-1 * var(--out))" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--blue)", borderLeftWidth: "2px" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, ::selection": {
-    backgroundColor: "rgba(35,131,226,.18) !important",
+    backgroundColor: "var(--sel) !important",
   },
   ".cm-lp-h1": { fontSize: "1.875em", fontWeight: "700", lineHeight: "1.3", paddingTop: "0.9em" },
   ".cm-lp-h2": { fontSize: "1.5em", fontWeight: "600", lineHeight: "1.3", paddingTop: "0.7em" },
   ".cm-lp-h3": { fontSize: "1.25em", fontWeight: "600", lineHeight: "1.3", paddingTop: "0.5em" },
   ".cm-lp-h4, .cm-lp-h5, .cm-lp-h6": { fontWeight: "600", paddingTop: "0.3em" },
-  ".cm-lp-mark": { color: "rgba(55,53,47,.35)" },
+  ".cm-lp-mark": { color: "var(--mark)" },
   ".cm-lp-strong": { fontWeight: "600" },
   ".cm-lp-em": { fontStyle: "italic" },
   ".cm-lp-strike": { textDecoration: "line-through" },
   ".cm-lp-code": {
-    fontFamily: mono, fontSize: "85%", color: "#eb5757", background: "rgba(135,131,120,.15)",
+    fontFamily: mono, fontSize: "85%", color: "var(--code)", background: "var(--code-bg)",
     borderRadius: "4px", padding: "0.2em 0.4em",
   },
-  ".cm-lp-link": { color: "inherit", borderBottom: "1px solid rgba(55,53,47,.4)", cursor: "pointer" },
+  ".cm-lp-link": { color: "inherit", borderBottom: "1px solid var(--faint)", cursor: "pointer" },
   // List items: the marker (bullet, number, checkbox, or the raw "- " on the cursor line) sits in a box as wide as
   // the item's indent, inside the line's padding, so wrapped and continuation lines align with the item's text.
   ".cm-lp-li": { paddingLeft: "calc(var(--lp-in) + 2px) !important", textIndent: "calc(-1 * var(--lp-in))" },
   ".cm-lp-prefix": { display: "inline-block", width: "var(--lp-in)", textIndent: "0", textAlign: "right", whiteSpace: "pre" },
   ".cm-lp-bullet": { display: "inline-block", width: "1.1em", textAlign: "center" },
-  ".cm-lp-num": { color: "rgba(55,53,47,.65)", paddingRight: "0.35em" },
-  ".cm-lp-task": { margin: "0 0.35em 0 0", verticalAlign: "-2px", width: "16px", height: "16px", accentColor: "#2383e2", cursor: "pointer" },
-  ".cm-lp-quote": { borderLeft: "3px solid #37352f", paddingLeft: "14px !important" },
-  ".cm-lp-codeblock": { background: "#f7f6f3", fontFamily: mono, fontSize: "14px", padding: "0 16px !important" },
-  ".cm-lp-fence": { color: "rgba(55,53,47,.4)", fontSize: "12px" },
-  ".cm-lp-hr": { display: "inline-block", width: "100%", height: "1px", background: "rgba(55,53,47,.16)", verticalAlign: "middle" },
+  ".cm-lp-num": { color: "var(--muted)", paddingRight: "0.35em" },
+  ".cm-lp-task": { margin: "0 0.35em 0 0", verticalAlign: "-2px", width: "16px", height: "16px", accentColor: "var(--blue)", cursor: "pointer" },
+  ".cm-lp-quote": { borderLeft: "3px solid var(--fg)", paddingLeft: "14px !important" },
+  ".cm-lp-codeblock": { background: "var(--bg2)", fontFamily: mono, fontSize: "14px", padding: "0 16px !important" },
+  ".cm-lp-fence": { color: "var(--faint)", fontSize: "12px" },
+  ".cm-lp-hr": { display: "inline-block", width: "100%", height: "1px", background: "var(--rule)", verticalAlign: "middle" },
   ".cm-lp-img": { display: "block", maxWidth: "100%", margin: "4px 0", borderRadius: "3px" },
 });
 
@@ -329,5 +333,9 @@ export function editorExtensions(): Extension[] {
     preview,
     tableField,
     tableTheme,
+    cellComments,
+    mermaidField,
+    mermaidTheme,
+    codeHighlight,
   ];
 }

@@ -1,6 +1,6 @@
 # Draft smoke
 
-The quick redtay fox jumps over the sleepy dog.
+The quick red fox jumps over the sleepy dog.
 
 Second paragraph changed on demo.
 

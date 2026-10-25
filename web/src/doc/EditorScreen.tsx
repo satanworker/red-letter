@@ -6,12 +6,13 @@ import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments } from "../comments/commentsStore.ts";
 import { encPath } from "../github.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
-import { repo, toggleFiles } from "../repo/repoStore.ts";
+import { blobUrl } from "../repo/repoService.ts";
+import { createDraft, mergeDraft, navigateTo, repo, toggleFiles } from "../repo/repoStore.ts";
 import { Avatar, BranchIcon, CommentIcon, Logo, RobotIcon, SidebarIcon } from "../ui.tsx";
 import { AgentChanges, Banner } from "./AgentChanges.tsx";
 import { Editor } from "./Editor.tsx";
-import { selectMarks, selectPanelVisible, selectTab } from "./docSelectors.ts";
-import { doc, setTab, togglePanel } from "./docStore.ts";
+import { selectDraftChanges, selectMarks, selectPanelVisible, selectTab } from "./docSelectors.ts";
+import { doc, setTab, toggleChanges, togglePanel, updateDraft } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -26,6 +27,23 @@ export function EditorScreen() {
     doc.version;
     return doc.session ? selectMarks(doc.session) : [];
   });
+  const draft = createMemo(() => {
+    doc.version;
+    return doc.session?.doc.base;
+  });
+  const changes = createMemo(() => {
+    doc.version;
+    return doc.showChanges && doc.session ? selectDraftChanges(doc.session) : [];
+  });
+  // the branch this file came from, this branch and every draft: one picker, like Patchwork's
+  const branches = () => [...new Set([draft()?.branch ?? repo.branch, repo.branch, ...repo.drafts])];
+  const pickBranch = (sel: HTMLSelectElement) => {
+    const branch = sel.value;
+    sel.value = repo.branch; // the route decides which branch shows
+    if (branch) return navigateTo(blobUrl(full(), branch, repo.path));
+    const name = prompt("Name the draft", `${file().replace(/\.[^.]+$/, "")}-edits`);
+    if (name) void createDraft(name);
+  };
   const openCount = () => threads().filter((t) => !t.root.resolved).length;
   const panelVisible = () => !!doc.session && selectPanelVisible(doc, openCount(), marks().length);
   const tab = () => selectTab(doc, openCount(), marks().length);
@@ -62,10 +80,21 @@ export function EditorScreen() {
           <a href={`https://github.com/${full()}/blob/${encPath(repo.branch)}/${encPath(repo.path)}`} target="_blank" class="crumb file" title="Open on GitHub">
             {file()}
           </a>
-          <span class="pill" title="branch">
+          <label class="pill branch" title="Branch: switch, or start a draft of this file">
             <BranchIcon />
-            {repo.branch}
-          </span>
+            <select onChange={(e) => pickBranch(e.currentTarget)}>
+              <For each={branches()}>
+                {(b) => (
+                  <option value={b} selected={b === repo.branch}>
+                    {b}
+                  </option>
+                )}
+              </For>
+              <Show when={canWrite() && doc.session && !draft()}>
+                <option value="">+ New draft…</option>
+              </Show>
+            </select>
+          </label>
           <Show when={!canWrite()}>
             <span class="pill">read-only</span>
           </Show>
@@ -140,8 +169,33 @@ export function EditorScreen() {
           >
             {(s) => (
               <>
+                <Show when={draft() || doc.draftNote}>
+                  <div id="draft">
+                    <Show when={draft()}>
+                      {(b) => (
+                        <div class="draft-bar">
+                          <span class="muted">draft of {b().branch}</span>
+                          <button class="btn ghost" classList={{ on: doc.showChanges }} aria-pressed={doc.showChanges} title={`Highlight what this draft changed from ${b().branch}`} onClick={toggleChanges}>
+                            Changes
+                          </button>
+                          <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
+                            <button class="btn ghost" disabled={!!doc.drafting} title={`${b().branch} has new edits: merge them into this draft`} onClick={() => void updateDraft()}>
+                              Update from {b().branch}
+                            </button>
+                          </Show>
+                          <button class="btn ghost" disabled={!!doc.drafting || !canWrite()} title={`Merge this draft into ${b().branch} and delete it`} onClick={() => void mergeDraft()}>
+                            {doc.drafting || `Merge into ${b().branch}`}
+                          </button>
+                        </div>
+                      )}
+                    </Show>
+                    <Show when={doc.draftNote}>
+                      <p class="draft-note">{doc.draftNote}</p>
+                    </Show>
+                  </div>
+                </Show>
                 <Banner marks={marks} />
-                <Editor session={s} marks={marks} threads={threads} />
+                <Editor session={s} marks={marks} changes={changes} threads={threads} />
               </>
             )}
           </Show>

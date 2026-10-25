@@ -45,7 +45,14 @@ GitHub holds all state:
 
 Agent: `git pull`, edit, `git push`. `git show red-letter-comments:…` to read comments. Nothing to install.
 
-Draft = real branch: create branch + copy the CRDT ref (same doc identity). Publish = PR. Base sees the merge as an external push and replays it.
+## Drafts
+
+Live editing stays the default; a draft is opt-in, for work you don't want to do in public (Ink & Switch's "fishbowl effect", `docs/research/drafts.md`). A draft is a real branch, `drafts/<login>/<name>`, forked where the file was last saved, and live inside like any branch. Its doc is a fresh one made from the file at the fork (the CRDT ref isn't copied: nothing needs the shared identity yet). It records `base = {branch, commit, heads, inGit}`: the base branch's last commit merged into the draft, the doc heads where the text is exactly that commit's, and the last of those commits that git knows about as a merge parent.
+
+- **Update from main** (shown when the base moved, never automatic): the base head's text is replayed at `base.heads`, exactly like an agent push, so main's edits and the draft's merge by character and overlaps are flagged for review. Then the draft saves it as a merge commit: parents `[draft head, base head]`, tree = the base's tree with this file's merged text. A draft that changed other files is refused (merge it on GitHub).
+- **Changes**: the draft's diff from `base.heads` to now, drawn inline.
+- **Merge into main**: update first; if main had moved, stop and let the writer review, so what lands is what was reviewed. Otherwise one `updateRefs`: the base branch moves to a merge commit with the draft's tree, and the draft branch and its snapshot ref are deleted, with CAS on all three. Base tabs see an external push and replay it.
+- Drafts are listed in the branch picker for everyone who can read the repo. GitHub can't hide a branch, so "private" means "not announced", not access control.
 
 ## The one hard primitive
 
@@ -95,6 +102,8 @@ Done:
   - listed in a panel with per-change Revert and "Looks good";
   - where they interleave with a human edit, flagged with "Keep yours / Keep agent's".
   - Ctrl-Z never reverts an agent's or a peer's change.
+  - a Red Letter save of *another* file on the branch is replayed (a no-op here) instead of stalling the walk: its trailer's heads belong to that file's doc.
+- **Drafts** (see Drafts above; branch `drafts` / worktree `red-letter-drafts`): the branch picker in the header lists the base branch and every `drafts/*` branch and has "+ New draft…". Inside a draft a bar over the doc offers Changes, "Update from <base>" (when the base moved) and "Merge into <base>". Verified on `demo` with a scratch file: draft edits plus a concurrent agent push to `demo` (one overlapping word) → Update merged both and flagged the overlap → the agent pushed again → Merge pulled that in and stopped for review → Merge again landed one merge commit on `demo` that touched only the drafted file, deleted the draft branch and its snapshot ref, and the `demo` tab replayed it as a reviewable change.
 - **Comments** (optimistic: shown at once, written to git in the background in order; pending writes and the last list are kept in IndexedDB, so they survive reloads and offline and go out when the network is back):
   - written to `red-letter-comments`, started from a floating "Comment" button on a selection;
   - shown as threads with replies and resolve;
@@ -127,7 +136,7 @@ Not built yet:
 - strip the wasm's 687 KB name section (−19% raw, −6% brotli);
 - presence cursors inside the text (avatars only today);
 - notifications and mentions;
-- draft branches / publish as PR;
+- drafts: publish as a PR instead of merging in-app; retroactive drafts (move unsaved edits off main into a new draft); comments carried across a merge; tabs still open on a merged draft get save errors (the branch is gone); a base commit merged into a draft outside Red Letter isn't recorded in `base`, so the next Update would duplicate its text;
 - read-only viewing without signing in;
 - git authors (agents) get a GitHub avatar by name, which can be a stranger's account; show an initial instead.
 - tables: agent-change and comment highlights inside a table aren't shown (the table is one widget); after some undos the caret leaves the table; no column resizing or drag to reorder.
@@ -143,4 +152,4 @@ Done 2026-10-12, all passing: `experiments/RESULTS.md` (merge quality, determini
 
 ## Research
 
-`docs/research/` — five reports, 2026-10-12: prior art (Patchwork, Jupyter RTC, pushwork), CRDT comparison, markdown editors, existing products, GitHub integration mechanics. Plus `crdts-in-production.md`, 2026-10-13: Notion, Zed, Figma, Linear, Liveblocks and others, agent-editing patterns, and file→CRDT bridges compared with our replay.
+`docs/research/` — five reports, 2026-10-12: prior art (Patchwork, Jupyter RTC, pushwork), CRDT comparison, markdown editors, existing products, GitHub integration mechanics. Plus `crdts-in-production.md`, 2026-10-13: Notion, Zed, Figma, Linear, Liveblocks and others, agent-editing patterns, and file→CRDT bridges compared with our replay. Plus `drafts.md`, 2026-10-25: Upwelling, Patchwork branching, and how Figma, GitBook, Ellipsus, Lix and Jazz do drafts next to live editing.

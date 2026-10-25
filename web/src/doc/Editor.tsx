@@ -1,5 +1,5 @@
 // CodeMirror 6 (live preview) bound to the Automerge text. CodeMirror owns its DOM; Solid only mounts it and
-// pushes decorations (agent changes, conflicts, comment highlights) when the doc or the comments change.
+// pushes decorations (agent changes, a draft's changes, conflicts, comment highlights) when the doc or the comments change.
 import { automergeSyncPlugin, type DocHandle as PluginHandle } from "@automerge/automerge-codemirror";
 import { EditorState, StateEffect, StateField, Transaction, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip } from "@codemirror/view";
@@ -9,20 +9,24 @@ import { TipArrow } from "../ui.tsx";
 import { doc, docChanged, openThread, setView, startComment } from "./docStore.ts";
 import { editorExtensions } from "./livePreview.ts";
 import { cellSelection } from "./tables.ts";
+import type { Region } from "./regions.ts";
 import type { AgentMark, RLDoc, Session } from "./session.ts";
 
 class DelWidget extends WidgetType {
-  constructor(readonly text: string) {
+  constructor(
+    readonly text: string,
+    readonly by: string,
+  ) {
     super();
   }
   eq(o: DelWidget) {
-    return o.text === this.text;
+    return o.text === this.text && o.by === this.by;
   }
   toDOM() {
     const el = document.createElement("del");
     el.className = "rl-del";
     el.textContent = this.text;
-    el.title = "removed by the agent";
+    el.title = `removed ${this.by}`;
     return el;
   }
 }
@@ -81,8 +85,9 @@ function commentTooltip() {
   });
 }
 
-function decorations(session: Session, len: number, marks: AgentMark[], threads: Thread[], active: string): DecorationSet {
+function decorations(session: Session, len: number, marks: AgentMark[], changes: Region[], threads: Thread[], active: string): DecorationSet {
   const out: Range<Decoration>[] = [];
+  const del = (at: number, text: string, by: string) => out.push(Decoration.widget({ widget: new DelWidget(text, by), side: -1 }).range(Math.min(at, len)));
   const mark = (from: number, to: number, cls: string, attrs?: Record<string, string>) => {
     from = Math.min(from, len);
     to = Math.min(to, len);
@@ -92,7 +97,7 @@ function decorations(session: Session, len: number, marks: AgentMark[], threads:
     for (const hk of m.hunks) {
       const r = session.resolve(hk);
       if (!r) continue;
-      if (hk.before) out.push(Decoration.widget({ widget: new DelWidget(hk.before), side: -1 }).range(Math.min(r.from, len)));
+      if (hk.before) del(r.from, hk.before, "by the agent");
       mark(r.from, r.to, "rl-agent", { title: `${m.author}: ${m.message}` });
     }
     for (const c of m.conflicts) {
@@ -100,12 +105,16 @@ function decorations(session: Session, len: number, marks: AgentMark[], threads:
       if (r) mark(r.from, r.to, "rl-conflict", { title: "You and the agent both edited this. Pick a version in the panel." });
     }
   }
+  for (const c of changes) {
+    if (c.before) del(c.from, c.before, "in this draft");
+    mark(c.from, c.to, "rl-draft", { title: "edited in this draft" });
+  }
   for (const t of threads)
     if (t.range && !t.root.resolved) mark(t.range.from, t.range.to, t.root.id === active ? "rl-comment active" : "rl-comment", { "data-thread": t.root.id });
   return Decoration.set(out, true);
 }
 
-export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; threads: Accessor<Thread[]> }) {
+export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; changes: Accessor<Region[]>; threads: Accessor<Thread[]> }) {
   let host!: HTMLDivElement;
   onMount(() => {
     const s = props.session;
@@ -130,7 +139,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
     createEffect(() => {
       doc.version; // the CRDT doc changed
       if (view.state.doc.length !== s.doc.text.length) return docChanged(); // binding hasn't caught up: next frame
-      view.dispatch({ effects: setDecos.of(decorations(s, view.state.doc.length, props.marks(), props.threads(), doc.activeThread)) });
+      view.dispatch({ effects: setDecos.of(decorations(s, view.state.doc.length, props.marks(), props.changes(), props.threads(), doc.activeThread)) });
     });
     onCleanup(() => {
       setView(undefined);

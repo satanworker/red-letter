@@ -1,3 +1,5 @@
+import * as A from "@automerge/automerge";
+import { editRegions, type Region } from "./regions.ts";
 import type { AgentMark, Session } from "./session.ts";
 
 type PanelState = { panel: boolean | null; tab: "comments" | "changes"; composing: unknown };
@@ -5,6 +7,9 @@ type PanelState = { panel: boolean | null; tab: "comments" | "changes"; composin
 export const selectMarks = (session: Session): AgentMark[] => Object.values(session.doc.marks ?? {}).sort((a, b) => a.at.localeCompare(b.at));
 
 export const selectConflictCount = (marks: AgentMark[]) => marks.reduce((n, m) => n + m.conflicts.length, 0);
+
+// A draft's edits against its base branch (as last merged in): ranges in the current text, deleted text in `before`.
+export const selectDraftChanges = (s: Session): Region[] => (s.doc.base ? editRegions(s.doc, s.doc.base.heads, A.getHeads(s.doc)) : []);
 
 export const selectPanelVisible = (s: PanelState, openThreads: number, marks: number) => s.panel ?? (openThreads > 0 || marks > 0 || !!s.composing);
 

@@ -1,7 +1,7 @@
 # Draft smoke
 
-The quick brown fox jumps over the lazy dog.
+The quick tawny fox jumps over the sleepy dog.
 
-Second paragraph stays the same.
+Second paragraph changed on demo.
 
 Third paragraph is here.

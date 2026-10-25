@@ -1,4 +1,4 @@
-# Draft smoke
+# Draft smoke test
 
 The quick red fox jumps over the sleepy dog.
 

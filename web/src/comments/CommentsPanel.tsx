@@ -1,7 +1,7 @@
 // Comment threads beside the doc. Rows are keyed by thread id, so a reply being typed survives updates.
-import { For, Show, createMemo, onMount, type Accessor } from "solid-js";
+import { For, Show, createMemo, createSignal, onMount, type Accessor } from "solid-js";
 import { cancelComment, doc, selectThread, submitComment, submitReply, toggleResolved } from "../doc/docStore.ts";
-import { Avatar, CheckIcon, ago } from "../ui.tsx";
+import { Avatar, ago } from "../ui.tsx";
 import type { Thread } from "./commentsSelectors.ts";
 import type { Comment } from "./commentsService.ts";
 import { comments } from "./commentsStore.ts";
@@ -57,7 +57,7 @@ function Compose(props: { quote: string }) {
     <form class="card compose" onSubmit={submit}>
       <q>{props.quote.slice(0, 200)}</q>
       <div class="who">
-        <Avatar login={doc.login} size={22} />
+        <Avatar login={doc.login} size={24} />
         <textarea
           ref={input}
           placeholder="Add a comment…"
@@ -73,7 +73,7 @@ function Compose(props: { quote: string }) {
         <button type="button" class="link" onClick={cancelComment}>
           Cancel
         </button>
-        <button class="btn primary small">Comment</button>
+        <button class="btn">Comment</button>
       </div>
     </form>
   );
@@ -82,9 +82,11 @@ function Compose(props: { quote: string }) {
 const Message = (props: { c: Comment }) => (
   <div class="c">
     <div class="who">
-      <Avatar login={props.c.author} size={22} />
-      <b>{props.c.author}</b>
-      <span class="meta">{comments.sending.includes(props.c.id) ? "sending…" : ago(props.c.createdAt)}</span>
+      <Avatar login={props.c.author} size={24} />
+      <div class="name">
+        <span>{props.c.author}</span>
+        <span class="meta">{comments.sending.includes(props.c.id) ? "sending…" : ago(props.c.createdAt)}</span>
+      </div>
     </div>
     <div class="body">{props.c.body}</div>
   </div>
@@ -93,12 +95,14 @@ const Message = (props: { c: Comment }) => (
 function ThreadCard(props: { thread: Accessor<Thread>; canWrite: boolean }) {
   const t = props.thread;
   const where = () => (t().range ? (t().moved ? "· text changed since" : "") : "· text was removed");
+  const [replying, setReplying] = createSignal(false);
   let input!: HTMLInputElement;
   const reply = (e: Submit) => {
     e.preventDefault();
     const body = input.value.trim();
     if (!body) return;
     input.value = "";
+    setReplying(false);
     submitReply(t().root.id, body);
   };
   return (
@@ -106,7 +110,7 @@ function ThreadCard(props: { thread: Accessor<Thread>; canWrite: boolean }) {
       class="card thread"
       classList={{ active: t().root.id === doc.activeThread }}
       onClick={(e) => {
-        if (!(e.target instanceof Element && e.target.closest("form"))) selectThread(t());
+        if (!(e.target instanceof Element && e.target.closest("form, button"))) selectThread(t());
       }}
     >
       <div class="quote">
@@ -118,14 +122,23 @@ function ThreadCard(props: { thread: Accessor<Thread>; canWrite: boolean }) {
       <Message c={t().root} />
       <For each={t().replies}>{(c) => <Message c={c} />}</For>
       <Show when={props.canWrite}>
-        <form class="reply" onSubmit={reply}>
-          <input ref={input} placeholder="Reply…" />
-          <button type="button" class="link" onClick={() => toggleResolved(t().root)}>
-            <Show when={t().root.resolved} fallback={<><CheckIcon /> Resolve</>}>
-              Reopen
-            </Show>
+        <Show when={replying()}>
+          <form class="reply" onSubmit={reply}>
+            <input
+              ref={(el) => ((input = el), requestAnimationFrame(() => el.focus()))}
+              placeholder="Reply…"
+              onKeyDown={(e) => e.key === "Escape" && setReplying(false)}
+            />
+          </form>
+        </Show>
+        <div class="actions">
+          <button type="button" class="btn" onClick={() => (replying() ? input.form?.requestSubmit() : setReplying(true))}>
+            Reply
           </button>
-        </form>
+          <button type="button" class="btn" onClick={() => toggleResolved(t().root)}>
+            {t().root.resolved ? "Reopen" : "Resolve"}
+          </button>
+        </div>
       </Show>
     </div>
   );

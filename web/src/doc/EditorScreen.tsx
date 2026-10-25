@@ -7,7 +7,7 @@ import { comments } from "../comments/commentsStore.ts";
 import { encPath } from "../github.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { repo, toggleFiles } from "../repo/repoStore.ts";
-import { Avatar, BranchIcon, CommentIcon, Logo, SidebarIcon } from "../ui.tsx";
+import { Avatar, BranchIcon, CommentIcon, Logo, RobotIcon, SidebarIcon } from "../ui.tsx";
 import { AgentChanges, Banner } from "./AgentChanges.tsx";
 import { Editor } from "./Editor.tsx";
 import { selectMarks, selectPanelVisible, selectTab } from "./docSelectors.ts";
@@ -40,10 +40,14 @@ export function EditorScreen() {
   return (
     <div class="editor-screen">
       <header>
-        <button class="btn ghost icon" title="Files" onClick={toggleFiles}>
-          <SidebarIcon />
-        </button>
-        <Logo />
+        <span class="brand">
+          <Show when={repo.filesHidden}>
+            <button class="btn ghost icon" title="Show files" onClick={toggleFiles}>
+              <SidebarIcon />
+            </button>
+          </Show>
+          <Logo />
+        </span>
         <span class="crumbs">
           <a href={`/${full()}/tree/${encPath(repo.branch)}`} class="crumb">
             {full()}
@@ -66,12 +70,11 @@ export function EditorScreen() {
             <span class="pill">read-only</span>
           </Show>
         </span>
-        <span class="spacer" />
         <Show when={doc.session}>
           <span class="status">
             <Show when={!doc.status.saving} fallback="Saving…">
               <Show when={!doc.status.dirty} fallback="Edited">
-                Saved ·{" "}
+                Saved <span class="dot">●</span>{" "}
                 <a href={`https://github.com/${full()}/commit/${doc.status.commit}`} target="_blank" title={`Last commit on ${repo.branch}`}>
                   {doc.status.commit.slice(0, 7)}
                 </a>
@@ -97,18 +100,19 @@ export function EditorScreen() {
             </Show>
           </span>
         </Show>
+        <span class="spacer" />
         <span class="people" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
           <For each={people()}>{(p) => <Avatar login={p} size={24} />}</For>
         </span>
-        <button class="btn ghost" onClick={() => void share()}>
-          {copied() ? "Link copied" : "Share"}
-        </button>
         <button class="btn ghost icon" title="Comments and changes" onClick={() => togglePanel(panelVisible())}>
           <CommentIcon />
           <span id="count">{openCount() || ""}</span>
         </button>
+        <button class="btn share" onClick={() => void share()}>
+          {copied() ? "Link copied" : "Share"}
+        </button>
         <span class="me">
-          <Avatar login={repo.user!.login} size={26} />
+          <Avatar login={repo.user!.login} size={28} />
         </span>
       </header>
       <main>
@@ -145,17 +149,16 @@ export function EditorScreen() {
         <aside id="panel" hidden={!panelVisible()}>
           <div class="tabs">
             <button classList={{ on: tab() === "comments" }} onClick={() => setTab("comments")}>
+              <CommentIcon />
               Comments
               <Show when={openCount()}>
-                {" "}
-                <i>{openCount()}</i>
+                <i class="badge">{openCount()}</i>
               </Show>
             </button>
-            <button classList={{ on: tab() === "changes" }} onClick={() => setTab("changes")}>
-              Agent changes
+            <button classList={{ on: tab() === "changes" }} title="Agent changes" aria-label="Agent changes" onClick={() => setTab("changes")}>
+              <RobotIcon />
               <Show when={marks().length}>
-                {" "}
-                <i>{marks().length}</i>
+                <i class="badge">{marks().length}</i>
               </Show>
             </button>
           </div>

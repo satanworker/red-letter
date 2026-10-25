@@ -415,7 +415,7 @@ export const tableTheme = EditorView.theme({
   // CodeMirror's wrapping (overflow-wrap: anywhere, word-break: break-word) makes every column's minimum one
   // letter, so a squeezed table broke words mid-way
   ".cm-lp-table": {
-    flex: "none", maxWidth: "100%", borderCollapse: "collapse", fontSize: "14px", lineHeight: "1.5", overflowWrap: "break-word", wordBreak: "normal",
+    flex: "none", maxWidth: "100%", borderCollapse: "collapse", fontSize: "12px", lineHeight: "1.5", overflowWrap: "break-word", wordBreak: "normal",
     minWidth: "calc((100% - 2 * var(--out)) * .6)",
   },
   ".cm-lp-table th, .cm-lp-table td": { border: "1px solid var(--rule)", padding: "6px 10px", verticalAlign: "top", outline: "none", cursor: "text", minWidth: "3em" },
@@ -429,7 +429,7 @@ export const tableTheme = EditorView.theme({
     position: "fixed", zIndex: "50", display: "flex", flexDirection: "column", padding: "4px", minWidth: "180px", background: "var(--card)", borderRadius: "6px",
     boxShadow: "var(--pop)",
   },
-  ".cm-lp-menu button": { font: "13px ui-sans-serif, -apple-system, sans-serif", textAlign: "left", border: "0", background: "none", padding: "6px 10px", borderRadius: "4px", cursor: "pointer", color: "var(--fg)" },
+  ".cm-lp-menu button": { font: "12px var(--sans)", textAlign: "left", border: "0", background: "none", padding: "6px 10px", borderRadius: "4px", cursor: "pointer", color: "var(--fg)" },
   ".cm-lp-menu button:hover:not(:disabled)": { background: "var(--hover)" },
   ".cm-lp-menu button:disabled": { color: "var(--mark)", cursor: "default" },
 });

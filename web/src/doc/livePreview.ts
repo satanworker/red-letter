@@ -23,21 +23,24 @@ import { cellComments, tableField, tableTheme } from "./tables.ts";
 const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
 const theme = EditorView.theme({
-  "&": { color: "var(--fg)", backgroundColor: "var(--bg)", fontSize: "16px" },
+  "&": { color: "var(--fg)", backgroundColor: "var(--bg)", fontSize: "12px" },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { fontFamily: 'ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif', lineHeight: "1.7", containerType: "inline-size" },
-  ".cm-content": { maxWidth: "720px", margin: "0 auto", padding: "48px 32px 30vh", caretColor: "var(--blue)" },
+  ".cm-scroller": { fontFamily: "var(--sans)", lineHeight: "1.25", containerType: "inline-size" },
+  // 440px text column at the doc's x=180, 80px down (Figma 8:202); the 2px line padding is part of the 30px side
+  ".cm-content": { maxWidth: "504px", margin: "0 auto", padding: "80px 30px 30vh", caretColor: "var(--blue)" },
   ".cm-line": { padding: "0 2px" },
-  // Tables and diagrams break out of the 656px text column by up to 160px a side, keeping 24px from the edges.
-  ".cm-lp-wide": { "--out": "clamp(0px, (100cqw - 656px) / 2 - 24px, 160px)", marginLeft: "calc(-1 * var(--out))", marginRight: "calc(-1 * var(--out))" },
+  // Tables and diagrams break out of the 440px text column by up to 160px a side, keeping 24px from the edges.
+  ".cm-lp-wide": { "--out": "clamp(0px, (100cqw - 440px) / 2 - 24px, 160px)", marginLeft: "calc(-1 * var(--out))", marginRight: "calc(-1 * var(--out))" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--blue)", borderLeftWidth: "2px" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, ::selection": {
     backgroundColor: "var(--sel) !important",
   },
-  ".cm-lp-h1": { fontSize: "1.875em", fontWeight: "700", lineHeight: "1.3", paddingTop: "0.9em" },
-  ".cm-lp-h2": { fontSize: "1.5em", fontWeight: "600", lineHeight: "1.3", paddingTop: "0.7em" },
-  ".cm-lp-h3": { fontSize: "1.25em", fontWeight: "600", lineHeight: "1.3", paddingTop: "0.5em" },
-  ".cm-lp-h4, .cm-lp-h5, .cm-lp-h6": { fontWeight: "600", paddingTop: "0.3em" },
+  // Design: H1 28px / H2 20px Medium; 28px between blocks = one blank line (15px) + 13px padding.
+  ".cm-lp-h1": { fontSize: "28px", fontWeight: "500", lineHeight: "1.25", padding: "13px 2px" },
+  ".cm-lp-h2": { fontSize: "20px", fontWeight: "500", lineHeight: "1.25", padding: "13px 2px" },
+  ".cm-lp-h3": { fontSize: "16px", fontWeight: "500", lineHeight: "1.25", padding: "13px 2px" },
+  ".cm-lp-h4, .cm-lp-h5, .cm-lp-h6": { fontWeight: "500", padding: "13px 2px" },
+  ".cm-content > .cm-line:first-child": { paddingTop: "0" },
   ".cm-lp-mark": { color: "var(--mark)" },
   ".cm-lp-strong": { fontWeight: "600" },
   ".cm-lp-em": { fontStyle: "italic" },
@@ -55,8 +58,8 @@ const theme = EditorView.theme({
   ".cm-lp-num": { color: "var(--muted)", paddingRight: "0.35em" },
   ".cm-lp-task": { margin: "0 0.35em 0 0", verticalAlign: "-2px", width: "16px", height: "16px", accentColor: "var(--blue)", cursor: "pointer" },
   ".cm-lp-quote": { borderLeft: "3px solid var(--fg)", paddingLeft: "14px !important" },
-  ".cm-lp-codeblock": { background: "var(--bg2)", fontFamily: mono, fontSize: "14px", padding: "0 16px !important" },
-  ".cm-lp-fence": { color: "var(--faint)", fontSize: "12px" },
+  ".cm-lp-codeblock": { background: "var(--bg2)", fontFamily: mono, fontSize: "12px", padding: "0 16px !important" },
+  ".cm-lp-fence": { color: "var(--faint)", fontSize: "11px" },
   ".cm-lp-hr": { display: "inline-block", width: "100%", height: "1px", background: "var(--rule)", verticalAlign: "middle" },
   ".cm-lp-img": { display: "block", maxWidth: "100%", margin: "4px 0", borderRadius: "3px" },
 });

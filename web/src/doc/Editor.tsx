@@ -5,7 +5,7 @@ import { EditorState, StateEffect, StateField, Transaction, type Range } from "@
 import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip } from "@codemirror/view";
 import { createEffect, onCleanup, onMount, type Accessor } from "solid-js";
 import type { Thread } from "../comments/commentsSelectors.ts";
-import { CommentIcon } from "../ui.tsx";
+import { TipArrow } from "../ui.tsx";
 import { doc, docChanged, openThread, setView, startComment } from "./docStore.ts";
 import { editorExtensions } from "./livePreview.ts";
 import { cellSelection } from "./tables.ts";
@@ -44,7 +44,7 @@ const remoteNotUndoable = EditorState.transactionExtender.of((tr) =>
   tr.docChanged && !tr.annotation(Transaction.userEvent) ? { annotations: Transaction.addToHistory.of(false) } : null,
 );
 
-// Notion-style floating "Comment" button above a non-empty selection, or text selected in a table cell.
+// Floating "Add a comment" pill above a non-empty selection, or text selected in a table cell.
 function commentTooltip() {
   const make = (state: EditorState): Tooltip | null => {
     const cell = state.field(cellSelection);
@@ -63,8 +63,9 @@ function commentTooltip() {
                 startComment();
               }}
             >
-              <CommentIcon /> Comment
+              Add a comment
             </button>
+            <TipArrow />
           </div>
         ) as HTMLElement;
         // inside a table the position is the whole widget's edge: sit on the selected text instead

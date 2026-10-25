@@ -1,5 +1,16 @@
-// Small shared pieces: avatars, icons (inline SVG, currentColor), the logo, relative times.
+// Small shared pieces: avatars, icons, the logo, relative times.
+// Design icons are the SVGs exported from Figma (src/icons/); the few the design lacks stay inline SVG (currentColor).
 import type { JSX } from "solid-js";
+import arrowDownSvg from "./icons/arrow-down.svg";
+import arrowUpSvg from "./icons/arrow-up.svg";
+import commentSvg from "./icons/comment.svg";
+import createDocSvg from "./icons/create-doc.svg";
+import documentSvg from "./icons/document.svg";
+import folderSvg from "./icons/folder.svg";
+import robotSvg from "./icons/robot.svg";
+import searchSvg from "./icons/search.svg";
+import sidebarSvg from "./icons/sidebar.svg";
+import tipArrowSvg from "./icons/tip-arrow.svg";
 
 export const Avatar = (props: { login: string; size: number }) => (
   <img
@@ -21,7 +32,7 @@ export const Initial = (props: { name: string; size: number }) => (
 
 export const Logo = () => (
   <a href="/" class="logo">
-    <span class="pilcrow">¶</span> Red Letter
+    Red Letter
   </a>
 );
 
@@ -33,17 +44,26 @@ export function ago(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
 
+const Img = (props: { src: string; w: number; h?: number; class?: string }) => (
+  <img class={props.class ? `ic ${props.class}` : "ic"} src={props.src} width={props.w} height={props.h ?? props.w} alt="" />
+);
+export const SidebarIcon = () => <Img src={sidebarSvg} w={20} />;
+export const NewDocIcon = () => <Img src={createDocSvg} w={20} />;
+export const SearchIcon = () => <Img src={searchSvg} w={12} />;
+export const FolderIcon = () => <Img src={folderSvg} w={15} />;
+export const FileIcon = () => <Img src={documentSvg} w={10} h={13} />;
+export const ArrowUpIcon = (props: { class?: string }) => <Img src={arrowUpSvg} w={8} class={props.class} />;
+export const ArrowDownIcon = (props: { class?: string }) => <Img src={arrowDownSvg} w={8} class={props.class} />;
+export const CommentIcon = () => <Img src={commentSvg} w={16} />;
+export const RobotIcon = () => <Img src={robotSvg} w={14} class="robot" />;
+export const TipArrow = () => <Img src={tipArrowSvg} w={10} h={8} />;
+
 const Svg = (props: { size?: number; children: JSX.Element }) => (
   <svg width={props.size ?? 16} height={props.size ?? 16} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     {props.children}
   </svg>
 );
 
-export const CommentIcon = () => (
-  <Svg>
-    <path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" />
-  </Svg>
-);
 export const CheckIcon = () => (
   <Svg size={14}>
     <path d="M3.5 8.5l3 3 6-7" />
@@ -55,27 +75,6 @@ export const BranchIcon = () => (
     <circle cx="4.5" cy="12.5" r="1.5" />
     <circle cx="11.5" cy="5.5" r="1.5" />
     <path d="M4.5 5v6M11.5 7c0 2.5-7 1.5-7 4" />
-  </Svg>
-);
-export const FolderIcon = () => (
-  <Svg size={14}>
-    <path d="M2 4.5a1 1 0 011-1h3l1.5 1.5H13a1 1 0 011 1v5.5a1 1 0 01-1 1H3a1 1 0 01-1-1z" />
-  </Svg>
-);
-export const FileIcon = () => (
-  <Svg size={14}>
-    <path d="M4 2h5.5L12 4.5V14H4zM9.5 2v2.5H12M6 8h4M6 10.5h4" />
-  </Svg>
-);
-export const SidebarIcon = () => (
-  <Svg>
-    <rect x="2" y="3" width="12" height="10" rx="1.5" />
-    <path d="M6 3v10" />
-  </Svg>
-);
-export const PlusIcon = () => (
-  <Svg size={14}>
-    <path d="M8 3v10M3 8h10" />
   </Svg>
 );
 export const GithubMark = () => (

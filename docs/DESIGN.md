@@ -79,7 +79,7 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 - The relay accepts ops from anyone holding a docId, and an honest tab later commits them under its own name. Done: the hub admits a tab only with push access to the repo.
 - Replayed agent changes must stay off the human's undo stack. Done: remote transactions are marked `addToHistory: false`; verified that Ctrl-Z skips the agent's edit.
 
-## Prototype status (updated 2026-10-22)
+## Prototype status (updated 2026-10-25)
 
 Live at `diff.satanworker.com`; code in `web/` and `server/`; run/deploy notes in `README.md`. Verified end to end with two tabs and a git-pushing "agent" on the `demo` branch of this repo.
 
@@ -102,8 +102,9 @@ Done:
   - the anchor followed the text through edits.
 - **URLs and file browser:** `/owner/repo` opens the default branch's README with a sidebar listing the branch's markdown files (collapsible tree + filter); `/owner/repo/tree/<branch>`, `/owner/repo/blob/<branch>/<path>` (GitHub's shape) and `/owner/repo/<path>` (default branch) all work. Missing files show the sidebar with a not-found note. "+" in the sidebar (writers only) creates a markdown file, prefilled with the open file's folder (`.md` added if no extension): it joins the list and opens at once with a `# Title` line, and the file and its snapshot are committed by a background save (one `updateRefs`, which also creates the snapshot ref).
 - **UI:** Notion-style live-preview editor: centered column; headings, emphasis, lists (wrapped lines and Shift-Enter continuations align with the item's text), checkboxes, quotes, code and images rendered inline; markdown syntax shown only on the cursor line. GFM tables are edited Obsidian-style (`web/src/doc/tables.ts`): cells are edited in place (the focused cell shows its raw markdown), Tab / Shift-Tab / Enter move between cells and add a row past the end, arrows and Escape leave the table, right-click inserts or deletes rows and columns, Ctrl-Z/Y go to the editor's history. A cell edit writes only the changed characters of that cell. Breadcrumb header with branch pill, save state and Share. Built with Solid 1.9 (compiled by `@dschz/bun-plugin-solid` under `bun build`); state lives in per-feature stores (`repoStore`, `docStore`, `commentsStore`), components only render and call actions.
-- **Wide blocks:** tables and diagrams break out of the 656 px text column by up to 160 px a side (container query on the scroller). A table that fits the column stays aligned with the text; a wider one grows into the margins, then wraps its cells (whole words), then scrolls.
-- **Comments on table cells:** text selected in the focused cell maps to doc positions (`cellSelection` in `tables.ts`); the floating Comment button sits on it and the comment anchors to those characters.
+- **Wide blocks:** tables and diagrams break out of the 440 px text column by up to 160 px a side (container query on the scroller). A table that fits the column stays aligned with the text; a wider one grows into the margins, then wraps its cells (whole words), then scrolls.
+- **Visual design:** follows the Figma file "Red Letter" (frame `Desktop - 1`, node `1:8`): Google Sans Code throughout (12 px body, H1 28 / H2 20 Medium), Grandstander logo, greys Onyx `#373737` / Middle `#EBEBEB` / Dark `#D8D8D8` / Shadows `#ADADAD`, one shared button shadow, 320 px file sidebar and panel around a 440 px text column. Icons are the SVGs exported from Figma (`web/src/icons/`), inverted in dark mode. Fonts load from Google Fonts. Comment threads show Reply / Resolve buttons; Reply opens the input. The design's inbox icon and per-comment `⋯` menu are left out until they have behaviour.
+- **Comments on table cells:** text selected in the focused cell maps to doc positions (`cellSelection` in `tables.ts`); the floating "Add a comment" pill sits on it and the comment anchors to those characters.
 - **Mermaid:** ` ```mermaid ` blocks render as SVG diagrams (`web/src/doc/mermaid.ts`); the source shows while the selection is in the block, with the diagram updating under it; clicking a diagram edits it. Renderer lukilabs `beautiful-mermaid` 1.1 (ELK layout, no DOM): lazy chunk of 1.6 MB (470 KB gzipped), 20–70 ms a diagram, cached per source. `@vercel/beautiful-mermaid` (45 KB gzipped, ~5 ms) shipped first and was dropped: it showed the quotes of `A["label"]`, ignored `<br/>` and drew back edges outside the picture. mermaid.js is 1.5 MB gzipped and needs the DOM; Selkie (Rust/WASM, ~725 KB gzipped) isn't on npm.
 - **Dark mode:** follows the system (`prefers-color-scheme`); every colour is a CSS variable in `index.html`, the editor themes use them too. Diagrams are `<img>`s carrying their own dark-scheme media query.
 - **Code highlighting:** fenced code blocks get syntax colours from Pierre's `@pierre/highlights` (hand-written WebAssembly; tokenizing is ~0.3 ms per 1,000 lines) with the Pierre light/dark themes combined through CSS `light-dark()` (`web/src/doc/highlight.ts`). Loaded on the first code block (267 KB chunk, wasm inlined); tokens are cached per block, so only the block being typed in is re-tokenized.
@@ -135,7 +136,6 @@ Not built yet:
 Open items:
 - Deployment lives in systemd user units, not home-satan's NixOS config. Moving it there needs the sops key.
 - home-satan has no outbound IPv6. It doesn't affect Red Letter; enabling it (static `/64` + `fe80::1` gateway in `hosts/hetzner`) is optional.
-- Visual design is a first pass; a reference page or Figma would let us match a target.
 
 ## Spikes
 

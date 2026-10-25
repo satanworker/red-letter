@@ -1,13 +1,13 @@
 // Collapsible tree of the branch's markdown files; folders on the current file's path are open.
 // Links are plain <a href>: main.tsx's navigate handler turns them into in-page file switches.
 import { For, Show, createMemo, createSignal, onMount } from "solid-js";
-import { FileIcon, FolderIcon, PlusIcon } from "../ui.tsx";
+import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderIcon, NewDocIcon, SearchIcon, SidebarIcon } from "../ui.tsx";
 import { blobUrl } from "./repoService.ts";
 import { selectMatches, selectTree, type Dir } from "./repoSelectors.ts";
-import { createFile, repo } from "./repoStore.ts";
+import { createFile, repo, toggleFiles } from "./repoStore.ts";
 
 const href = (path: string) => blobUrl(repo.repo!.full_name, repo.branch, path);
-const indent = (depth: number) => ({ "padding-left": `${8 + depth * 14}px` });
+const indent = (depth: number) => ({ "padding-left": `${12 + depth * 20}px` });
 const byName = (a: string, b: string) => a.localeCompare(b);
 
 export function FileSidebar() {
@@ -28,14 +28,22 @@ export function FileSidebar() {
   };
   return (
     <nav id="files" ref={nav} hidden={repo.filesHidden}>
-      <div class="files-head">
-        <input type="search" placeholder="Find a file…" onInput={(e) => setQuery(e.currentTarget.value)} />
-        <span class="meta">{repo.docs.length} docs</span>
+      <div class="files-bar">
+        <button class="toggle" title="Hide files" onClick={toggleFiles}>
+          <SidebarIcon />
+        </button>
         <Show when={repo.repo?.permissions?.push}>
-          <button class="btn ghost icon small" title="New file" onClick={() => (setError(""), setAdding((a) => !a))}>
-            <PlusIcon />
+          <button class="btn ghost icon" title="New file" onClick={() => (setError(""), setAdding((a) => !a))}>
+            <NewDocIcon />
           </button>
         </Show>
+      </div>
+      <div class="files-head">
+        <label class="search">
+          <SearchIcon />
+          <input type="search" placeholder="Find a file" onInput={(e) => setQuery(e.currentTarget.value)} />
+        </label>
+        <span class="meta">{repo.docs.length} docs</span>
       </div>
       <Show when={adding()}>
         <form class="new-file" onSubmit={submit}>
@@ -80,6 +88,8 @@ function DirView(props: { dir: Dir; prefix: string; depth: number }) {
               <summary style={indent(props.depth)}>
                 <FolderIcon />
                 <span>{name}</span>
+                <ArrowUpIcon class="open" />
+                <ArrowDownIcon class="closed" />
               </summary>
               <DirView dir={props.dir.dirs[name]} prefix={dir} depth={props.depth + 1} />
             </details>

@@ -42,9 +42,9 @@ export function AgentChanges(props: { session: Session; marks: Accessor<AgentMar
         {(m) => (
           <div class="card">
             <div class="who">
-              <Initial name={m.author} size={22} />
-              <div>
-                <b>{m.author}</b>
+              <Initial name={m.author} size={24} />
+              <div class="name">
+                <span>{m.author}</span>
                 <div class="meta">
                   {ago(m.at)} ·{" "}
                   <a href={`https://github.com/${s.repoName}/commit/${m.sha}`} target="_blank">

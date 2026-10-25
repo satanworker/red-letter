@@ -1,0 +1,3 @@
+# Draft smoke
+
+The quick brown fox jumps over the lazy do

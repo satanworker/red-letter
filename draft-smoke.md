@@ -1,4 +1,4 @@
-# Draft smoke
+# Draft smoke test
 
 The quick tawny fox jumps over the sleepy dog.
 

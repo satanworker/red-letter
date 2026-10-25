@@ -1,5 +1,5 @@
 // GitHub reads for opening a repo. Stateless. cachedGet keeps copies, so a repo opened before also opens offline.
-import { HttpError, cachedGet, encPath, ghJson } from "../github.ts";
+import { HttpError, cachedGet, encPath, ghJson, type User } from "../github.ts";
 
 export type RepoInfo = { node_id: string; full_name: string; default_branch: string; permissions?: { push: boolean } };
 
@@ -41,6 +41,13 @@ export async function listDocs(repo: string, branch: string, stale = false): Pro
   // ponytail: one recursive tree call; GitHub truncates past ~100k entries
   const t: { tree: { path: string; type: string }[] } = JSON.parse(await cachedGet(`/repos/${repo}/git/trees/${encPath(branch)}?recursive=1`, { stale }));
   return t.tree.filter((e) => e.type === "blob" && isDoc(e.path)).map((e) => e.path);
+}
+
+// People who can be @mentioned: the repo's collaborators (needs push access, as writing a comment does).
+// ponytail: first 100 only
+export async function listCollaborators(repo: string): Promise<User[]> {
+  const people: User[] = JSON.parse(await cachedGet(`/repos/${repo}/collaborators?per_page=100`, { stale: true }));
+  return people.map(({ login, avatar_url }) => ({ login, avatar_url }));
 }
 
 // A GitHub App token can only write where the App is installed. Answered from this browser's copy first (it

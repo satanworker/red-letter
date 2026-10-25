@@ -1,0 +1,20 @@
+# Push to main -> build web/ and deploy it to Cloudflare (diff.satanworker.com). The hub is deployed separately (README).
+name: deploy web
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/deploy-web.yml"]
+  workflow_dispatch:
+concurrency: { group: deploy-web, cancel-in-progress: true }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc -p . && bunx tsc -p tsconfig.sw.json
+      - run: bun build.ts
+      - run: bunx wrangler@4 deploy
+        env: { CLOUDFLARE_API_TOKEN: "${{ secrets.CLOUDFLARE_API_TOKEN }}" }

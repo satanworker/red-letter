@@ -17,12 +17,21 @@ Design: [`docs/DESIGN.md`](docs/DESIGN.md). Spikes: [`experiments/RESULTS.md`](e
 ## Develop
 
 ```sh
-cd web && bun install && bun dev.ts          # http://localhost:5173 (uses the hub on localhost:8787)
+cd web && bun install && bun dev.ts          # http://localhost:5173, PORT=… to change (uses the hub on localhost:8787)
+cd server && RL_ORIGINS=http://localhost:5173 go run .                  # the hub, allowing the dev origin
 cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json                 # typecheck app + service worker
 cd server && CGO_ENABLED=0 go test ./...
 ```
 
+`bun dev.ts` rebuilds on changes under `web/src/`; after editing `index.html` or `build.ts`, run `bun build.ts`.
+
+Styling is Tailwind v4: utility classes in the components, design tokens in `web/src/app.css`.
+
+**Figma check:** `/__figma` (dev server only) shows the editor with the exact content of the Figma frame "Red Letter" › Desktop - 1 (node `1:8`) and lays the Figma render over it. Size the browser window to 1440 px wide; Alt+O toggles the overlay, Alt+D switches difference blend / 50% fade. The renders are in `web/dev/` (frame at 1024 px wide scaled up, doc column, sidebar and panel at 1×), exported with the Figma MCP server's `get_screenshot`.
+
 ## Deploy
+
+Pushes to `main` that touch `web/` deploy the site automatically (`.github/workflows/deploy-web.yml`; needs the repo secret `CLOUDFLARE_API_TOKEN`, a token with the "Edit Cloudflare Workers" template). Manual equivalents:
 
 ```sh
 cd web && bun build.ts && bunx wrangler@4 deploy                     # diff.satanworker.com

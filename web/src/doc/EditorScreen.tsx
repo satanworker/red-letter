@@ -7,11 +7,13 @@ import { comments } from "../comments/commentsStore.ts";
 import { encPath } from "../github.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { repo, toggleFiles } from "../repo/repoStore.ts";
-import { Avatar, BranchIcon, CommentIcon, Logo, RobotIcon, SidebarIcon } from "../ui.tsx";
-import { AgentChanges, Banner } from "./AgentChanges.tsx";
+import { Palette } from "../palette/Palette.tsx";
+import { palette } from "../palette/paletteStore.ts";
+import { Avatar, BranchIcon, CommentIcon, Logo, RobotIcon, SidebarIcon, Spinner, badge, fine, ghostBtn } from "../ui.tsx";
+import { AgentChanges } from "./AgentChanges.tsx";
 import { Editor } from "./Editor.tsx";
 import { selectMarks, selectPanelVisible, selectTab } from "./docSelectors.ts";
-import { doc, setTab, togglePanel } from "./docStore.ts";
+import { doc, setTab, showTab, togglePanel } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -36,88 +38,142 @@ export function EditorScreen() {
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+  // Arrow keys move between the two tabs (WAI-ARIA tabs pattern); Tab goes into the panel.
+  const tabKeys = (e: KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setTab(tab() === "comments" ? "changes" : "comments");
+    (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+  };
+  // Figma 22:561: with the panel open the chosen tab is white with its label; the other one, and both when the panel is
+  // closed ("All Close"), shrink to grey icon + count pills. Pushing a pill opens that tab; pushing the open tab closes.
+  const labeled = (t: "comments" | "changes") => panelVisible() && tab() === t;
+  const pick = (t: "comments" | "changes") => (labeled(t) ? togglePanel(true) : showTab(t));
+  const tabClass = (on: boolean, pad: string) =>
+    `inline-flex h-7 cursor-pointer items-center gap-1 rounded-[14px] text-fg shadow-figma ${on ? "bg-card px-4" : `border-[.4px] border-line bg-side ${pad}`}`;
+  const tabs = () => (
+    <div role="tablist" aria-label="Side panel" class="flex gap-2" onKeyDown={tabKeys}>
+      <button
+        role="tab"
+        id="tab-comments"
+        aria-selected={tab() === "comments"}
+        aria-controls="panel"
+        aria-expanded={labeled("comments")}
+        tabindex={tab() === "comments" ? 0 : -1}
+        title="Comments"
+        class={tabClass(labeled("comments"), "px-4")}
+        onClick={() => pick("comments")}
+      >
+        <CommentIcon />
+        <Show when={labeled("comments")}>Comments</Show>
+        <Show when={openCount()}>
+          <i class={`${badge} px-[3px]`}>{openCount()}</i>
+        </Show>
+      </button>
+      <button
+        role="tab"
+        id="tab-changes"
+        aria-selected={tab() === "changes"}
+        aria-controls="panel"
+        aria-expanded={labeled("changes")}
+        tabindex={tab() === "changes" ? 0 : -1}
+        title="Agent changes"
+        class={tabClass(labeled("changes"), "px-3")}
+        onClick={() => pick("changes")}
+      >
+        <RobotIcon />
+        <Show when={labeled("changes")}>Agent changes</Show>
+        <Show when={marks().length}>
+          <i class={`${badge} px-[3px]`}>{marks().length}</i>
+        </Show>
+      </button>
+    </div>
+  );
 
+  // px values are Figma "Desktop - 1" (1:8) coordinates. Figma strokes don't move content, so frames use outlines.
   return (
-    <div class="editor-screen">
-      <header>
-        <span class="brand">
+    <div class="flex h-screen flex-col">
+      <header class="relative z-[3] flex h-[35px] shrink-0 items-start whitespace-nowrap bg-side pr-2 pl-4 shadow-figma outline-[.5px] -outline-offset-[.5px] outline-line">
+        {/* columns line up with the 320px sidebar, the flexible doc and the 320px panel (less the header's 8px right padding) */}
+        <span class="flex w-[304px] shrink-0 items-center gap-2 pt-[7px]">
           <Show when={repo.filesHidden}>
-            <button class="btn ghost icon" title="Show files" onClick={toggleFiles}>
+            <button class={ghostBtn} title="Show files" aria-label="Show files" onClick={toggleFiles}>
               <SidebarIcon />
             </button>
           </Show>
           <Logo />
         </span>
-        <span class="crumbs">
-          <a href={`/${full()}/tree/${encPath(repo.branch)}`} class="crumb">
+        <nav aria-label="File path" class="mt-[9px] flex min-w-0 flex-1 items-center overflow-hidden pr-3">
+          <a href={`/${full()}/tree/${encPath(repo.branch)}`} class="truncate hover:underline">
             {full()}
           </a>
-          <span class="sep">/</span>
+          <span>/</span>
           <Show when={dir().length}>
-            <span class="crumb dir" title={dir().join("/")}>
+            <span class="truncate" title={dir().join("/")}>
               {dir().length > 2 ? `…/${dir().slice(-2).join("/")}` : dir().join("/")}
             </span>
-            <span class="sep">/</span>
+            <span>/</span>
           </Show>
-          <a href={`https://github.com/${full()}/blob/${encPath(repo.branch)}/${encPath(repo.path)}`} target="_blank" class="crumb file" title="Open on GitHub">
+          <a href={`https://github.com/${full()}/blob/${encPath(repo.branch)}/${encPath(repo.path)}`} target="_blank" class="truncate hover:underline" title="Open on GitHub">
             {file()}
           </a>
-          <span class="pill" title="branch">
+          <span class={`ml-2 inline-flex items-center gap-1 ${badge} px-1.5`} title="branch">
             <BranchIcon />
             {repo.branch}
           </span>
           <Show when={!canWrite()}>
-            <span class="pill">read-only</span>
+            <span class={`ml-2 ${badge} px-1.5`}>read-only</span>
           </Show>
-        </span>
-        <Show when={doc.session}>
-          <span class="status">
-            <Show when={!doc.status.saving} fallback="Saving…">
-              <Show when={!doc.status.dirty} fallback="Edited">
-                Saved <span class="dot">●</span>{" "}
-                <a href={`https://github.com/${full()}/commit/${doc.status.commit}`} target="_blank" title={`Last commit on ${repo.branch}`}>
-                  {doc.status.commit.slice(0, 7)}
-                </a>
+        </nav>
+        <div class="flex w-[312px] shrink-0 items-start">
+          <Show when={doc.session}>
+            <span class="mt-2.5 flex gap-3" role="status">
+              <Show when={!doc.status.saving} fallback="Saving…">
+                <Show when={!doc.status.dirty} fallback="Edited">
+                  Saved <span class="w-2">●</span>
+                  <a class="underline" href={`https://github.com/${full()}/commit/${doc.status.commit}`} target="_blank" title={`Last commit on ${repo.branch}`}>
+                    {doc.status.commit.slice(0, 7)}
+                  </a>
+                </Show>
               </Show>
-            </Show>
-            <Show when={canWrite() && !doc.status.online}>
-              {" "}
-              ·{" "}
-              <span class="warn" title="Live sync is reconnecting; edits are kept and saved to git">
-                offline
-              </span>
-            </Show>
-            <Show when={doc.status.error}>
-              {(err) => (
-                <>
-                  {" "}
-                  ·{" "}
-                  <span class="err" title={err()}>
+              <Show when={canWrite() && !doc.status.online}>
+                <span class="text-[#d9730d]" title="Live sync is reconnecting; edits are kept and saved to git">
+                  offline
+                </span>
+              </Show>
+              <Show when={doc.status.error}>
+                {(err) => (
+                  <span class="text-red" title={err()}>
                     error
                   </span>
-                </>
+                )}
+              </Show>
+            </span>
+          </Show>
+          <span class="flex-1" />
+          <span class="mt-[5.5px] mr-2 inline-flex" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
+            <For each={people()}>
+              {(p) => (
+                <span class="-ml-1.5 rounded-full ring-2 ring-side first:ml-0">
+                  <Avatar login={p} size={24} />
+                </span>
               )}
-            </Show>
+            </For>
           </span>
-        </Show>
-        <span class="spacer" />
-        <span class="people" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
-          <For each={people()}>{(p) => <Avatar login={p} size={24} />}</For>
-        </span>
-        <button class="btn ghost icon" title="Comments and changes" onClick={() => togglePanel(panelVisible())}>
-          <CommentIcon />
-          <span id="count">{openCount() || ""}</span>
-        </button>
-        <button class="btn share" onClick={() => void share()}>
-          {copied() ? "Link copied" : "Share"}
-        </button>
-        <span class="me">
-          <Avatar login={repo.user!.login} size={28} />
-        </span>
+          <button
+            class="mt-[5.6px] mr-[9.2px] inline-flex cursor-pointer items-center rounded-lg border-[.4px] border-line px-2 py-1 shadow-figma hover:bg-hover"
+            onClick={() => void share()}
+          >
+            {copied() ? "Link copied" : "Share"}
+          </button>
+          <span class="mt-1 inline-flex">
+            <Avatar login={repo.user!.login} size={28} />
+          </span>
+        </div>
       </header>
-      <main>
+      <main class="relative flex min-h-0 flex-1">
         <FileSidebar />
-        <div id="doc">
+        <div id="doc" class="min-w-0 flex-1 overflow-auto bg-bg">
           <Show
             when={doc.session}
             keyed
@@ -125,50 +181,36 @@ export function EditorScreen() {
               <Show
                 when={doc.opening}
                 fallback={
-                  <div class="empty-doc">
+                  <div class="mx-auto my-[20vh] max-w-[440px] px-6 text-[14px] text-muted">
                     <p>{repo.message}</p>
-                    <p class="fine">Pick a file on the left.</p>
+                    <p class={fine}>Pick a file on the left.</p>
                   </div>
                 }
               >
-                <div class="loading">
-                  <div class="spinner" />
+                <div class="flex h-[60vh] items-center justify-center gap-2.5 text-muted">
+                  <Spinner />
                   Opening {doc.opening.split("/").pop()}…
                 </div>
               </Show>
             }
           >
-            {(s) => (
-              <>
-                <Banner marks={marks} />
-                <Editor session={s} marks={marks} threads={threads} />
-              </>
-            )}
+            {(s) => <Editor session={s} marks={marks} threads={threads} />}
           </Show>
         </div>
-        <aside id="panel" hidden={!panelVisible()}>
-          <div class="tabs">
-            <button classList={{ on: tab() === "comments" }} onClick={() => setTab("comments")}>
-              <CommentIcon />
-              Comments
-              <Show when={openCount()}>
-                <i class="badge">{openCount()}</i>
-              </Show>
-            </button>
-            <button classList={{ on: tab() === "changes" }} title="Agent changes" aria-label="Agent changes" onClick={() => setTab("changes")}>
-              <RobotIcon />
-              <Show when={marks().length}>
-                <i class="badge">{marks().length}</i>
-              </Show>
-            </button>
-          </div>
+        <Show when={doc.session && !panelVisible()}>
+          <div class="absolute top-4 left-[calc(100%-304px)] z-[4]">{tabs()}</div>
+        </Show>
+        <aside id="panel" aria-label="Comments and agent changes" hidden={!panelVisible()} class="w-80 shrink-0 overflow-auto bg-side p-4 outline-[.5px] -outline-offset-[.5px] outline-line">
+          <Show when={panelVisible()}>
+            <div class="mb-4">{tabs()}</div>
+          </Show>
           <Show when={doc.session} keyed>
             {(s) => (
               <>
-                <div id="changes" hidden={tab() !== "changes"}>
+                <div id="changes" role="tabpanel" aria-labelledby="tab-changes" class="flex flex-col gap-4" hidden={tab() !== "changes"}>
                   <AgentChanges session={s} marks={marks} />
                 </div>
-                <div id="comments" hidden={tab() !== "comments"}>
+                <div id="comments" role="tabpanel" aria-labelledby="tab-comments" class="flex flex-col gap-4" hidden={tab() !== "comments"}>
                   <CommentsPanel canWrite={s.canWrite} threads={threads} />
                 </div>
               </>
@@ -176,6 +218,9 @@ export function EditorScreen() {
           </Show>
         </aside>
       </main>
+      <Show when={palette.open}>
+        <Palette panelVisible={panelVisible} />
+      </Show>
     </div>
   );
 }

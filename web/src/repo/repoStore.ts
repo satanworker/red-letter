@@ -6,7 +6,7 @@ import { warmComments } from "../comments/commentsStore.ts";
 import { closeFile, doc, openFile } from "../doc/docStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy } from "../doc/session.ts";
 import { authKind, completeSignIn, currentUser, token, type User } from "../github.ts";
-import { appInstalledOn, blobUrl, branchHead, getRepo, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
+import { appInstalledOn, blobUrl, branchHead, getRepo, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
 type RepoState = {
@@ -20,6 +20,7 @@ type RepoState = {
   docs: string[];
   path: string;
   filesHidden: boolean;
+  collaborators: User[]; // who can be @mentioned, loaded on first use
 };
 
 const [state, set] = createStore<RepoState>({
@@ -33,12 +34,27 @@ const [state, set] = createStore<RepoState>({
   docs: [],
   path: "",
   filesHidden: localStorage.getItem("rl_files") === "hidden" || innerWidth < 900,
+  collaborators: [],
 });
 export const repo = state;
+// The /__figma dev page sets the whole workspace from fixture data (src/dev/figma.tsx).
+export const fixtureRepo = (s: Partial<RepoState>) => set(s);
 
 export function toggleFiles() {
   set("filesHidden", (h) => !h);
   localStorage.setItem("rl_files", state.filesHidden ? "hidden" : "shown");
+}
+
+let collaboratorsOf = "";
+// Once per repo, when someone first types "@".
+export function loadCollaborators() {
+  const name = state.repo?.full_name;
+  if (!name || collaboratorsOf === name) return;
+  collaboratorsOf = name;
+  listCollaborators(name).then(
+    (people) => state.repo?.full_name === name && set("collaborators", people),
+    () => (collaboratorsOf = ""), // retry on the next "@"
+  );
 }
 
 // Without the Navigation API (older browsers) this is a page load, which works too.

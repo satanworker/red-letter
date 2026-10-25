@@ -17,6 +17,9 @@ Bun.serve({
     const { pathname } = new URL(req.url);
     const f = Bun.file(dist + pathname);
     if ((pathname.startsWith("/assets/") || pathname === "/sw.js") && (await f.exists())) return new Response(f);
+    // Figma reference renders for the /__figma page; never part of a build
+    const dev = Bun.file(`${import.meta.dir}${pathname}`);
+    if (pathname.startsWith("/dev/") && (await dev.exists())) return new Response(dev);
     return new Response(Bun.file(`${dist}/index.html`), { headers: { "cache-control": "no-cache" } });
   },
 });

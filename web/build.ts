@@ -1,6 +1,7 @@
-// Bundle web/src into dist/: index.html, hashed /assets/* (JS chunks, automerge.wasm as a separate cacheable file)
-// and /sw.js, which precaches exactly this build's assets.
+// Bundle web/src into dist/: index.html, hashed /assets/* (JS chunks, the Tailwind CSS, automerge.wasm as a separate
+// cacheable file) and /sw.js, which precaches exactly this build's assets.
 import { SolidPlugin } from "@dschz/bun-plugin-solid";
+import tailwind from "bun-plugin-tailwind";
 import { rmSync } from "node:fs";
 
 const nm = `${import.meta.dir}/node_modules/@automerge`;
@@ -27,11 +28,15 @@ export async function build() {
     plugins: [
       { name: "automerge-slim", setup: (b) => b.onResolve({ filter: /^@automerge\/automerge(-repo)?$/ }, (a) => ({ path: slim[a.path] })) },
       SolidPlugin({ generate: "dom", hydratable: false, sourceMaps: false }),
+      tailwind,
     ],
   });
   if (!res.success) throw new AggregateError(res.logs, "bundle failed");
   const entry = res.outputs.find((o) => o.kind === "entry-point")!;
-  const html = (await Bun.file(`${import.meta.dir}/index.html`).text()).replace("%ENTRY%", `/assets/${entry.path.split("/").pop()}`);
+  const css = res.outputs.filter((o) => o.path.endsWith(".css")).map((o) => `<link rel="stylesheet" href="/assets/${o.path.split("/").pop()}">`);
+  const html = (await Bun.file(`${import.meta.dir}/index.html`).text())
+    .replace("%CSS%", css.join("\n"))
+    .replace("%ENTRY%", `/assets/${entry.path.split("/").pop()}`);
   await Bun.write(`${out}/index.html`, html);
   await Bun.write(`${out}/_headers`, "/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n");
 

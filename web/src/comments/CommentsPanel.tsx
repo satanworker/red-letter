@@ -1,12 +1,18 @@
 // Comment threads beside the doc. Rows are keyed by thread id, so a reply being typed survives updates.
-import { For, Show, createMemo, createSignal, onMount, type Accessor } from "solid-js";
-import { cancelComment, doc, selectThread, submitComment, submitReply, toggleResolved } from "../doc/docStore.ts";
-import { Avatar, ago } from "../ui.tsx";
+// New comments are written in the editor (Editor.tsx) and show here once sent.
+// Keyboard: each thread's quote is a button that jumps to the text; Reply / Resolve are buttons; Esc closes inputs.
+import { For, Show, createMemo, createSignal, type Accessor } from "solid-js";
+import { doc, selectThread, submitReply, toggleResolved } from "../doc/docStore.ts";
+import { Avatar, ago, btn, card } from "../ui.tsx";
 import type { Thread } from "./commentsSelectors.ts";
 import type { Comment } from "./commentsService.ts";
+import { MentionText, createMentions } from "./Mentions.tsx";
 import { comments } from "./commentsStore.ts";
 
 type Submit = SubmitEvent & { currentTarget: HTMLFormElement };
+
+// Figma 11:356: 2px #d9d9d9 bar, 8px gap, Shadows-grey text, three lines at most
+const quote = "line-clamp-3 border-l-2 border-on pl-2 text-left whitespace-pre-wrap text-muted";
 
 export function CommentsPanel(props: { canWrite: boolean; threads: Accessor<Thread[]> }) {
   const byId = createMemo(() => new Map(props.threads().map((t) => [t.root.id, t])));
@@ -16,79 +22,45 @@ export function CommentsPanel(props: { canWrite: boolean; threads: Accessor<Thre
   const row = (id: string) => <Show when={byId().get(id)}>{(t) => <ThreadCard thread={t} canWrite={props.canWrite} />}</Show>;
   return (
     <>
-      <Show when={doc.composing} keyed>
-        {(c) => <Compose quote={c.quote} />}
-      </Show>
-      <Show when={!open().length && !doc.composing}>
-        <p class="empty">
-          Select text and click <b>Comment</b> to start a discussion.
+      <Show when={!open().length}>
+        <p class="px-0.5 py-3 text-muted">
+          Select text and click <b>Add a comment</b> to start a discussion.
         </p>
       </Show>
       <For each={open()}>{row}</For>
       <Show when={resolved().length}>
-        <details class="resolved">
-          <summary>{resolved().length} resolved</summary>
+        <details class="flex flex-col gap-4">
+          <summary class="cursor-pointer list-none px-0.5 py-1.5 text-muted">{resolved().length} resolved</summary>
           <For each={resolved()}>{row}</For>
         </details>
       </Show>
       <Show when={comments.error}>
-        <p class="fine err" title={comments.error}>
+        <p class="text-red" title={comments.error}>
           Some comments aren't on GitHub yet ({comments.error}). Kept in this browser; retrying.
         </p>
       </Show>
-      <p class="fine">
+      {/* Figma 14:428 */}
+      <p class="flex flex-col gap-2 py-1 text-muted">
         Agents read comments with
-        <br />
-        <code>git show origin/red-letter-comments:{comments.file}</code>
+        <span class="[overflow-wrap:anywhere] text-code">git show origin/red-letter-comments:{comments.file}</span>
       </p>
     </>
   );
 }
 
-function Compose(props: { quote: string }) {
-  let input!: HTMLTextAreaElement;
-  onMount(() => input.focus());
-  const submit = (e: Submit) => {
-    e.preventDefault();
-    const body = input.value.trim();
-    if (body) submitComment(body);
-  };
-  return (
-    <form class="card compose" onSubmit={submit}>
-      <q>{props.quote.slice(0, 200)}</q>
-      <div class="who">
-        <Avatar login={doc.login} size={24} />
-        <textarea
-          ref={input}
-          placeholder="Add a comment…"
-          rows="2"
-          onKeyDown={(e) => {
-            if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
-            e.preventDefault();
-            e.currentTarget.form?.requestSubmit();
-          }}
-        />
-      </div>
-      <div class="actions">
-        <button type="button" class="link" onClick={cancelComment}>
-          Cancel
-        </button>
-        <button class="btn">Comment</button>
-      </div>
-    </form>
-  );
-}
-
+// Figma 15:440: avatar 24 + name / time, the body 12px below
 const Message = (props: { c: Comment }) => (
-  <div class="c">
-    <div class="who">
+  <div class="flex flex-col gap-3">
+    <div class="flex items-center gap-2">
       <Avatar login={props.c.author} size={24} />
-      <div class="name">
+      <div class="flex flex-col">
         <span>{props.c.author}</span>
-        <span class="meta">{comments.sending.includes(props.c.id) ? "sending…" : ago(props.c.createdAt)}</span>
+        <span class="text-muted">{comments.sending.includes(props.c.id) ? "sending…" : ago(props.c.createdAt)}</span>
       </div>
     </div>
-    <div class="body">{props.c.body}</div>
+    <div class="break-words whitespace-pre-wrap">
+      <MentionText text={props.c.body} />
+    </div>
   </div>
 );
 
@@ -97,6 +69,7 @@ function ThreadCard(props: { thread: Accessor<Thread>; canWrite: boolean }) {
   const where = () => (t().range ? (t().moved ? "· text changed since" : "") : "· text was removed");
   const [replying, setReplying] = createSignal(false);
   let input!: HTMLInputElement;
+  const mentions = createMentions(() => input, () => {});
   const reply = (e: Submit) => {
     e.preventDefault();
     const body = input.value.trim();
@@ -107,38 +80,57 @@ function ThreadCard(props: { thread: Accessor<Thread>; canWrite: boolean }) {
   };
   return (
     <div
-      class="card thread"
-      classList={{ active: t().root.id === doc.activeThread }}
+      class={`${card} cursor-pointer gap-6 ${t().root.id === doc.activeThread ? "shadow-[0_0_0_2px_rgba(223,171,1,.55),var(--shadow)]" : ""}`}
       onClick={(e) => {
         if (!(e.target instanceof Element && e.target.closest("form, button"))) selectThread(t());
       }}
     >
-      <div class="quote">
-        <q>{(t().root.quote ?? "").slice(0, 120)}</q>
+      <div>
+        <button type="button" class={`${quote} cursor-pointer`} title="Go to the text" onClick={() => selectThread(t())}>
+          {(t().root.quote ?? "").slice(0, 120)}
+        </button>
         <Show when={where()}>
-          <span class="meta">{where()}</span>
+          <span class="mt-0.5 block text-muted">{where()}</span>
         </Show>
       </div>
       <Message c={t().root} />
       <For each={t().replies}>{(c) => <Message c={c} />}</For>
       <Show when={props.canWrite}>
-        <Show when={replying()}>
-          <form class="reply" onSubmit={reply}>
-            <input
-              ref={(el) => ((input = el), requestAnimationFrame(() => el.focus()))}
-              placeholder="Reply…"
-              onKeyDown={(e) => e.key === "Escape" && setReplying(false)}
-            />
+        {/* Figma 22:561: pushing Reply shows the reply box with Comment (= send) and Cancel */}
+        <Show
+          when={replying()}
+          fallback={
+            <div class="flex items-center gap-3">
+              <button type="button" class={btn} onClick={() => setReplying(true)}>
+                Reply
+              </button>
+              <button type="button" class={btn} onClick={() => toggleResolved(t().root)}>
+                {t().root.resolved ? "Reopen" : "Resolve"}
+              </button>
+            </div>
+          }
+        >
+          <form class="flex flex-col gap-5" onSubmit={reply}>
+            <div class="relative">
+              <input
+                ref={(el) => ((input = el), requestAnimationFrame(() => el.focus()))}
+                aria-label="Reply"
+                placeholder="Reply"
+                class="h-7 w-full rounded-lg border-[.4px] border-line px-2 outline-none placeholder:text-muted"
+                onInput={mentions.update}
+                onClick={mentions.update}
+                onKeyDown={(e) => mentions.onKey(e) || (e.key === "Escape" && setReplying(false))}
+              />
+              <mentions.List />
+            </div>
+            <div class="flex items-center gap-1">
+              <button class={btn}>Comment</button>
+              <button type="button" class="h-6 cursor-pointer rounded-[14px] px-3 hover:bg-hover" onClick={() => setReplying(false)}>
+                Cancel
+              </button>
+            </div>
           </form>
         </Show>
-        <div class="actions">
-          <button type="button" class="btn" onClick={() => (replying() ? input.form?.requestSubmit() : setReplying(true))}>
-            Reply
-          </button>
-          <button type="button" class="btn" onClick={() => toggleResolved(t().root)}>
-            {t().root.resolved ? "Reopen" : "Resolve"}
-          </button>
-        </div>
       </Show>
     </div>
   );

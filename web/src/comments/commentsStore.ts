@@ -11,6 +11,12 @@ type File = { service: Comments; key: string; path: string; saved: Saved; error:
 
 const [state, set] = createStore({ list: [] as Comment[], file: "", sending: [] as string[], error: "" });
 export const comments = state;
+// The /__figma dev page (src/dev/figma.tsx): a comment list whose writes stay in this tab.
+export function fixtureComments(list: Comment[], file: string) {
+  const service = { file, list, refresh: async () => false, mutate: async (_: string, fn: (l: Comment[]) => Comment[]) => void (service.list = fn(service.list)) };
+  cur = { service: service as unknown as Comments, key: "fixture", path: file, saved: { confirmed: list, ops: [] }, error: "" };
+  render();
+}
 let cur: File | null = null;
 
 // Idempotent, so applying an op that GitHub already has (a refresh raced the write) changes nothing.

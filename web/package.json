@@ -25,6 +25,8 @@
     "@babel/core": "^8.0.7",
     "@babel/preset-typescript": "^8.0.7",
     "@dschz/bun-plugin-solid": "^1.0.4",
-    "babel-preset-solid": "^1.9.16"
+    "babel-preset-solid": "^1.9.16",
+    "bun-plugin-tailwind": "0.1.2",
+    "tailwindcss": "4.3.3"
   }
 }

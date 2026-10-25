@@ -37,6 +37,8 @@ const [state, set] = createStore<DocState>({
   composing: null,
 });
 export const doc = state;
+// The /__figma dev page (src/dev/figma.tsx).
+export const fixtureDoc = (s: Partial<DocState>) => set(s);
 
 let view: EditorView | undefined;
 export const setView = (v: EditorView | undefined) => (view = v);
@@ -113,7 +115,7 @@ export function startComment() {
   const s = state.session;
   const sel = view && (view.state.field(cellSelection) ?? view.state.selection.main);
   if (!s?.canWrite || !view || !sel || sel.from === sel.to) return;
-  set({ composing: { anchor: s.anchor(sel.from, sel.to), quote: view.state.sliceDoc(sel.from, sel.to) }, tab: "comments", panel: true });
+  set("composing", { anchor: s.anchor(sel.from, sel.to), quote: view.state.sliceDoc(sel.from, sel.to) });
 }
 export const cancelComment = () => set("composing", null);
 export const showTab = (tab: Tab) => set({ tab, panel: true });
@@ -139,7 +141,12 @@ export function submitComment(body: string) {
   set("composing", null);
   const root: Comment = { id: crypto.randomUUID(), author: state.login, body, createdAt: new Date().toISOString(), docId: s.docId, ...c.anchor, quote: c.quote };
   addComment(root);
-  set("activeThread", root.id);
+  // the comment shows on the right only now that it's sent (Figma 22:561)
+  set({ activeThread: root.id, tab: "comments", panel: true });
+  if (view) {
+    view.dispatch({ selection: { anchor: view.state.selection.main.to } });
+    view.focus();
+  }
 }
 
 export function submitReply(rootId: string, body: string) {

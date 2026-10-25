@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/* Figma "Red Letter" (Desktop - 1, node 1:8): Onyx #373737, Middle Grey #EBEBEB, Dark Grey #D8D8D8, Shadows #ADADAD,
+   Google Sans Code. Plain variables so CodeMirror's themes (livePreview.ts, tables.ts) use them too; dark mode swaps them. */
+:root {
+  color-scheme: light dark;
+  --bg: #fff; --side: #ebebeb; --card: #fff; --bg2: #f5f5f5;
+  --fg: #373737; --muted: #adadad; --faint: #adadad; --mark: #d8d8d8;
+  --line: #adadad; --rule: #d8d8d8; --hover: rgba(55, 55, 55, .06); --on: #d9d9d9;
+  --blue: #2383e2; --red: #c4342d; --red-bg: #fdebec; --del: #9f2f2d; --green-bg: #edf3ec; --green: #448361; --yellow-bg: rgba(255, 212, 0, .14); --yellow: #dfab01;
+  --brand: #fe0000; --code: #ee8181; --code-bg: rgba(55, 55, 55, .06); --av-bg: #d8d8d8; --av-fg: #373737; --sel: rgba(0, 64, 255, .5);
+  --glass: rgba(235, 235, 235, .5);
+  --shadow: 0 .5px 3px rgba(55, 55, 55, .09), 0 4px 10px rgba(235, 235, 235, .25), inset 0 -.5px 1px rgba(0, 0, 0, .05);
+  --pop: rgba(15, 15, 15, .05) 0 0 0 1px, rgba(15, 15, 15, .1) 0 3px 6px, rgba(15, 15, 15, .2) 0 9px 24px;
+  --sans: "Google Sans Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #191919; --side: #202020; --card: #252525; --bg2: #2a2a2a;
+    --fg: rgba(255, 255, 255, .86); --muted: rgba(255, 255, 255, .45); --faint: rgba(255, 255, 255, .45); --mark: rgba(255, 255, 255, .25);
+    --line: rgba(255, 255, 255, .2); --rule: rgba(255, 255, 255, .12); --hover: rgba(255, 255, 255, .06); --on: rgba(255, 255, 255, .1);
+    --red: #e5534b; --red-bg: #3e2523; --del: #f08a83; --green-bg: #22372b; --green: #6cc08f;
+    --yellow-bg: rgba(255, 212, 0, .12); --code: #ff8f8f; --code-bg: rgba(255, 255, 255, .08); --av-bg: #3a3633; --av-fg: #d9c2b5;
+    --sel: rgba(64, 120, 255, .45); --glass: rgba(60, 60, 60, .6);
+    --shadow: 0 .5px 3px rgba(0, 0, 0, .3), inset 0 -.5px 1px rgba(255, 255, 255, .04);
+    --pop: rgba(255, 255, 255, .08) 0 0 0 1px, rgba(0, 0, 0, .3) 0 3px 6px, rgba(0, 0, 0, .45) 0 9px 24px;
+  }
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-white: #fff;
+  --color-bg: var(--bg); --color-side: var(--side); --color-card: var(--card); --color-bg2: var(--bg2);
+  --color-fg: var(--fg); --color-muted: var(--muted); --color-faint: var(--faint); --color-mark: var(--mark);
+  --color-line: var(--line); --color-rule: var(--rule); --color-hover: var(--hover); --color-on: var(--on);
+  --color-blue: var(--blue); --color-red: var(--red); --color-red-bg: var(--red-bg); --color-del: var(--del);
+  --color-green: var(--green); --color-green-bg: var(--green-bg); --color-yellow: var(--yellow); --color-yellow-bg: var(--yellow-bg);
+  --color-brand: var(--brand); --color-code: var(--code); --color-code-bg: var(--code-bg); --color-av-bg: var(--av-bg); --color-av-fg: var(--av-fg);
+  --color-glass: var(--glass);
+  --shadow-figma: var(--shadow);
+  --shadow-pop: var(--pop);
+  --font-sans: var(--sans);
+  --font-logo: Grandstander, var(--sans);
+}
+
+@layer base {
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+  /* Figma's 12px text sits on 15px lines: the font's own "normal", not Tailwind's leading-normal (1.5) */
+  body { @apply bg-bg font-sans text-[12px] leading-[normal] text-fg antialiased; }
+  code { @apply rounded bg-code-bg px-1 py-0.5 font-mono text-[85%] leading-none text-code; }
+  summary::-webkit-details-marker { display: none; }
+}
+
+/* DOM that CodeMirror owns (decorations, the tooltip box): CodeMirror's own styles are unlayered, so these are too. */
+.rl-agent { background: var(--green-bg); box-shadow: 0 2px 0 rgba(68, 131, 97, .35); border-radius: 2px; }
+.rl-del { background: var(--red-bg); color: var(--del); text-decoration: line-through; border-radius: 2px; opacity: .8; }
+.rl-conflict { background: var(--red-bg); box-shadow: 0 2px 0 var(--red); }
+.rl-comment { background: var(--yellow-bg); box-shadow: 0 2px 0 rgba(223, 171, 1, .8); cursor: pointer; }
+.rl-comment.active { background: rgba(255, 212, 0, .4); }
+.cm-editor .cm-tooltip.sel-tip { border: 0; background: none; }
+/* CodeMirror aligns its zero-width widget buffers to the baseline, which makes a heading line 1px taller than its
+   line-height when a hidden "#" sits in it (Figma: H1 is exactly 35px, H2 25px). */
+.cm-editor .cm-line .cm-widgetBuffer { vertical-align: top; }

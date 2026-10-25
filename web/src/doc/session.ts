@@ -388,6 +388,24 @@ export class Session {
     }
   }
 
+  // ---- images ----
+  #images = new Map<string, Promise<string | null>>();
+  // `diagrams/a.svg` (next to this file), `../a.png` or `/docs/a.png` (repo root) at this branch, as a blob URL.
+  // Absolute URLs pass through. GitHub's raw bytes come untyped: an SVG needs its type to render in an <img>.
+  imageUrl(src: string): Promise<string | null> {
+    if (/^(https?:|data:|blob:)/.test(src)) return Promise.resolve(src);
+    let url = this.#images.get(src);
+    if (!url) {
+      const dir = this.path.split("/").slice(0, -1).map((s) => `${s}/`).join("");
+      const path = decodeURIComponent(new URL(src, `https://repo/${dir}`).pathname.slice(1));
+      url = gh(`/repos/${this.repoName}/contents/${encPath(path)}?ref=${encodeURIComponent(this.branch)}`, { raw: true })
+        .then(async (res) => (res.ok ? URL.createObjectURL(new Blob([await res.arrayBuffer()], { type: path.endsWith(".svg") ? "image/svg+xml" : "" })) : null))
+        .catch(() => null);
+      this.#images.set(src, url);
+    }
+    return url;
+  }
+
   revertHunk(sha: string, i: number) {
     const h = this.doc.marks?.[sha]?.hunks[i];
     const r = h && this.resolve(h);

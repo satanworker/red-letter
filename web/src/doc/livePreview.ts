@@ -17,6 +17,7 @@ import {
 } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { codeHighlight } from "./highlight.ts";
+import { imageField } from "./images.ts";
 import { mermaidField, mermaidTheme } from "./mermaid.ts";
 import { cellComments, tableField, tableTheme } from "./tables.ts";
 
@@ -29,6 +30,9 @@ const theme = EditorView.theme({
   // 440px text column at the doc's x=180, 80px down (Figma 8:202); the 2px line padding is part of the 30px side
   ".cm-content": { maxWidth: "504px", margin: "0 auto", padding: "80px 30px 30vh", caretColor: "var(--blue)" },
   ".cm-line": { padding: "0 2px" },
+  // CodeMirror wraps with break-spaces, so a space at the end of a line takes room and pushes the last word down.
+  // pre-wrap lets it hang past the edge, as Figma does (Figma 8:198 fits 61 characters in 440px).
+  ".cm-lineWrapping": { whiteSpace: "pre-wrap" },
   // Tables and diagrams break out of the 440px text column by up to 160px a side, keeping 24px from the edges.
   ".cm-lp-wide": { "--out": "clamp(0px, (100cqw - 440px) / 2 - 24px, 160px)", marginLeft: "calc(-1 * var(--out))", marginRight: "calc(-1 * var(--out))" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--blue)", borderLeftWidth: "2px" },
@@ -61,7 +65,9 @@ const theme = EditorView.theme({
   ".cm-lp-codeblock": { background: "var(--bg2)", fontFamily: mono, fontSize: "12px", padding: "0 16px !important" },
   ".cm-lp-fence": { color: "var(--faint)", fontSize: "11px" },
   ".cm-lp-hr": { display: "inline-block", width: "100%", height: "1px", background: "var(--rule)", verticalAlign: "middle" },
-  ".cm-lp-img": { display: "block", maxWidth: "100%", margin: "4px 0", borderRadius: "3px" },
+  // Figma 82:749: the 440px column (block widgets skip the line's 2px padding), 28px under its markdown line and
+  // 28px above the next block (13 + a blank line)
+  ".cm-lp-img": { display: "block", maxWidth: "calc(100% - 4px)", margin: "28px 2px 13px" },
 });
 
 type Prefix = { kind: "bullet" | "number" | "task" | "none"; text: string; checked: boolean };
@@ -90,18 +96,6 @@ class HrWidget extends WidgetType {
     const s = document.createElement("span");
     s.className = "cm-lp-hr";
     return s;
-  }
-}
-
-class ImageWidget extends WidgetType {
-  constructor(readonly url: string, readonly alt: string) { super(); }
-  eq(o: ImageWidget) { return o.url === this.url && o.alt === this.alt; }
-  toDOM() {
-    const img = document.createElement("img");
-    img.className = "cm-lp-img";
-    img.src = this.url;
-    img.alt = this.alt;
-    return img;
   }
 }
 
@@ -236,16 +230,9 @@ function build(view: EditorView): DecorationSet {
           case "URL":
             if (n.parent?.name !== "Image") out.push(link.range(n.from, n.to));
             return;
-          case "Image": {
-            const url = n.getChild("URL");
-            const src = url ? doc.sliceString(url.from, url.to) : "";
-            if (!onActive(n.from) && src.startsWith("https://")) {
-              const m = n.getChildren("LinkMark");
-              const alt = m.length > 1 ? doc.sliceString(m[0]!.to, m[1]!.from) : "";
-              out.push(Decoration.replace({ widget: new ImageWidget(src, alt) }).range(n.from, n.to));
-            } else out.push(muted.range(n.from, n.to));
+          case "Image": // imageField renders the picture under the line
+            out.push(muted.range(n.from, n.to));
             return false;
-          }
           case "ListItem":
             listItem(n, vfrom, vto);
             return;
@@ -338,6 +325,7 @@ export function editorExtensions(): Extension[] {
     tableTheme,
     cellComments,
     mermaidField,
+    imageField,
     mermaidTheme,
     codeHighlight,
   ];

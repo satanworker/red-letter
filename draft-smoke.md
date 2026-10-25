@@ -1,7 +1,7 @@
 # Draft smoke
 
-The quick brown fox jumps over the lazy dog.
+The quick red fox jumps over the lazy dog.
 
 Second paragraph stays the same.
 
-Third paragraph is here.
+Third paragraph is here. Draft adds a sentence.

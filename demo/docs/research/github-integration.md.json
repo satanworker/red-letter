@@ -8,6 +8,6 @@
     "from": "270@3728a398d4305ad6baa3d92678bfb49c",
     "to": "597@3728a398d4305ad6baa3d92678bfb49c",
     "quote": "one webhook for every installed repo, rate limits that scale. OAuth Apps use broad scopes, always act as the user, and need per-repo webhooks that are not cleaned up on revoke. Fine-grained PATs are for a person/script (max 50/user, one owner, org approval); they die if the user loses access. Classic PATs are worse (`repo` = ",
-    "resolved": true
+    "resolved": false
   }
 ]

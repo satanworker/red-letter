@@ -1,5 +1,6 @@
-// GitHub reads for opening a repo. Stateless. cachedGet keeps copies, so a repo opened before also opens offline.
-import { HttpError, cachedGet, encPath, ghJson, type User } from "../github.ts";
+// GitHub calls for opening a repo and forking draft branches. Stateless. cachedGet keeps copies, so a repo opened
+// before also opens offline.
+import { HttpError, cachedGet, encPath, ghJson, post, type User } from "../github.ts";
 
 export type RepoInfo = { node_id: string; full_name: string; default_branch: string; permissions?: { push: boolean } };
 
@@ -34,6 +35,15 @@ export async function resolveBranch(repo: string, parts: string[], wholeAllowed:
 export async function branchHead(repo: string, branch: string): Promise<string> {
   const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(branch)}`));
   return ref.object.sha;
+}
+
+export async function createBranch(repo: string, branch: string, sha: string): Promise<void> {
+  await post(`/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
+}
+
+export async function listDrafts(repo: string): Promise<string[]> {
+  const refs: { ref: string }[] = JSON.parse(await cachedGet(`/repos/${repo}/git/matching-refs/heads/drafts/`));
+  return refs.map((r) => r.ref.slice("refs/heads/".length));
 }
 
 // stale: the list this browser saw last, at once (background sync refreshes it)

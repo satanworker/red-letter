@@ -21,10 +21,13 @@ type DocState = {
   tab: Tab;
   activeThread: string;
   composing: { anchor: Anchor; quote: string } | null;
+  showChanges: boolean; // a draft's edits highlighted against its base branch
+  drafting: string; // the draft action under way ("Merging…"), one at a time
+  draftNote: string; // what the last draft action ended with, if it needs saying
 };
 
 // A fresh object with every key each time: the store merges into the object it holds.
-const idle = (): Status => ({ saving: false, dirty: false, error: undefined, commit: "", people: [], online: false });
+const idle = (): Status => ({ saving: false, dirty: false, error: undefined, commit: "", people: [], online: false, baseHead: "" });
 const [state, set] = createStore<DocState>({
   session: null,
   opening: "",
@@ -35,6 +38,9 @@ const [state, set] = createStore<DocState>({
   tab: "comments",
   activeThread: "",
   composing: null,
+  showChanges: false,
+  drafting: "",
+  draftNote: "",
 });
 export const doc = state;
 // The /__figma dev page (src/dev/figma.tsx).
@@ -58,13 +64,14 @@ export function tick() {
 }
 
 // false: the file doesn't exist on that branch. create: make it, starting with this text.
-export async function openFile(repo: RepoInfo, branch: string, path: string, user: User, create?: string): Promise<boolean> {
+// draftOf: the branch was just forked from that one as a draft of this file.
+export async function openFile(repo: RepoInfo, branch: string, path: string, user: User, create?: string, draftOf?: string): Promise<boolean> {
   closeFile();
-  set({ opening: path, login: user.login, panel: null, tab: "comments", activeThread: "", composing: null });
+  set({ opening: path, login: user.login, panel: null, tab: "comments", activeThread: "", composing: null, showChanges: false, draftNote: "" });
   document.title = `${path.split("/").pop()} · Red Letter`;
   const session = new Session(repo.full_name, repo.node_id, branch, path, repo.permissions?.push === true, user.login);
   try {
-    await session.open(create);
+    await session.open(create, draftOf);
   } catch (e) {
     session.close();
     if (state.opening === path) set("opening", "");
@@ -154,3 +161,23 @@ export function submitReply(rootId: string, body: string) {
 }
 
 export const toggleResolved = (root: Comment) => setResolved(root.id, !root.resolved);
+
+// ---- drafts ----
+export const toggleChanges = () => set("showChanges", (v) => !v);
+export const noteDraft = (note: string) => set("draftNote", note);
+
+// One draft action at a time on the open draft; an error ends up in draftNote. undefined: it didn't finish.
+export async function runDraft<T>(busy: string, action: (s: Session) => Promise<T>): Promise<T | undefined> {
+  const s = state.session;
+  if (!s?.doc.base || state.drafting) return;
+  set({ drafting: busy, draftNote: "" });
+  try {
+    return await action(s);
+  } catch (e) {
+    set("draftNote", e instanceof Error ? e.message : String(e));
+  } finally {
+    set("drafting", "");
+  }
+}
+
+export const updateDraft = () => runDraft("Updating…", (s) => s.updateFromBase());

@@ -3,10 +3,10 @@
 import { createStore } from "solid-js/store";
 import { commentsHead } from "../comments/commentsService.ts";
 import { warmComments } from "../comments/commentsStore.ts";
-import { closeFile, doc, openFile } from "../doc/docStore.ts";
+import { closeFile, doc, noteDraft, openFile, runDraft } from "../doc/docStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy } from "../doc/session.ts";
-import { authKind, completeSignIn, currentUser, token, type User } from "../github.ts";
-import { appInstalledOn, blobUrl, branchHead, getRepo, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
+import { HttpError, authKind, completeSignIn, currentUser, token, type User } from "../github.ts";
+import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listCollaborators, listDocs, listDrafts, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
 type RepoState = {
@@ -19,6 +19,7 @@ type RepoState = {
   branch: string;
   docs: string[];
   path: string;
+  drafts: string[]; // draft branches of the repo (drafts/<login>/<name>)
   filesHidden: boolean;
   collaborators: User[]; // who can be @mentioned, loaded on first use
 };
@@ -33,6 +34,7 @@ const [state, set] = createStore<RepoState>({
   branch: "",
   docs: [],
   path: "",
+  drafts: [],
   filesHidden: localStorage.getItem("rl_files") === "hidden" || innerWidth < 900,
   collaborators: [],
 });
@@ -80,6 +82,39 @@ export function createFile(input: string): string | null {
   }
   navigateTo(blobUrl(state.repo.full_name, state.branch, path));
   return null;
+}
+
+// Branches forked in this tab and not opened yet: openRoute opens them as drafts of the branch they came from.
+const drafting = new Map<string, string>();
+
+// A draft of the open file on its own branch, drafts/<login>/<name>, forked where the doc was last saved (unsaved
+// text is saved first, so the draft starts from what's on screen). It opens at once.
+export async function createDraft(name: string) {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
+  const s = doc.session;
+  if (!slug || !s || !state.repo || !state.user) return;
+  noteDraft("Starting the draft…");
+  await s.save();
+  if (s.status.dirty || s.status.error) return noteDraft(`Couldn't save the text first: ${s.status.error ?? "try again"}`);
+  const branch = `drafts/${state.user.login}/${slug}`;
+  try {
+    await createBranch(state.repo.full_name, branch, s.doc.git!.commit);
+  } catch (e) {
+    return noteDraft(e instanceof HttpError && e.status === 422 ? `There's already a draft called ${slug}` : String(e));
+  }
+  drafting.set(branch, state.branch);
+  set("drafts", [...state.drafts, branch]);
+  navigateTo(blobUrl(state.repo.full_name, branch, state.path));
+}
+
+// Land the open draft on its base branch and go there; the merge shows up there as a change to review.
+export async function mergeDraft() {
+  const base = doc.session?.doc.base?.branch;
+  const merged = await runDraft("Merging…", (s) => s.mergeIntoBase());
+  if (merged === false) noteDraft(`${base} had new edits: they're merged into the draft now. Review them, then merge again.`);
+  if (!merged || !base || !state.repo) return;
+  set("drafts", state.drafts.filter((b) => b !== state.branch));
+  navigateTo(blobUrl(state.repo.full_name, base, state.path));
 }
 
 let current = 0;
@@ -137,6 +172,7 @@ export async function openRoute(url: URL): Promise<void> {
     const user = state.user ?? (await currentUser());
     if (stale() || !user) return;
     set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path, message: "" });
+    if (fresh) void listDrafts(full).then((drafts) => !stale() && set("drafts", drafts), () => {});
     if (!path) {
       closeFile();
       set("message", "This branch has no markdown files yet.");
@@ -145,7 +181,9 @@ export async function openRoute(url: URL): Promise<void> {
     if (url.pathname !== blobUrl(full, branch, path)) history.replaceState(null, "", blobUrl(full, branch, path));
     const isNew = creating.delete(path); // created here: start it with a title instead of loading it
     const title = `# ${path.split("/").pop()!.replace(/\.[^.]+$/, "")}\n\n`;
-    if (!(await openFile(info, branch, path, user, isNew ? title : undefined)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
+    const draftOf = drafting.get(branch);
+    drafting.delete(branch);
+    if (!(await openFile(info, branch, path, user, isNew ? title : undefined, draftOf)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
     if (fresh && !stale()) void syncAll(full, branch, docs);
   } catch (e) {
     if (!stale()) set({ screen: "error", message: e instanceof Error ? e.message : String(e) });

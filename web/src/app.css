@@ -55,6 +55,7 @@
 .rl-agent { background: var(--green-bg); box-shadow: 0 2px 0 rgba(68, 131, 97, .35); border-radius: 2px; }
 .rl-del { background: var(--red-bg); color: var(--del); text-decoration: line-through; border-radius: 2px; opacity: .8; }
 .rl-conflict { background: var(--red-bg); box-shadow: 0 2px 0 var(--red); }
+.rl-draft { background: rgba(35, 131, 226, .12); box-shadow: 0 2px 0 rgba(35, 131, 226, .45); border-radius: 2px; }
 .rl-comment { background: var(--yellow-bg); box-shadow: 0 2px 0 rgba(223, 171, 1, .8); cursor: pointer; }
 .rl-comment.active { background: rgba(255, 212, 0, .4); }
 .cm-editor .cm-tooltip.sel-tip { border: 0; background: none; }

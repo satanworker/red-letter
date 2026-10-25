@@ -6,14 +6,15 @@ import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments } from "../comments/commentsStore.ts";
 import { encPath } from "../github.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
-import { repo, toggleFiles } from "../repo/repoStore.ts";
+import { blobUrl } from "../repo/repoService.ts";
+import { createDraft, mergeDraft, navigateTo, repo, toggleFiles } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { palette } from "../palette/paletteStore.ts";
 import { Avatar, BranchIcon, CommentIcon, Logo, RobotIcon, SidebarIcon, Spinner, badge, fine, ghostBtn } from "../ui.tsx";
 import { AgentChanges } from "./AgentChanges.tsx";
 import { Editor } from "./Editor.tsx";
-import { selectMarks, selectPanelVisible, selectTab } from "./docSelectors.ts";
-import { doc, setTab, showTab, togglePanel } from "./docStore.ts";
+import { selectDraftChanges, selectMarks, selectPanelVisible, selectTab } from "./docSelectors.ts";
+import { doc, setTab, showTab, toggleChanges, togglePanel, updateDraft } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -28,6 +29,23 @@ export function EditorScreen() {
     doc.version;
     return doc.session ? selectMarks(doc.session) : [];
   });
+  const draft = createMemo(() => {
+    doc.version;
+    return doc.session?.doc.base;
+  });
+  const changes = createMemo(() => {
+    doc.version;
+    return doc.showChanges && doc.session ? selectDraftChanges(doc.session) : [];
+  });
+  // the branch this file came from, this branch and every draft: one picker, like Patchwork's
+  const branches = () => [...new Set([draft()?.branch ?? repo.branch, repo.branch, ...repo.drafts])];
+  const pickBranch = (sel: HTMLSelectElement) => {
+    const branch = sel.value;
+    sel.value = repo.branch; // the route decides which branch shows
+    if (branch) return navigateTo(blobUrl(full(), branch, repo.path));
+    const name = prompt("Name the draft", `${file().replace(/\.[^.]+$/, "")}-edits`);
+    if (name) void createDraft(name);
+  };
   const openCount = () => threads().filter((t) => !t.root.resolved).length;
   const panelVisible = () => !!doc.session && selectPanelVisible(doc, openCount(), marks().length);
   const tab = () => selectTab(doc, openCount(), marks().length);
@@ -117,10 +135,21 @@ export function EditorScreen() {
           <a href={`https://github.com/${full()}/blob/${encPath(repo.branch)}/${encPath(repo.path)}`} target="_blank" class="truncate hover:underline" title="Open on GitHub">
             {file()}
           </a>
-          <span class={`ml-2 inline-flex items-center gap-1 ${badge} px-1.5`} title="branch">
+          <label class={`ml-2 inline-flex items-center gap-1 ${badge} px-1.5`} title="Branch: switch, or start a draft of this file">
             <BranchIcon />
-            {repo.branch}
-          </span>
+            <select class="max-w-[260px] cursor-pointer truncate bg-transparent" onChange={(e) => pickBranch(e.currentTarget)}>
+              <For each={branches()}>
+                {(b) => (
+                  <option value={b} selected={b === repo.branch}>
+                    {b}
+                  </option>
+                )}
+              </For>
+              <Show when={canWrite() && doc.session && !draft()}>
+                <option value="">+ New draft…</option>
+              </Show>
+            </select>
+          </label>
           <Show when={!canWrite()}>
             <span class={`ml-2 ${badge} px-1.5`}>read-only</span>
           </Show>
@@ -194,7 +223,52 @@ export function EditorScreen() {
               </Show>
             }
           >
-            {(s) => <Editor session={s} marks={marks} threads={threads} />}
+            {(s) => (
+              <>
+                <Show when={draft() || doc.draftNote}>
+                  {/* floats in the doc's top padding instead of pushing the text down */}
+                  <div class="sticky top-0 z-[5] h-0">
+                    <Show when={draft()}>
+                      {(b) => (
+                        <div class="mx-auto mt-2 flex max-w-[440px] items-center gap-1 rounded-xl bg-card py-1 pr-1.5 pl-3 whitespace-nowrap shadow-figma">
+                          <span class="flex-1 truncate text-muted">draft of {b().branch}</span>
+                          <button
+                            class={doc.showChanges ? "inline-flex h-6 cursor-pointer items-center rounded bg-on px-1 text-fg" : `${ghostBtn} h-6`}
+                            aria-pressed={doc.showChanges}
+                            title={`Highlight what this draft changed from ${b().branch}`}
+                            onClick={toggleChanges}
+                          >
+                            Changes
+                          </button>
+                          <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
+                            <button
+                              class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
+                              disabled={!!doc.drafting}
+                              title={`${b().branch} has new edits: merge them into this draft`}
+                              onClick={() => void updateDraft()}
+                            >
+                              Update from {b().branch}
+                            </button>
+                          </Show>
+                          <button
+                            class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
+                            disabled={!!doc.drafting || !canWrite()}
+                            title={`Merge this draft into ${b().branch} and delete it`}
+                            onClick={() => void mergeDraft()}
+                          >
+                            {doc.drafting || `Merge into ${b().branch}`}
+                          </button>
+                        </div>
+                      )}
+                    </Show>
+                    <Show when={doc.draftNote}>
+                      <p class="mx-auto mt-1.5 max-w-[440px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
+                    </Show>
+                  </div>
+                </Show>
+                <Editor session={s} marks={marks} changes={changes} threads={threads} />
+              </>
+            )}
           </Show>
         </div>
         <Show when={doc.session && !panelVisible()}>

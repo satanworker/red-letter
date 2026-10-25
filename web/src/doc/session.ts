@@ -14,7 +14,11 @@ export type Anchor = { from: string; to: string };
 export type Hunk = Anchor & { before: string };
 export type ConflictMark = Hunk & { human: string; agent: string };
 export type AgentMark = { sha: string; author: string; message: string; at: string; hunks: Hunk[]; conflicts: ConflictMark[] };
-export type RLDoc = { text: string; git?: { commit: string; heads: string[] }; marks?: Record<string, AgentMark> };
+// A draft: this branch forked from `branch` to edit this file. `commit`: the base branch's last commit merged into
+// the draft; `heads`: where the doc's text is exactly that commit's (the next merge from the base replays there);
+// `inGit`: the last of those commits recorded as a git merge parent (behind `commit` until that merge is saved).
+export type Base = { branch: string; commit: string; heads: string[]; inGit: string };
+export type RLDoc = { text: string; git?: { commit: string; heads: string[] }; marks?: Record<string, AgentMark>; base?: Base };
 type Meta = { docId: string; branch: string; path: string; commit: string; heads: string[]; replayVersion: number };
 type Local = { docId: string; bytes: Uint8Array; crlf: boolean; crdtHead: string };
 type GitCommit = { sha: string; parents: { sha: string }[]; message: string; author: { name: string; date: string }; tree: { sha: string } };
@@ -26,7 +30,8 @@ const lf = (s: string) => s.replaceAll("\r\n", "\n");
 const errText = (e: unknown) => (e instanceof TypeError ? "can't reach GitHub" : String(e instanceof Error ? e.message : e));
 
 // people: GitHub logins of other tabs on this file (peer ids are "<login>-<random>")
-export type Status = { saving: boolean; dirty: boolean; error?: string; commit: string; people: string[]; online: boolean };
+// baseHead: a draft's base branch head, as of the last poll
+export type Status = { saving: boolean; dirty: boolean; error?: string; commit: string; people: string[]; online: boolean; baseHead: string };
 
 // The snapshot ref now holds a different doc (the ref was deleted and recreated): this browser's copy is stale.
 export class DocReset extends Error {}
@@ -34,6 +39,10 @@ export class DocReset extends Error {}
 export const NO_SNAPSHOT = ZERO;
 const docKey = (repo: string, branch: string, path: string) => `${repo.toLowerCase()} ${branch} ${path}`;
 export const snapshotRef = async (branch: string, path: string) => `refs/red-letter/v1/${await sha1(branch)}/${await sha1(path)}`;
+async function headOf(repo: string, branch: string, fresh = false): Promise<string> {
+  const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(branch)}`, { fresh }));
+  return ref.object.sha;
+}
 
 // Every snapshot ref of a branch in one request (ETag-revalidated): ref name -> snapshot commit.
 // fresh: after losing a race, when a recent shared answer would be stale.
@@ -79,7 +88,7 @@ export async function syncCopy(repo: string, branch: string, path: string, snaps
 
 export class Session {
   handle!: DocHandle<RLDoc>;
-  status: Status = { saving: false, dirty: false, commit: "", people: [], online: false };
+  status: Status = { saving: false, dirty: false, commit: "", people: [], online: false, baseHead: "" };
   onStatus: () => void = () => {};
   // Resolves once the doc has caught up with git (or failed to: see status.error). Rejects with DocReset.
   synced: Promise<void> = Promise.resolve();
@@ -132,11 +141,6 @@ export class Session {
     return lf(text);
   }
 
-  async #headSha(): Promise<string> {
-    const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${this.repoName}/git/ref/heads/${encPath(this.branch)}`));
-    return ref.object.sha;
-  }
-
   async #crdtRefSha(fresh = false): Promise<string> {
     return (await snapshotHeads(this.repoName, this.branch, fresh)).get(this.#crdtRef) ?? ZERO;
   }
@@ -156,7 +160,8 @@ export class Session {
 
   // create: a new file with this text. It opens at once; the file and its snapshot are committed by a save in
   // the background (one atomic updateRefs, like any save).
-  async open(create?: string) {
+  // draftOf: this branch was just forked from that one to draft this file; the doc records it as its base.
+  async open(create?: string, draftOf?: string) {
     this.#crdtRef = await snapshotRef(this.branch, this.path);
     if (create !== undefined) return this.#create(create);
     const local = await idbGet<Local>("docs", this.#key);
@@ -177,10 +182,13 @@ export class Session {
       this.log("loaded snapshot", this.#crdtHead.slice(0, 7), "at", snap.meta.commit.slice(0, 7));
     } else {
       // First opener ever: init from the file at branch head, then claim the snapshot ref. Git is the lock.
-      const head = await this.#headSha();
+      const head = await headOf(this.repoName, this.branch);
       this.handle = this.#repo.create<RLDoc>({ text: await this.#file(head) });
       const heads = A.getHeads(this.doc);
-      this.handle.change((d) => (d.git = { commit: head, heads }));
+      this.handle.change((d) => {
+        d.git = { commit: head, heads };
+        if (draftOf) d.base = { branch: draftOf, commit: head, heads, inGit: head };
+      });
       if (this.canWrite) {
         const snap = await this.#snapshotCommit(head, heads);
         const res = await gh(`/repos/${this.repoName}/git/refs`, { method: "POST", body: JSON.stringify({ ref: this.#crdtRef, sha: snap }) });
@@ -199,7 +207,7 @@ export class Session {
   }
 
   async #create(text: string) {
-    const head = await this.#headSha();
+    const head = await headOf(this.repoName, this.branch);
     // committed text = "" (the file doesn't exist yet), so the starting text counts as an unsaved edit
     this.handle = this.#repo.create<RLDoc>({ text: "" });
     this.handle.change((d) => (d.git = { commit: head, heads: A.getHeads(d) }));
@@ -292,9 +300,9 @@ export class Session {
 
   async #poll(fresh: boolean) {
     try {
-      const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${this.repoName}/git/ref/heads/${encPath(this.branch)}`, { fresh }));
+      const head = await headOf(this.repoName, this.branch, fresh);
       if (fresh) this.status.error = undefined; // GitHub answered: an earlier "can't reach" is over
-      const head = ref.object.sha;
+      if (this.doc.base) this.status.baseHead = await headOf(this.repoName, this.doc.base.branch, fresh);
       const git = this.doc.git!;
       if (head === git.commit) return;
       // first-parent chain head..git.commit, oldest first
@@ -317,21 +325,23 @@ export class Session {
       let heads = git.heads;
       for (const c of steps) {
         const trailer = c.message.split("\n").find((l) => l.startsWith(TRAILER));
-        if (trailer) {
-          const own = trailer.slice(TRAILER.length).trim().split(",");
-          if (!A.hasHeads(this.doc, own)) {
-            // that tab's ops haven't reached us via the hub; the snapshot written with that commit has them
-            this.#crdtHead = await this.#crdtRefSha(true);
-            const snap = await readSnapshot(this.repoName, this.#crdtHead);
-            this.handle.update((d) => A.merge(d, A.load<RLDoc>(snap.bytes)));
-            if (!A.hasHeads(this.doc, own)) break;
-          }
-          [from, heads] = [c.sha, own];
-        } else {
-          [from, heads] = [c.sha, await this.#replay(c, from, heads)];
+        const own = trailer?.slice(TRAILER.length).trim().split(",") ?? [];
+        if (trailer && !A.hasHeads(this.doc, own)) {
+          // that tab's ops haven't reached us via the hub; the snapshot written with that commit has them
+          this.#crdtHead = await this.#crdtRefSha(true);
+          const snap = this.#crdtHead !== ZERO && (await readSnapshot(this.repoName, this.#crdtHead));
+          if (snap) this.handle.update((d) => A.merge(d, A.load<RLDoc>(snap.bytes)));
         }
-        const done = { commit: from, heads };
-        this.handle.change((d) => (d.git = done));
+        // a trailer whose heads aren't in this doc even now is another file's save: replayed like any commit
+        // (usually a no-op here)
+        const ours = trailer !== undefined && A.hasHeads(this.doc, own);
+        [from, heads] = [c.sha, ours ? own : await this.#replay(c, from, heads)];
+        const done = { commit: from, heads: [...heads] }; // heads may be the doc's own array; automerge refuses to re-reference it
+        const merged = ours && c.parents[1]?.sha; // another tab saved this draft's merge from its base
+        this.handle.change((d) => {
+          d.git = done;
+          if (merged && d.base?.commit === merged) d.base.inGit = merged;
+        });
       }
     } catch (e) {
       this.status.error = errText(e);
@@ -342,7 +352,7 @@ export class Session {
     }
   }
 
-  async #replay(c: GitCommit, from: string, heads: A.Heads): Promise<A.Heads> {
+  async #replay(c: GitCommit, from: string, heads: A.Heads, message = c.message.split("\n")[0]): Promise<A.Heads> {
     // a commit where this file doesn't exist (yet, or any more) has it empty
     const blob = await this.#file(c.sha).catch((e) => (e instanceof HttpError && e.status === 404 ? "" : Promise.reject(e)));
     const humanHeads = A.getHeads(this.doc);
@@ -357,7 +367,7 @@ export class Session {
       const mark: AgentMark = {
         sha: c.sha,
         author: c.author.name,
-        message: c.message.split("\n")[0],
+        message,
         at: c.author.date,
         hunks: editRegions(doc, heads, r.heads, humanHeads).map(anchor),
         conflicts: findConflicts(doc, heads, humanHeads, r.heads).map((g) => ({ ...anchor(g), human: g.human, agent: g.agent })),
@@ -448,15 +458,25 @@ export class Session {
       const d = this.doc;
       const heads = A.getHeads(d);
       const parent = d.git!.commit;
-      if (d.text === this.#committedText()) return;
+      // a draft that merged its base branch into the doc: that merge isn't in git yet, even if the text is unchanged
+      const merge = d.base && d.base.inGit !== d.base.commit ? d.base : undefined;
+      if (!merge && d.text === this.#committedText()) return;
       const content = this.#crlf ? d.text.replaceAll("\n", "\r\n") : d.text;
-      const pc = await object<GitCommit>(this.repoName, "commits", parent);
+      let baseTree = (await object<GitCommit>(this.repoName, "commits", parent)).tree.sha;
+      if (merge) {
+        // ponytail: a draft edits one file, so the merge takes every other file from the base; drafts touching
+        // other files are refused (merge them on GitHub) until there's a per-file three-way merge here
+        await this.#onlyThisFile(merge.inGit, parent);
+        baseTree = (await object<GitCommit>(this.repoName, "commits", merge.commit)).tree.sha;
+      }
       const tree = await post<{ sha: string }>(`/repos/${this.repoName}/git/trees`, {
-        base_tree: pc.tree.sha,
+        base_tree: baseTree,
         tree: [{ path: this.path, mode: "100644", type: "blob", content }],
       });
-      const message = `Edit ${this.path} in Red Letter\n\n${TRAILER} ${heads.join(",")}`;
-      const c = await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message, tree: tree.sha, parents: [parent] });
+      const title = merge ? `Merge ${merge.branch} into ${this.branch} in Red Letter` : `Edit ${this.path} in Red Letter`;
+      const message = `${title}\n\n${TRAILER} ${heads.join(",")}`;
+      const parents = merge ? [parent, merge.commit] : [parent];
+      const c = await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message, tree: tree.sha, parents });
       const snap = await this.#snapshotCommit(c.sha, heads);
       const err = await updateRefs(this.repoId, [
         { name: `refs/heads/${this.branch}`, beforeOid: parent, afterOid: c.sha },
@@ -469,7 +489,10 @@ export class Session {
         return this.#save(attempt + 1);
       }
       this.#crdtHead = snap;
-      this.handle.change((doc) => (doc.git = { commit: c.sha, heads }));
+      this.handle.change((doc) => {
+        doc.git = { commit: c.sha, heads };
+        if (merge) doc.base!.inGit = merge.commit;
+      });
       this.status.commit = c.sha;
       this.status.error = undefined;
       this.log("saved", c.sha.slice(0, 7));
@@ -481,5 +504,58 @@ export class Session {
       this.#markDirty();
       this.onStatus();
     }
+  }
+
+  // ---- drafts ----
+  // Throws unless the draft branch changed nothing but this file from `from` to `to`.
+  async #onlyThisFile(from: string, to: string) {
+    if (from === to) return;
+    const cmp: { files?: { filename: string }[] } = JSON.parse(await cachedGet(`/repos/${this.repoName}/compare/${from}...${to}`, { immutable: true }));
+    const other = cmp.files?.find((f) => f.filename !== this.path);
+    if (other) throw new Error(`this draft also changed ${other.filename}; merge it on GitHub`);
+  }
+
+  // Bring the base branch's new commits into this draft, like an agent push: the base's text is replayed at the
+  // heads where the doc read as the base's last merged commit, so the draft's edits and the base's merge character
+  // by character (overlaps are flagged as conflicts). Then saved as a git merge commit. The writer decides when.
+  async updateFromBase() {
+    await this.save();
+    if (this.status.error) throw new Error(this.status.error);
+    const b = this.doc.base!;
+    const head = (this.status.baseHead = await headOf(this.repoName, b.branch, true));
+    if (head === b.commit) return;
+    await this.#onlyThisFile(b.inGit, this.doc.git!.commit);
+    const c = await object<GitCommit>(this.repoName, "commits", head);
+    const heads = await this.#replay(c, b.commit, b.heads, `Changes on ${b.branch}`);
+    this.handle.change((d) => {
+      d.base!.commit = head;
+      d.base!.heads = [...heads]; // unchanged when the base didn't touch this file: then it's the doc's own array
+    });
+    await this.save();
+    if (this.status.error) throw new Error(this.status.error);
+  }
+
+  // Land the draft: a merge commit on the base branch with the draft's tree; the draft branch and its snapshot are
+  // deleted in the same atomic update, which fails if anyone moved either branch meanwhile. Tabs on the base see
+  // the merge as an external push and replay it. false: the base had moved, its changes are now merged into the
+  // draft for review, and merging again lands exactly what was reviewed.
+  async mergeIntoBase(): Promise<boolean> {
+    const before = this.doc.base!.commit;
+    await this.updateFromBase();
+    const b = this.doc.base!;
+    if (b.commit !== before) return false;
+    if (b.inGit !== b.commit || this.status.dirty) throw new Error("the draft isn't saved yet");
+    const draft = this.doc.git!.commit;
+    const { tree } = await object<GitCommit>(this.repoName, "commits", draft);
+    const message = `Merge draft ${this.branch} into ${b.branch}`;
+    const m = await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message, tree: tree.sha, parents: [b.commit, draft] });
+    const err = await updateRefs(this.repoId, [
+      { name: `refs/heads/${b.branch}`, beforeOid: b.commit, afterOid: m.sha },
+      { name: `refs/heads/${this.branch}`, beforeOid: draft, afterOid: ZERO },
+      { name: this.#crdtRef, beforeOid: await this.#crdtRefSha(true), afterOid: ZERO },
+    ]);
+    if (err) throw new Error(`merge lost a race, try again: ${err}`);
+    this.log("merged into", b.branch, m.sha.slice(0, 7));
+    return true;
   }
 }

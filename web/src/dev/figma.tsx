@@ -81,7 +81,7 @@ export function showFigmaFixture() {
   fixtureDoc({
     session,
     login: "satanworker",
-    status: { saving: false, dirty: false, commit: "9d164de52712fd3d5373d4f8ae31e3de0b80ad35", people: [], online: true },
+    status: { saving: false, dirty: false, commit: "9d164de52712fd3d5373d4f8ae31e3de0b80ad35", people: [], online: true, baseHead: "" },
     panel: true,
     tab: "comments",
   });

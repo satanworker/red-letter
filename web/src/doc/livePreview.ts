@@ -19,8 +19,9 @@ const theme = EditorView.theme({
   "&": { color: "var(--fg)", backgroundColor: "var(--bg)", fontSize: "12px" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "var(--sans)", lineHeight: "1.25" },
-  // the text fills the doc column, 80px down (Figma 8:202); the left side leaves room for "###### " hanging there
-  ".cm-content": { padding: "80px 30px 30vh 56px", caretColor: "var(--blue)" },
+  // a centred column at most 780px wide (30px padding included), 80px down (Figma 8:202); heading marks hang into
+  // the side margin
+  ".cm-content": { boxSizing: "border-box", maxWidth: "780px", margin: "0 auto", padding: "80px 30px 30vh", caretColor: "var(--blue)" },
   ".cm-line": { padding: "0 2px" },
   // CodeMirror wraps with break-spaces, so a space at the end of a line takes room and pushes the last word down.
   // pre-wrap lets it hang past the edge, as Figma does (Figma 8:198 fits 61 characters in 440px).

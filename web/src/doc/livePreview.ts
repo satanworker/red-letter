@@ -11,6 +11,7 @@ import type { SyntaxNode } from "@lezer/common";
 import { codeHighlight } from "./highlight.ts";
 import { imageField } from "./images.ts";
 import { mermaidField, mermaidTheme } from "./mermaid.ts";
+import { slashCommands } from "./slash.ts";
 import { cellComments, tableField, tableTheme } from "./tables.ts";
 
 const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
@@ -264,6 +265,7 @@ export function editorExtensions(): Extension[] {
     drawSelection(),
     dropCursor(),
     keymap.of([{ key: "Shift-Enter", run: lineInItem }, { key: "Mod-b", run: emphasis(2) }, { key: "Mod-i", run: emphasis(1) }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+    slashCommands,
     markdown({ base: markdownLanguage }),
     EditorView.lineWrapping,
     theme,

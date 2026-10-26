@@ -56,7 +56,8 @@ export function EditorScreen() {
   };
   const openCount = () => threads().filter((t) => !t.root.resolved).length;
   const tab = () => selectTab(doc, openCount(), marks().length);
-  const people = () => [...new Set(doc.status.people)];
+  // other people on this file; your own other tabs count for saving (Session.close) but aren't shown
+  const people = () => [...new Set(doc.status.people)].filter((p) => p !== repo.user?.login);
   const [copied, setCopied] = createSignal(false);
   const share = async () => {
     await navigator.clipboard.writeText(location.href);

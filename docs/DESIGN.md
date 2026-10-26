@@ -94,7 +94,7 @@ Done:
 - **Sign-in, two options** (tokens only in the browser; the hub exchanges codes and stores nothing):
   - Default "Continue with GitHub": OAuth App "Red Letter", `repo` scope, expiring tokens with refresh, nothing to install. Verified on localhost.
   - "Use the GitHub App instead": [`red-letter-diff`](https://github.com/apps/red-letter-diff), per-repo install. Its user token (8 h, with refresh) commits through `updateRefs`, which closed the last open risk from the spikes. A repo without the App routes the user to its install page.
-- **Live sync and saving:** edits sync through the Go hub, one room per file (repo + branch + path) with presence avatars. Saves happen 30–40 s after the last edit or on Save / Ctrl-S.
+- **Live sync and saving:** edits sync through the Go hub, one room per file (repo + branch + path) with presence avatars of the other people there (your own other tabs aren't shown, but still count as "someone here" for saving on close). Saves happen 30–40 s after the last edit or on Save / Ctrl-S.
 - **Agent pushes:**
   - replayed into every open tab without duplicated text;
   - shown inline as insertions plus struck-through deletions;

@@ -1,0 +1,10 @@
+{
+ "docId": "qZbKSktXKJuMwgjs2nLzjvHDmnW",
+ "branch": "main",
+ "path": "docs/research/crdts-in-production.md",
+ "commit": "2fd7cd2db44d7f0fe04033cc14121a7402092d35",
+ "heads": [
+  "e979313510d1b5de0bf18441a7959206df9f935375e9900d866aacbc48770f82"
+ ],
+ "replayVersion": 1
+}

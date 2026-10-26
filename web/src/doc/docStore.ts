@@ -116,6 +116,14 @@ export function closeFile() {
   set({ session: null, opening: "", status: idle(), history: [] });
 }
 
+// The tab's favicon: the open doc's icon, else the ¶ from index.html.
+const favicon = document.querySelector<HTMLLinkElement>("link[rel=icon]")!;
+const defaultFavicon = favicon.href;
+export function showFavicon(icon: string) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">${icon}</text></svg>`;
+  favicon.href = icon ? `data:image/svg+xml,${encodeURIComponent(svg)}` : defaultFavicon;
+}
+
 // Refetched whenever the doc's commit moves (a save, a replayed push); keyed by that sha, so asking again is free.
 let historyAt = "";
 async function loadHistory(s: Session) {

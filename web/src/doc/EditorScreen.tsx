@@ -1,6 +1,6 @@
 // The workspace: header, file sidebar, the doc, and the comments / history panel.
 // Switching files swaps only the doc: the Editor is keyed on the Session.
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { CommentsPanel } from "../comments/CommentsPanel.tsx";
 import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments } from "../comments/commentsStore.ts";
@@ -15,7 +15,7 @@ import { Editor } from "./Editor.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab } from "./docSelectors.ts";
-import { doc, showTab, toggleChanges, updateDraft } from "./docStore.ts";
+import { doc, showFavicon, showTab, toggleChanges, updateDraft } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -43,6 +43,8 @@ export function EditorScreen() {
     doc.version;
     return doc.session ? (selectIcon(doc.session.doc.text)?.icon ?? "") : "";
   });
+  createEffect(() => showFavicon(icon()));
+  onCleanup(() => showFavicon(""));
   // the branch this file came from, this branch and every draft: one picker, like Patchwork's
   const branches = () => [...new Set([draft()?.branch ?? repo.branch, repo.branch, ...repo.drafts])];
   const pickBranch = (sel: HTMLSelectElement) => {

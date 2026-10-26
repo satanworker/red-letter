@@ -13,7 +13,8 @@ import { palette } from "../palette/paletteStore.ts";
 import { Avatar, BranchIcon, CommentIcon, Logo, SidebarIcon, Spinner, badge, fine, ghostBtn } from "../ui.tsx";
 import { Editor } from "./Editor.tsx";
 import { History } from "./History.tsx";
-import { selectDraftChanges, selectHistory, selectMarks, selectTab } from "./docSelectors.ts";
+import { IconPicker } from "./IconPicker.tsx";
+import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab } from "./docSelectors.ts";
 import { doc, showTab, toggleChanges, updateDraft } from "./docStore.ts";
 
 export function EditorScreen() {
@@ -37,6 +38,10 @@ export function EditorScreen() {
   const changes = createMemo(() => {
     doc.version;
     return doc.showChanges && doc.session ? selectDraftChanges(doc.session) : [];
+  });
+  const icon = createMemo(() => {
+    doc.version;
+    return doc.session ? (selectIcon(doc.session.doc.text)?.icon ?? "") : "";
   });
   // the branch this file came from, this branch and every draft: one picker, like Patchwork's
   const branches = () => [...new Set([draft()?.branch ?? repo.branch, repo.branch, ...repo.drafts])];
@@ -197,7 +202,7 @@ export function EditorScreen() {
       </header>
       <main class="relative flex min-h-0 flex-1">
         <FileSidebar />
-        <div id="doc" class="min-w-0 flex-1 overflow-auto bg-bg">
+        <div id="doc" class="group/doc min-w-0 flex-1 overflow-auto bg-bg">
           <Show
             when={doc.session}
             keyed
@@ -260,6 +265,9 @@ export function EditorScreen() {
                       <p class="mx-auto mt-1.5 max-w-[440px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
                     </Show>
                   </div>
+                </Show>
+                <Show when={canWrite()}>
+                  <IconPicker icon={icon()} />
                 </Show>
                 <Editor session={s} marks={marks} changes={changes} threads={threads} />
               </>

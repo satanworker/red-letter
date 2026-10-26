@@ -25,3 +25,31 @@ export const selectDraftChanges = (s: Session): Region[] => (s.doc.base ? editRe
 
 // The chosen tab; until one is chosen, History when agent commits wait for review and no comments are open.
 export const selectTab = (s: PanelState, openThreads: number, marks: number) => (!s.picked && !openThreads && marks ? "history" : s.tab);
+
+const graphemes = new Intl.Segmenter();
+// The first character of `s` (a whole grapheme: flags, skin tones, ZWJ sequences) if it's an emoji, else "".
+export function firstEmoji(s: string): string {
+  const g = graphemes.segment(s)[Symbol.iterator]().next().value?.segment ?? "";
+  return /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(g) ? g : "";
+}
+
+// The doc's icon: an emoji at the start of its first `# ` heading (code fences skipped). `at`: where the heading's
+// text starts; `end`: where the icon and the space after it end (= at without an icon). null: no `# ` heading.
+export function selectIcon(text: string): { icon: string; at: number; end: number } | null {
+  let fenced = false;
+  for (let pos = 0; pos <= text.length; ) {
+    let eol = text.indexOf("\n", pos);
+    if (eol < 0) eol = text.length;
+    const line = text.slice(pos, eol);
+    if (/^ {0,3}(```|~~~)/.test(line)) fenced = !fenced;
+    const h = !fenced && /^ {0,3}# +/.exec(line);
+    if (h) {
+      const at = pos + h[0].length;
+      const icon = firstEmoji(line.slice(h[0].length));
+      const space = icon ? /^ */.exec(line.slice(h[0].length + icon.length))![0].length : 0;
+      return { icon, at, end: at + icon.length + space };
+    }
+    pos = eol + 1;
+  }
+  return null;
+}

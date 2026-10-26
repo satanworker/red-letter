@@ -7,6 +7,7 @@ import type { Comment } from "../comments/commentsService.ts";
 import type { Thread } from "../comments/commentsSelectors.ts";
 import { HttpError, type User } from "../github.ts";
 import { fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
+import { selectIcon } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection } from "./tables.ts";
 
@@ -163,6 +164,17 @@ export async function insertImages(files: File[], pos: number) {
   const line = view.state.doc.lineAt(from); // each picture on a line of its own
   const insert = (from > line.from ? "\n" : "") + links.join("\n") + (from < line.to ? "\n" : "");
   view.dispatch({ changes: { from, insert }, selection: { anchor: from + insert.length }, userEvent: "input.paste" });
+}
+
+// The doc's icon lives in the markdown: an emoji at the start of its first `# ` heading. "" removes it. A doc without
+// that heading gets one, titled after the file.
+export function setIcon(icon: string) {
+  if (!view || !state.session) return;
+  const h = selectIcon(view.state.doc.toString());
+  if (!h && !icon) return;
+  const title = state.session.path.split("/").pop()!.replace(/\.[^.]+$/, "");
+  const changes = h ? { from: h.at, to: h.end, insert: icon && `${icon} ` } : { from: 0, insert: `# ${icon} ${title}\n\n` };
+  view.dispatch({ changes, userEvent: "input" });
 }
 
 export function selectThread(t: Thread) {

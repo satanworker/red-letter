@@ -76,7 +76,6 @@ Smaller rules:
 - Bundle size: serve the `.wasm` file instead of base64 (Vite).
 
 ## Run
-
 ```sh
 cd experiments && bun install
 bun crdt/merge-quality.ts && bun crdt/deterministic-replay.ts && bun crdt/anchors-and-perf.ts && bun crdt/changeat-bug.ts

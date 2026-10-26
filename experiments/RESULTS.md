@@ -1,10 +1,12 @@
 # Spike results — 2026-10-12
 
+Привет залупа
+
 Verdict: **the serverless design holds.** Every primitive ran end to end in a real browser against GitHub. Three design changes came out of it (below). Nothing found blocks a prototype.
 
 ## What ran
 
-| spike | how | result |
+| spike | how | result |e
 |---|---|---|
 | S1 merge quality | `crdt/merge-quality.ts`: 11 human-vs-agent scenarios. Compared against Loro and `git merge-file` | Automerge is as good as Loro char and better than git: ideal in 6/11 and acceptable in 2 more, where git conflicts in 8/11. Every bad merge gets flagged (see table) |
 | S1b two tabs replay one push | `crdt/deterministic-replay.ts` | naive replay **duplicates** the agent's text. Deterministic replay produces byte-identical changes and converges |
@@ -12,6 +14,7 @@ Verdict: **the serverless design holds.** Every primitive ran end to end in a re
 | automerge bug | `crdt/changeat-bug.ts` | `changeAt` gives **wrong materialized text/patches ~47% of the time** (139/300) with a concurrent edit. Save/load is correct. The editor would show corrupted text |
 | S2/S3 GitHub API | `github/` scripts, `github/FINDINGS.md` | CORS ok, CAS ok, custom refs ok, 304 polls free. Two surprises changed the commit sequence |
 | S4 browser | `browser/` (CM6 + automerge-repo + relay + GitHub from the page), driven by headless Chromium | full loop passes, below |
+
 
 ## S1 merge table (Automerge = `crdt/replay.ts`, LF-normalised)
 

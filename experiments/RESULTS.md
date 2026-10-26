@@ -1,7 +1,5 @@
 # Spike results — 2026-10-12
 
-Привет залупа
-
 Verdict: **the serverless design holds.** Every primitive ran end to end in a real browser against GitHub. Three design changes came out of it (below). Nothing found blocks a prototype.
 
 ## What ran

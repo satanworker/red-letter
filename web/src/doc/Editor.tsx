@@ -8,7 +8,7 @@ import { render } from "solid-js/web";
 import type { Thread } from "../comments/commentsSelectors.ts";
 import { createMentions } from "../comments/Mentions.tsx";
 import { AtIcon, SendIcon, TipArrow } from "../ui.tsx";
-import { cancelComment, doc, docChanged, openThread, setView, startComment, submitComment } from "./docStore.ts";
+import { cancelComment, doc, docChanged, insertImages, openThread, setView, startComment, submitComment } from "./docStore.ts";
 import { imageUrl } from "./images.ts";
 import { editorExtensions } from "./livePreview.ts";
 import { cellSelection } from "./tables.ts";
@@ -194,6 +194,15 @@ function decorations(session: Session, len: number, marks: AgentMark[], changes:
   return Decoration.set(out, true);
 }
 
+// Pasted or dropped image files go to git (insertImages); anything else is CodeMirror's.
+function images(e: Event, data: DataTransfer | null, pos: number): boolean {
+  const files = [...(data?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+  if (!files.length) return false;
+  e.preventDefault();
+  void insertImages(files, pos);
+  return true;
+}
+
 export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; changes: Accessor<Region[]>; threads: Accessor<Thread[]> }) {
   let host!: HTMLDivElement;
   onMount(() => {
@@ -206,6 +215,12 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
         remoteNotUndoable,
         EditorState.readOnly.of(!s.canWrite),
         s.canWrite ? commentTooltip() : [],
+        s.canWrite
+          ? EditorView.domEventHandlers({
+              paste: (e, v) => images(e, e.clipboardData, v.state.selection.main.head),
+              drop: (e, v) => images(e, e.dataTransfer, v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.selection.main.head),
+            })
+          : [],
         imageUrl.of((src) => s.imageUrl(src)),
         keymap.of([
           { key: "Mod-s", preventDefault: true, run: () => (void s.save(), true) },

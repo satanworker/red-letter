@@ -9,7 +9,9 @@ import { HubAdapter } from "./hub.ts";
 import { editRegions, findConflicts, type Region } from "./regions.ts";
 import { REPLAY_VERSION, replay } from "./replay.ts";
 
-// Ranges are stored as cursors: `from` = first char (inclusive), `to` = char after the range (exclusive) or "end".
+// Ranges are stored as cursors: `from` = first char (inclusive); `to` = the range's last char, as a "before" cursor
+// (Automerge prefixes those with "-"), so text typed right after the range stays out of it. Anchors written before
+// that (no "-") hold the char after the range, or "end"; an empty range is `from` twice.
 export type Anchor = { from: string; to: string };
 export type Hunk = Anchor & { before: string };
 export type ConflictMark = Hunk & { human: string; agent: string };
@@ -18,7 +20,9 @@ export type AgentMark = { sha: string; author: string; message: string; at: stri
 // the draft; `heads`: where the doc's text is exactly that commit's (the next merge from the base replays there);
 // `inGit`: the last of those commits recorded as a git merge parent (behind `commit` until that merge is saved).
 export type Base = { branch: string; commit: string; heads: string[]; inGit: string };
-export type RLDoc = { text: string; git?: { commit: string; heads: string[] }; marks?: Record<string, AgentMark>; base?: Base };
+// images: pictures pasted or dropped into this doc, src as linked -> git blob sha (uploaded at once). A save commits
+// the ones the text links to, next to the file.
+export type RLDoc = { text: string; git?: { commit: string; heads: string[] }; marks?: Record<string, AgentMark>; base?: Base; images?: Record<string, string> };
 type Meta = { docId: string; branch: string; path: string; commit: string; heads: string[]; replayVersion: number };
 type Local = { docId: string; bytes: Uint8Array; crlf: boolean; crdtHead: string };
 type GitCommit = { sha: string; parents: { sha: string }[]; message: string; author: { name: string; date: string }; tree: { sha: string } };
@@ -385,13 +389,14 @@ export class Session {
   anchor(from: number, to: number): Anchor {
     const d = this.doc;
     const at = (i: number) => A.getCursor(d, ["text"], i >= d.text.length ? "end" : i);
-    return { from: at(from), to: at(to) };
+    // "before": if that char is deleted, the end moves back onto the char before it
+    return { from: at(from), to: to > from ? A.getCursor(d, ["text"], to - 1, "before") : at(from) };
   }
 
   resolve(a: Anchor): { from: number; to: number } | null {
     try {
       const from = A.getCursorPosition(this.doc, ["text"], a.from);
-      const to = A.getCursorPosition(this.doc, ["text"], a.to);
+      const to = A.getCursorPosition(this.doc, ["text"], a.to) + (a.to.startsWith("-") ? 1 : 0);
       return { from, to: Math.max(from, to) };
     } catch {
       return null; // cursor from another doc identity
@@ -400,20 +405,54 @@ export class Session {
 
   // ---- images ----
   #images = new Map<string, Promise<string | null>>();
-  // `diagrams/a.svg` (next to this file), `../a.png` or `/docs/a.png` (repo root) at this branch, as a blob URL.
+  // `diagrams/a.svg` (next to this file), `../a.png` or `/docs/a.png` (repo root) -> repo path
+  #repoPath(src: string): string {
+    const dir = this.path.split("/").slice(0, -1).map((s) => `${s}/`).join("");
+    return decodeURIComponent(new URL(src, `https://repo/${dir}`).pathname.slice(1));
+  }
+  // A repo-relative src at this branch (or a pasted image's blob, before it's saved), as a blob URL.
   // Absolute URLs pass through. GitHub's raw bytes come untyped: an SVG needs its type to render in an <img>.
   imageUrl(src: string): Promise<string | null> {
     if (/^(https?:|data:|blob:)/.test(src)) return Promise.resolve(src);
     let url = this.#images.get(src);
     if (!url) {
-      const dir = this.path.split("/").slice(0, -1).map((s) => `${s}/`).join("");
-      const path = decodeURIComponent(new URL(src, `https://repo/${dir}`).pathname.slice(1));
-      url = gh(`/repos/${this.repoName}/contents/${encPath(path)}?ref=${encodeURIComponent(this.branch)}`, { raw: true })
+      const path = this.#repoPath(src);
+      const blob = this.doc.images?.[src];
+      url = gh(blob ? `/repos/${this.repoName}/git/blobs/${blob}` : `/repos/${this.repoName}/contents/${encPath(path)}?ref=${encodeURIComponent(this.branch)}`, { raw: true })
         .then(async (res) => (res.ok ? URL.createObjectURL(new Blob([await res.arrayBuffer()], { type: path.endsWith(".svg") ? "image/svg+xml" : "" })) : null))
         .catch(() => null);
       this.#images.set(src, url);
     }
     return url;
+  }
+
+  // Upload a pasted/dropped image as a git blob and record it in the doc; returns the src to link, `images/<name>-<sha>.<ext>`
+  // next to this file. null: the upload failed (status.error says why).
+  async addImage(file: File): Promise<string | null> {
+    try {
+      const { sha } = await post<{ sha: string }>(`/repos/${this.repoName}/git/blobs`, { content: b64(new Uint8Array(await file.arrayBuffer())), encoding: "base64" });
+      const ext = /\.(\w+)$/.exec(file.name)?.[1]?.toLowerCase() ?? file.type.split("/")[1]?.split("+")[0] ?? "png";
+      const stem = file.name.replace(/\.\w+$/, "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "image";
+      const src = `images/${stem}-${sha.slice(0, 7)}.${ext}`;
+      this.#images.set(src, Promise.resolve(URL.createObjectURL(file)));
+      this.handle.change((d) => {
+        d.images ??= {};
+        d.images[src] = sha;
+      });
+      return src;
+    } catch (e) {
+      this.status.error = errText(e);
+      this.onStatus();
+      return null;
+    }
+  }
+
+  // Tree entries for the doc's images its text links to (one unlinked since stays out of git).
+  #linkedImages() {
+    const d = this.doc;
+    return Object.entries(d.images ?? {})
+      .filter(([src]) => d.text.includes(src))
+      .map(([src, sha]) => ({ path: this.#repoPath(src), mode: "100644", type: "blob", sha }));
   }
 
   revertHunk(sha: string, i: number) {
@@ -471,7 +510,7 @@ export class Session {
       }
       const tree = await post<{ sha: string }>(`/repos/${this.repoName}/git/trees`, {
         base_tree: baseTree,
-        tree: [{ path: this.path, mode: "100644", type: "blob", content }],
+        tree: [{ path: this.path, mode: "100644", type: "blob", content }, ...this.#linkedImages()],
       });
       const title = merge ? `Merge ${merge.branch} into ${this.branch} in Red Letter` : `Edit ${this.path} in Red Letter`;
       const message = `${title}\n\n${TRAILER} ${heads.join(",")}`;
@@ -511,7 +550,8 @@ export class Session {
   async #onlyThisFile(from: string, to: string) {
     if (from === to) return;
     const cmp: { files?: { filename: string }[] } = JSON.parse(await cachedGet(`/repos/${this.repoName}/compare/${from}...${to}`, { immutable: true }));
-    const other = cmp.files?.find((f) => f.filename !== this.path);
+    const own = new Set([this.path, ...Object.keys(this.doc.images ?? {}).map((src) => this.#repoPath(src))]);
+    const other = cmp.files?.find((f) => !own.has(f.filename));
     if (other) throw new Error(`this draft also changed ${other.filename}; merge it on GitHub`);
   }
 

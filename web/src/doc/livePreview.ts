@@ -5,7 +5,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
-import type { Extension, Range } from "@codemirror/state";
+import { EditorSelection, type Extension, type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, drawSelection, dropCursor, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { codeHighlight } from "./highlight.ts";
@@ -233,12 +233,29 @@ function lineInItem(view: EditorView): boolean {
   return true;
 }
 
+// Mod-b: wrap each selection in **, or unwrap it when the marks sit just outside or just inside it.
+function toggleBold(view: EditorView): boolean {
+  const { state } = view;
+  if (state.readOnly) return false;
+  const doc = state.doc;
+  const tx = state.changeByRange((r) => {
+    if (r.from >= 2 && doc.sliceString(r.from - 2, r.from) === "**" && doc.sliceString(r.to, r.to + 2) === "**")
+      return { changes: [{ from: r.from - 2, to: r.from }, { from: r.to, to: r.to + 2 }], range: EditorSelection.range(r.from - 2, r.to - 2) };
+    const text = doc.sliceString(r.from, r.to);
+    if (text.length >= 4 && text.startsWith("**") && text.endsWith("**"))
+      return { changes: [{ from: r.from, to: r.from + 2 }, { from: r.to - 2, to: r.to }], range: EditorSelection.range(r.from, r.to - 4) };
+    return { changes: [{ from: r.from, insert: "**" }, { from: r.to, insert: "**" }], range: EditorSelection.range(r.from + 2, r.to + 2) };
+  });
+  view.dispatch({ ...tx, scrollIntoView: true, userEvent: "input" });
+  return true;
+}
+
 export function editorExtensions(): Extension[] {
   return [
     history(),
     drawSelection(),
     dropCursor(),
-    keymap.of([{ key: "Shift-Enter", run: lineInItem }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+    keymap.of([{ key: "Shift-Enter", run: lineInItem }, { key: "Mod-b", run: toggleBold }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
     markdown({ base: markdownLanguage }),
     EditorView.lineWrapping,
     theme,

@@ -149,6 +149,22 @@ export function jump(from: number, to: number) {
   view?.focus();
 }
 
+// Pasted or dropped image files: uploaded to git as blobs, then linked where they landed (that spot follows edits
+// made meanwhile). The next save commits them next to the file.
+export async function insertImages(files: File[], pos: number) {
+  const s = state.session;
+  if (!s) return;
+  const at = s.anchor(pos, pos);
+  const srcs = await Promise.all(files.map((f) => s.addImage(f)));
+  const links = files.flatMap((f, i) => (srcs[i] ? [`![${f.name.replace(/\.\w+$/, "").replace(/[[\]]/g, "")}](${srcs[i]})`] : []));
+  const p = s.resolve(at)?.from;
+  if (!view || state.session !== s || !links.length || p === undefined) return; // switched files meanwhile
+  const from = Math.min(p, view.state.doc.length); // the editor may be a frame behind the doc
+  const line = view.state.doc.lineAt(from); // each picture on a line of its own
+  const insert = (from > line.from ? "\n" : "") + links.join("\n") + (from < line.to ? "\n" : "");
+  view.dispatch({ changes: { from, insert }, selection: { anchor: from + insert.length }, userEvent: "input.paste" });
+}
+
 export function selectThread(t: Thread) {
   set("activeThread", t.root.id);
   if (t.range) jump(t.range.from, t.range.to);

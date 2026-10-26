@@ -1,8 +1,6 @@
 # Red Letter demo (agent edition)
 
-This 
-![blue](images/blue-fa8ff13.png)
-file lives on the `demo` branch of satanworker/red-letter.
+This file lives on the `demo` branch of satanworker/red-letter.
 Edit it in the browser or push via git; both sides meet in the sameone file.
 fdfdf sdfdf 
 sdfdf
@@ -38,4 +36,4 @@ sdfdfdf and here goes another one
 bfjgg
 - bgnn
 Привет привет
-ДИМООН ![image](images/image-7974844.png)
+ДИМООН 

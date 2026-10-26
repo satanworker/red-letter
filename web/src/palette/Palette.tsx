@@ -1,7 +1,7 @@
 // Notion-style Cmd/Ctrl+K palette: type to filter files and actions, Up/Down to move, Enter to run, Esc to close.
 // Focus returns to wherever it was when the palette opened.
-import { For, Show, createMemo, createSignal, onCleanup, onMount, type Accessor } from "solid-js";
-import { showTab, startComment, togglePanel } from "../doc/docStore.ts";
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { showTab, startComment } from "../doc/docStore.ts";
 import { blobUrl } from "../repo/repoService.ts";
 import { navigateTo, repo, toggleFiles } from "../repo/repoStore.ts";
 import { FileIcon, card } from "../ui.tsx";
@@ -23,14 +23,13 @@ function score(label: string, q: string): number | null {
   return 1000 + i;
 }
 
-export function Palette(props: { panelVisible: Accessor<boolean> }) {
+export function Palette() {
   const [query, setQuery] = createSignal("");
   const [active, setActive] = createSignal(0);
   const actions = (): Item[] => [
     { label: "Comment on selection", hint: "⌘⌥M", run: startComment },
     { label: "Show comments", run: () => showTab("comments") },
-    { label: "Show agent changes", run: () => showTab("changes") },
-    { label: props.panelVisible() ? "Hide side panel" : "Show side panel", run: () => togglePanel(props.panelVisible()) },
+    { label: "Show history", run: () => showTab("history") },
     { label: repo.filesHidden ? "Show files" : "Hide files", run: toggleFiles },
     { label: "Copy link to this file", run: () => void navigator.clipboard.writeText(location.href) },
   ];

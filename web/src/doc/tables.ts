@@ -116,7 +116,7 @@ class TableWidget extends WidgetType {
   }
   toDOM(view: EditorView) {
     const wrap = document.createElement("div");
-    wrap.className = "cm-lp-tablewrap cm-lp-wide";
+    wrap.className = "cm-lp-tablewrap";
     const table = wrap.appendChild(document.createElement("table"));
     table.className = "cm-lp-table";
     const head = table.createTHead();
@@ -408,16 +408,11 @@ export const tableField = StateField.define<DecorationSet>({
 });
 
 export const tableTheme = EditorView.theme({
-  // A spacer as wide as the breakout keeps a table that fits the text column aligned with the text; a wider one
-  // eats into it and grows into the margins (.cm-lp-wide), then wraps its cells, then scrolls.
-  ".cm-lp-tablewrap": { display: "flex", overflowX: "auto", marginTop: "6px", marginBottom: "6px" },
-  ".cm-lp-tablewrap::before": { content: '""', flex: "0 1 var(--out)" },
+  // a wide table wraps its cells, then scrolls
+  ".cm-lp-tablewrap": { overflowX: "auto", marginTop: "6px", marginBottom: "6px" },
   // CodeMirror's wrapping (overflow-wrap: anywhere, word-break: break-word) makes every column's minimum one
   // letter, so a squeezed table broke words mid-way
-  ".cm-lp-table": {
-    flex: "none", maxWidth: "100%", borderCollapse: "collapse", fontSize: "12px", lineHeight: "1.5", overflowWrap: "break-word", wordBreak: "normal",
-    minWidth: "calc((100% - 2 * var(--out)) * .6)",
-  },
+  ".cm-lp-table": { maxWidth: "100%", borderCollapse: "collapse", fontSize: "12px", lineHeight: "1.5", overflowWrap: "break-word", wordBreak: "normal" },
   ".cm-lp-table th, .cm-lp-table td": { border: "1px solid var(--rule)", padding: "6px 10px", verticalAlign: "top", outline: "none", cursor: "text", minWidth: "3em" },
   ".cm-lp-table th": { background: "var(--bg2)", fontWeight: "600" },
   ".cm-lp-table th:focus, .cm-lp-table td:focus": { boxShadow: "inset 0 0 0 2px rgba(35,131,226,.6)", whiteSpace: "pre-wrap" },

@@ -1,4 +1,4 @@
-// The open file: its Session, status, and the editor's UI intent (panel, tab, active thread, draft comment).
+// The open file: its Session, status, history, and the editor's UI intent (panel tab, active thread, draft comment).
 // The CRDT doc isn't copied into the store: `version` ticks (once per frame) when it changes, selectors re-read it.
 import type { EditorView } from "@codemirror/view";
 import { createStore } from "solid-js/store";
@@ -6,18 +6,19 @@ import { addComment, clearComments, loadComments, refreshComments, setResolved }
 import type { Comment } from "../comments/commentsService.ts";
 import type { Thread } from "../comments/commentsSelectors.ts";
 import { HttpError, type User } from "../github.ts";
-import type { RepoInfo } from "../repo/repoService.ts";
+import { fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection } from "./tables.ts";
 
-type Tab = "comments" | "changes";
+type Tab = "comments" | "history";
 type DocState = {
   session: Session | null;
   opening: string; // path being opened
   login: string;
   status: Status;
   version: number;
-  panel: boolean | null; // null = automatic: open when there's something to look at
+  history: Commit[]; // the commits that touched the file, newest first
+  picked: boolean; // the panel tab was chosen; until then it follows what there is to look at
   tab: Tab;
   activeThread: string;
   composing: { anchor: Anchor; quote: string } | null;
@@ -34,7 +35,8 @@ const [state, set] = createStore<DocState>({
   login: "",
   status: idle(),
   version: 0,
-  panel: null,
+  history: [],
+  picked: false,
   tab: "comments",
   activeThread: "",
   composing: null,
@@ -67,7 +69,7 @@ export function tick() {
 // draftOf: the branch was just forked from that one as a draft of this file.
 export async function openFile(repo: RepoInfo, branch: string, path: string, user: User, create?: string, draftOf?: string): Promise<boolean> {
   closeFile();
-  set({ opening: path, login: user.login, panel: null, tab: "comments", activeThread: "", composing: null, showChanges: false, draftNote: "" });
+  set({ opening: path, login: user.login, picked: false, tab: "comments", activeThread: "", composing: null, showChanges: false, draftNote: "" });
   document.title = `${path.split("/").pop()} · Red Letter`;
   const session = new Session(repo.full_name, repo.node_id, branch, path, repo.permissions?.push === true, user.login);
   try {
@@ -82,7 +84,10 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
     session.close(); // another file was picked meanwhile
     return true;
   }
-  const pushStatus = () => set("status", { ...idle(), ...session.status, people: [...session.status.people] });
+  const pushStatus = () => {
+    set("status", { ...idle(), ...session.status, people: [...session.status.people] });
+    void loadHistory(session);
+  };
   session.onStatus = () => {
     pushStatus();
     docChanged();
@@ -106,7 +111,18 @@ export function closeFile() {
   clearInterval(ticker);
   state.session?.close();
   clearComments();
-  set({ session: null, opening: "", status: idle() });
+  historyAt = "";
+  set({ session: null, opening: "", status: idle(), history: [] });
+}
+
+// Refetched whenever the doc's commit moves (a save, a replayed push); keyed by that sha, so asking again is free.
+let historyAt = "";
+async function loadHistory(s: Session) {
+  const at = s.status.commit;
+  if (!at || at === historyAt) return;
+  historyAt = at;
+  const list = await fileHistory(s.repoName, at, s.path).catch((e) => (s.log("history:", String(e)), null));
+  if (list && state.session === s && historyAt === at) set("history", list);
 }
 
 // beforeunload: unsaved text and nobody else here to save it -> save now and ask the browser to hold the page
@@ -125,10 +141,8 @@ export function startComment() {
   set("composing", { anchor: s.anchor(sel.from, sel.to), quote: view.state.sliceDoc(sel.from, sel.to) });
 }
 export const cancelComment = () => set("composing", null);
-export const showTab = (tab: Tab) => set({ tab, panel: true });
-export const setTab = (tab: Tab) => set("tab", tab);
-export const togglePanel = (visible: boolean) => set("panel", !visible);
-export const openThread = (id: string) => set({ activeThread: id, tab: "comments", panel: true });
+export const showTab = (tab: Tab) => set({ tab, picked: true });
+export const openThread = (id: string) => set({ activeThread: id, tab: "comments", picked: true });
 
 export function jump(from: number, to: number) {
   view?.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
@@ -149,7 +163,7 @@ export function submitComment(body: string) {
   const root: Comment = { id: crypto.randomUUID(), author: state.login, body, createdAt: new Date().toISOString(), docId: s.docId, ...c.anchor, quote: c.quote };
   addComment(root);
   // the comment shows on the right only now that it's sent (Figma 22:561)
-  set({ activeThread: root.id, tab: "comments", panel: true });
+  set({ activeThread: root.id, tab: "comments", picked: true });
   if (view) {
     view.dispatch({ selection: { anchor: view.state.selection.main.to } });
     view.focus();

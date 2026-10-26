@@ -1,5 +1,5 @@
-// GitHub calls for opening a repo and forking draft branches. Stateless. cachedGet keeps copies, so a repo opened
-// before also opens offline.
+// GitHub calls for opening a repo, forking draft branches and a file's history. Stateless. cachedGet keeps copies,
+// so a repo opened before also opens offline.
 import { HttpError, cachedGet, encPath, ghJson, post, type User } from "../github.ts";
 
 export type RepoInfo = { node_id: string; full_name: string; default_branch: string; permissions?: { push: boolean } };
@@ -35,6 +35,16 @@ export async function resolveBranch(repo: string, parts: string[], wholeAllowed:
 export async function branchHead(repo: string, branch: string): Promise<string> {
   const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(branch)}`));
   return ref.object.sha;
+}
+
+export type Commit = { sha: string; message: string; author: string; date: string; merge: boolean };
+
+// The commits that touched `path`, newest first, as of `commit` (a sha: the answer never changes, so it's cached for good).
+// ponytail: last 50 only
+export async function fileHistory(repo: string, commit: string, path: string): Promise<Commit[]> {
+  type C = { sha: string; parents: unknown[]; author: { login: string } | null; commit: { message: string; author: { name: string; date: string } } };
+  const list: C[] = JSON.parse(await cachedGet(`/repos/${repo}/commits?sha=${commit}&path=${encodeURIComponent(path)}&per_page=50`, { immutable: true }));
+  return list.map((c) => ({ sha: c.sha, message: c.commit.message.split("\n")[0], author: c.author?.login ?? c.commit.author.name, date: c.commit.author.date, merge: c.parents.length > 1 }));
 }
 
 export async function createBranch(repo: string, branch: string, sha: string): Promise<void> {

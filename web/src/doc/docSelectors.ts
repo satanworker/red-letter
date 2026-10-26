@@ -1,20 +1,27 @@
 import * as A from "@automerge/automerge";
+import type { Commit } from "../repo/repoService.ts";
 import { editRegions, type Region } from "./regions.ts";
 import type { AgentMark, Session } from "./session.ts";
 
-type PanelState = { panel: boolean | null; tab: "comments" | "changes" };
+type PanelState = { picked: boolean; tab: "comments" | "history" };
+export type HistoryEntry = { commit: Commit; review?: AgentMark };
 
 export const selectMarks = (session: Session): AgentMark[] => Object.values(session.doc.marks ?? {}).sort((a, b) => a.at.localeCompare(b.at));
 
-// A comment being written lives in the editor (Figma 22:561), so it doesn't open the panel.
-export const selectPanelVisible = (s: PanelState, openThreads: number, marks: number) => s.panel ?? (openThreads > 0 || marks > 0);
+// The file's commits, newest first, each agent commit still waiting for review carrying its mark. A mark whose commit
+// isn't in the list (not loaded yet, offline, older than the last 50) goes on top so it can still be reviewed.
+export function selectHistory(history: Commit[], marks: AgentMark[]): HistoryEntry[] {
+  const bySha = new Map(marks.map((m) => [m.sha, m]));
+  const listed = new Set(history.map((c) => c.sha));
+  const orphans = marks
+    .filter((m) => !listed.has(m.sha))
+    .reverse()
+    .map((m) => ({ commit: { sha: m.sha, message: m.message, author: m.author, date: m.at, merge: false }, review: m }));
+  return [...orphans, ...history.map((c) => ({ commit: c, review: bySha.get(c.sha) }))];
+}
 
 // A draft's edits against its base branch (as last merged in): ranges in the current text, deleted text in `before`.
 export const selectDraftChanges = (s: Session): Region[] => (s.doc.base ? editRegions(s.doc, s.doc.base.heads, A.getHeads(s.doc)) : []);
 
-// The chosen tab, unless it's empty and the other one isn't.
-export function selectTab(s: PanelState, openThreads: number, marks: number) {
-  if (s.tab === "changes" && !marks && openThreads) return "comments";
-  if (s.tab === "comments" && !openThreads && marks && s.panel === null) return "changes";
-  return s.tab;
-}
+// The chosen tab; until one is chosen, History when agent commits wait for review and no comments are open.
+export const selectTab = (s: PanelState, openThreads: number, marks: number) => (!s.picked && !openThreads && marks ? "history" : s.tab);

@@ -7,7 +7,6 @@ import commentSvg from "./icons/comment.svg";
 import createDocSvg from "./icons/create-doc.svg";
 import documentSvg from "./icons/document.svg";
 import folderSvg from "./icons/folder.svg";
-import robotSvg from "./icons/robot.svg";
 import searchSvg from "./icons/search.svg";
 import sidebarSvg from "./icons/sidebar.svg";
 import tipArrowSvg from "./icons/tip-arrow.svg";
@@ -37,17 +36,6 @@ export const Avatar = (props: { login: string; size: number }) => (
     alt={props.login}
     title={props.login}
   />
-);
-
-// Git commit authors are names, not GitHub logins: show an initial instead of guessing an avatar.
-export const Initial = (props: { name: string; size: number }) => (
-  <span
-    class="inline-flex shrink-0 items-center justify-center rounded-full bg-av-bg font-semibold text-av-fg"
-    style={{ width: `${props.size}px`, height: `${props.size}px`, "font-size": `${Math.round(props.size * 0.5)}px` }}
-    title={props.name}
-  >
-    {(props.name.trim()[0] ?? "?").toUpperCase()}
-  </span>
 );
 
 export const Logo = () => (
@@ -82,8 +70,6 @@ export const FileIcon = () => <Img src={documentSvg} w={10} h={13} />;
 export const ArrowUpIcon = () => <Img src={arrowUpSvg} w={8} class="hidden [details[open]>summary>&]:block" />;
 export const ArrowDownIcon = () => <Img src={arrowDownSvg} w={8} class="[details[open]>summary>&]:hidden" />;
 export const CommentIcon = () => <Img src={commentSvg} w={16} />;
-// Figma's robot frame is 14px with the glyph inset 4.46% / 8% / 3.47% / 8%
-export const RobotIcon = () => <Img src={robotSvg} w={14} class="p-[.624px_1.12px_.486px]" />;
 export const TipArrow = () => <Img src={tipArrowSvg} w={10} h={8} />;
 export const AtIcon = () => <Img src={atSignSvg} w={12} />;
 // a coloured disc: same in dark mode

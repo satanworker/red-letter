@@ -1,4 +1,4 @@
-// The workspace: header, file sidebar, the doc, and the comments / agent-changes panel.
+// The workspace: header, file sidebar, the doc, and the comments / history panel.
 // Switching files swaps only the doc: the Editor is keyed on the Session.
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { CommentsPanel } from "../comments/CommentsPanel.tsx";
@@ -10,11 +10,11 @@ import { blobUrl } from "../repo/repoService.ts";
 import { createDraft, mergeDraft, navigateTo, repo, toggleFiles } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CommentIcon, Logo, RobotIcon, SidebarIcon, Spinner, badge, fine, ghostBtn } from "../ui.tsx";
-import { AgentChanges } from "./AgentChanges.tsx";
+import { Avatar, BranchIcon, CommentIcon, Logo, SidebarIcon, Spinner, badge, fine, ghostBtn } from "../ui.tsx";
 import { Editor } from "./Editor.tsx";
-import { selectDraftChanges, selectMarks, selectPanelVisible, selectTab } from "./docSelectors.ts";
-import { doc, setTab, showTab, toggleChanges, togglePanel, updateDraft } from "./docStore.ts";
+import { History } from "./History.tsx";
+import { selectDraftChanges, selectHistory, selectMarks, selectTab } from "./docSelectors.ts";
+import { doc, showTab, toggleChanges, updateDraft } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -29,6 +29,7 @@ export function EditorScreen() {
     doc.version;
     return doc.session ? selectMarks(doc.session) : [];
   });
+  const history = createMemo(() => selectHistory(doc.history, marks()));
   const draft = createMemo(() => {
     doc.version;
     return doc.session?.doc.base;
@@ -47,7 +48,6 @@ export function EditorScreen() {
     if (name) void createDraft(name);
   };
   const openCount = () => threads().filter((t) => !t.root.resolved).length;
-  const panelVisible = () => !!doc.session && selectPanelVisible(doc, openCount(), marks().length);
   const tab = () => selectTab(doc, openCount(), marks().length);
   const people = () => [...new Set(doc.status.people)];
   const [copied, setCopied] = createSignal(false);
@@ -60,13 +60,10 @@ export function EditorScreen() {
   const tabKeys = (e: KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
-    setTab(tab() === "comments" ? "changes" : "comments");
+    showTab(tab() === "comments" ? "history" : "comments");
     (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
   };
-  // Figma 22:561: with the panel open the chosen tab is white with its label; the other one, and both when the panel is
-  // closed ("All Close"), shrink to grey icon + count pills. Pushing a pill opens that tab; pushing the open tab closes.
-  const labeled = (t: "comments" | "changes") => panelVisible() && tab() === t;
-  const pick = (t: "comments" | "changes") => (labeled(t) ? togglePanel(true) : showTab(t));
+  // Figma 22:561: the chosen tab is white with its label; the other one shrinks to a grey icon + count pill.
   const tabClass = (on: boolean, pad: string) =>
     `inline-flex h-7 cursor-pointer items-center gap-1 rounded-[14px] text-fg shadow-figma ${on ? "bg-card px-4" : `border-[.4px] border-line bg-side ${pad}`}`;
   const tabs = () => (
@@ -76,31 +73,29 @@ export function EditorScreen() {
         id="tab-comments"
         aria-selected={tab() === "comments"}
         aria-controls="panel"
-        aria-expanded={labeled("comments")}
         tabindex={tab() === "comments" ? 0 : -1}
         title="Comments"
-        class={tabClass(labeled("comments"), "px-4")}
-        onClick={() => pick("comments")}
+        class={tabClass(tab() === "comments", "px-4")}
+        onClick={() => showTab("comments")}
       >
         <CommentIcon />
-        <Show when={labeled("comments")}>Comments</Show>
+        <Show when={tab() === "comments"}>Comments</Show>
         <Show when={openCount()}>
           <i class={`${badge} px-[3px]`}>{openCount()}</i>
         </Show>
       </button>
       <button
         role="tab"
-        id="tab-changes"
-        aria-selected={tab() === "changes"}
+        id="tab-history"
+        aria-selected={tab() === "history"}
         aria-controls="panel"
-        aria-expanded={labeled("changes")}
-        tabindex={tab() === "changes" ? 0 : -1}
-        title="Agent changes"
-        class={tabClass(labeled("changes"), "px-3")}
-        onClick={() => pick("changes")}
+        tabindex={tab() === "history" ? 0 : -1}
+        title={marks().length ? "History: agent commits to review" : "History"}
+        class={tabClass(tab() === "history", "px-3")}
+        onClick={() => showTab("history")}
       >
-        <RobotIcon />
-        <Show when={labeled("changes")}>Agent changes</Show>
+        <BranchIcon />
+        <Show when={tab() === "history"}>History</Show>
         <Show when={marks().length}>
           <i class={`${badge} px-[3px]`}>{marks().length}</i>
         </Show>
@@ -271,18 +266,13 @@ export function EditorScreen() {
             )}
           </Show>
         </div>
-        <Show when={doc.session && !panelVisible()}>
-          <div class="absolute top-4 left-[calc(100%-304px)] z-[4]">{tabs()}</div>
-        </Show>
-        <aside id="panel" aria-label="Comments and agent changes" hidden={!panelVisible()} class="w-80 shrink-0 overflow-auto bg-side p-4 outline-[.5px] -outline-offset-[.5px] outline-line">
-          <Show when={panelVisible()}>
-            <div class="mb-4">{tabs()}</div>
-          </Show>
+        <aside id="panel" aria-label="Comments and history" hidden={!doc.session} class="w-80 shrink-0 overflow-auto bg-side p-4 outline-[.5px] -outline-offset-[.5px] outline-line">
+          <div class="mb-4">{tabs()}</div>
           <Show when={doc.session} keyed>
             {(s) => (
               <>
-                <div id="changes" role="tabpanel" aria-labelledby="tab-changes" class="flex flex-col gap-4" hidden={tab() !== "changes"}>
-                  <AgentChanges session={s} marks={marks} />
+                <div id="history" role="tabpanel" aria-labelledby="tab-history" hidden={tab() !== "history"}>
+                  <History session={s} entries={history} />
                 </div>
                 <div id="comments" role="tabpanel" aria-labelledby="tab-comments" class="flex flex-col gap-4" hidden={tab() !== "comments"}>
                   <CommentsPanel canWrite={s.canWrite} threads={threads} />
@@ -293,7 +283,7 @@ export function EditorScreen() {
         </aside>
       </main>
       <Show when={palette.open}>
-        <Palette panelVisible={panelVisible} />
+        <Palette />
       </Show>
     </div>
   );

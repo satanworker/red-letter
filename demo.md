@@ -12,7 +12,6 @@ dfdsfdf
 sdfdsfdsfsdfd
 
 ## Todo
-
 - open a link
 - edit together, live
 - leave a comment

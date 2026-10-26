@@ -2,6 +2,8 @@
 // Links are plain <a href>: main.tsx's navigate handler turns them into in-page file switches.
 // Keyboard: Tab reaches the rows, Up/Down move between visible rows, Enter opens a file or toggles a folder.
 import { For, Show, createMemo, createSignal, onMount } from "solid-js";
+import { selectIcon } from "../doc/docSelectors.ts";
+import { doc } from "../doc/docStore.ts";
 import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderIcon, NewDocIcon, SearchIcon, SidebarIcon, field, fine } from "../ui.tsx";
 import { blobUrl } from "./repoService.ts";
 import { selectMatches, selectTree, type Dir } from "./repoSelectors.ts";
@@ -23,6 +25,21 @@ function moveFocus(e: KeyboardEvent) {
   rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]?.focus();
 }
 const byName = (a: string, b: string) => a.localeCompare(b);
+
+// The doc's emoji icon (the start of its first `# ` heading), else the file icon. The open doc's follows its text.
+function DocIcon(props: { path: string }) {
+  const icon = createMemo(() => {
+    if (doc.session?.path !== props.path) return doc.icons[props.path] ?? "";
+    doc.version;
+    return selectIcon(doc.session.doc.text)?.icon ?? "";
+  });
+  return (
+    <Show when={icon()} fallback={<FileIcon />}>
+      {/* 14px wide, 2px into the gap each side: the name stays where the 10px file icon puts it */}
+      <span class="-mx-0.5 w-3.5 shrink-0 text-center text-[11px] leading-none">{icon()}</span>
+    </Show>
+  );
+}
 
 export function FileSidebar() {
   const [query, setQuery] = createSignal("");
@@ -107,7 +124,7 @@ export function FileSidebar() {
             <For each={matches()}>
               {(p) => (
                 <a class="mx-1 mb-1.5 flex min-h-[25px] items-center gap-2 rounded py-[5px] pr-3 pl-3 hover:shadow-[inset_0_0_0_.5px_var(--line),var(--shadow)]" href={href(p)}>
-                  <FileIcon />
+                  <DocIcon path={p} />
                   <span>{p}</span>
                 </a>
               )}
@@ -146,7 +163,7 @@ function DirView(props: { dir: Dir; prefix: string; depth: number }) {
             href={href(p)}
             style={indent(props.depth)}
           >
-            <FileIcon />
+            <DocIcon path={p} />
             <span class="truncate">{p.split("/").pop()}</span>
           </a>
         )}

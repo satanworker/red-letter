@@ -3,7 +3,7 @@
 import { createStore } from "solid-js/store";
 import { commentsHead } from "../comments/commentsService.ts";
 import { warmComments } from "../comments/commentsStore.ts";
-import { closeFile, doc, noteDraft, openFile, runDraft } from "../doc/docStore.ts";
+import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, runDraft } from "../doc/docStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, token, type User } from "../github.ts";
 import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listCollaborators, listDocs, listDrafts, resolveBranch, type RepoInfo } from "./repoService.ts";
@@ -202,6 +202,7 @@ function sleep(ms: number): Promise<void> {
 // it never creates snapshots. Stops when another repo or branch opens, or when GitHub can't be reached.
 async function syncAll(repo: string, branch: string, cached: string[]) {
   const run = ++syncRun;
+  clearIcons(); // another repo or branch: its docs' icons come in as they sync
   try {
     const [docs, heads, head, comments] = await Promise.all([listDocs(repo, branch), snapshotHeads(repo, branch), branchHead(repo, branch), commentsHead(repo)]);
     // the sidebar showed this browser's last list; files added or removed since show up now
@@ -215,7 +216,8 @@ async function syncAll(repo: string, branch: string, cached: string[]) {
         const p = path;
         const isOpen = () => doc.opening === p || doc.session?.path === p;
         if (isOpen()) continue;
-        await syncCopy(repo, branch, p, heads.get(await snapshotRef(branch, p)) ?? NO_SNAPSHOT, head, isOpen);
+        const text = await syncCopy(repo, branch, p, heads.get(await snapshotRef(branch, p)) ?? NO_SNAPSHOT, head, isOpen);
+        if (run === syncRun) noteIcon(p, text);
         if (comments) await warmComments(repo, branch, p, comments);
       }
     };

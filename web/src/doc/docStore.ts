@@ -1,7 +1,7 @@
 // The open file: its Session, status, history, and the editor's UI intent (panel tab, active thread, draft comment).
 // The CRDT doc isn't copied into the store: `version` ticks (once per frame) when it changes, selectors re-read it.
 import type { EditorView } from "@codemirror/view";
-import { createStore } from "solid-js/store";
+import { createStore, reconcile } from "solid-js/store";
 import { addComment, clearComments, loadComments, refreshComments, setResolved } from "../comments/commentsStore.ts";
 import type { Comment } from "../comments/commentsService.ts";
 import type { Thread } from "../comments/commentsSelectors.ts";
@@ -26,6 +26,7 @@ type DocState = {
   showChanges: boolean; // a draft's edits highlighted against its base branch
   drafting: string; // the draft action under way ("Merging…"), one at a time
   draftNote: string; // what the last draft action ended with, if it needs saying
+  icons: Record<string, string>; // path -> the doc's icon ("": none), for the branch's docs as last synced or closed
 };
 
 // A fresh object with every key each time: the store merges into the object it holds.
@@ -44,6 +45,7 @@ const [state, set] = createStore<DocState>({
   showChanges: false,
   drafting: "",
   draftNote: "",
+  icons: {},
 });
 export const doc = state;
 // The /__figma dev page (src/dev/figma.tsx).
@@ -110,11 +112,17 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
 
 export function closeFile() {
   clearInterval(ticker);
-  state.session?.close();
+  const s = state.session;
+  if (s?.handle) noteIcon(s.path, s.doc.text); // the sidebar keeps an icon set or changed while it was open
+  s?.close();
   clearComments();
   historyAt = "";
   set({ session: null, opening: "", status: idle(), history: [] });
 }
+
+// The sidebar's icons: one per doc of the branch, from its text (background sync, closing a doc).
+export const noteIcon = (path: string, text: string) => set("icons", path, selectIcon(text)?.icon ?? "");
+export const clearIcons = () => set("icons", reconcile({}));
 
 // The tab's favicon: the open doc's icon, else the ¶ from index.html.
 const favicon = document.querySelector<HTMLLinkElement>("link[rel=icon]")!;

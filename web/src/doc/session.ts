@@ -74,20 +74,19 @@ const fileAt = (repo: string, path: string, sha: string) => cachedGet(`/repos/${
 
 // Background sync, read-only: bring this browser's copy of a doc up to its snapshot so opening it is instant.
 // Files nobody opened yet have no snapshot; their text at `branchHead` is fetched so the first open is quicker.
-// `isOpen` is checked right before writing: an open file's Session owns its copy.
-export async function syncCopy(repo: string, branch: string, path: string, snapshot: string, branchHead: string, isOpen: () => boolean) {
-  if (snapshot === ZERO) {
-    await fileAt(repo, path, branchHead);
-    return;
-  }
+// `isOpen` is checked right before writing: an open file's Session owns its copy. Returns the doc's text.
+export async function syncCopy(repo: string, branch: string, path: string, snapshot: string, branchHead: string, isOpen: () => boolean): Promise<string> {
+  if (snapshot === ZERO) return lf(await fileAt(repo, path, branchHead));
   const key = docKey(repo, branch, path);
   const local = await idbGet<Local>("docs", key);
-  if (local?.crdtHead === snapshot) return;
+  // ponytail: loads every up-to-date copy just for its text (the sidebar's icon); keep the title in Local if it gets slow
+  if (local?.crdtHead === snapshot) return A.load<RLDoc>(local.bytes).text;
   const snap = await readSnapshot(repo, snapshot);
   const same = local?.docId === snap.meta.docId; // a different doc means the ref was recreated: theirs wins
-  const bytes = local && same ? A.save(A.merge(A.load<RLDoc>(local.bytes), A.load<RLDoc>(snap.bytes))) : snap.bytes;
+  const doc = local && same ? A.merge(A.load<RLDoc>(local.bytes), A.load<RLDoc>(snap.bytes)) : A.load<RLDoc>(snap.bytes);
   const crlf = local && same ? local.crlf : (await fileAt(repo, path, snap.meta.commit).catch(() => "")).includes("\r\n");
-  if (!isOpen()) await idbPut("docs", key, { docId: snap.meta.docId, bytes, crlf, crdtHead: snapshot } satisfies Local);
+  if (!isOpen()) await idbPut("docs", key, { docId: snap.meta.docId, bytes: A.save(doc), crlf, crdtHead: snapshot } satisfies Local);
+  return doc.text;
 }
 
 export class Session {

@@ -233,29 +233,37 @@ function lineInItem(view: EditorView): boolean {
   return true;
 }
 
-// Mod-b: wrap each selection in **, or unwrap it when the marks sit just outside or just inside it.
-function toggleBold(view: EditorView): boolean {
+// Mod-b / Mod-i: wrap each selection in ** / *, or unwrap it when that mark sits just outside or just inside it.
+// A run of stars holds italic when its length is odd (`*`, `***`) and bold when it's 2 or more.
+const emphasis = (n: 1 | 2) => (view: EditorView): boolean => {
   const { state } = view;
   if (state.readOnly) return false;
   const doc = state.doc;
+  const has = (run: number) => (n === 1 ? run % 2 === 1 : run >= 2);
+  // stars in a row from `at`, going right (1) or left (-1), not past `stop`
+  const stars = (at: number, dir: 1 | -1, stop: number) => {
+    let i = 0;
+    for (let c = dir > 0 ? at : at - 1; (dir > 0 ? c < stop : c >= stop) && doc.sliceString(c, c + 1) === "*"; c += dir) i++;
+    return i;
+  };
+  const m = "*".repeat(n);
   const tx = state.changeByRange((r) => {
-    if (r.from >= 2 && doc.sliceString(r.from - 2, r.from) === "**" && doc.sliceString(r.to, r.to + 2) === "**")
-      return { changes: [{ from: r.from - 2, to: r.from }, { from: r.to, to: r.to + 2 }], range: EditorSelection.range(r.from - 2, r.to - 2) };
-    const text = doc.sliceString(r.from, r.to);
-    if (text.length >= 4 && text.startsWith("**") && text.endsWith("**"))
-      return { changes: [{ from: r.from, to: r.from + 2 }, { from: r.to - 2, to: r.to }], range: EditorSelection.range(r.from, r.to - 4) };
-    return { changes: [{ from: r.from, insert: "**" }, { from: r.to, insert: "**" }], range: EditorSelection.range(r.from + 2, r.to + 2) };
+    if (has(stars(r.from, -1, 0)) && has(stars(r.to, 1, doc.length)))
+      return { changes: [{ from: r.from - n, to: r.from }, { from: r.to, to: r.to + n }], range: EditorSelection.range(r.from - n, r.to - n) };
+    if (r.to - r.from > 2 * n && has(stars(r.from, 1, r.to)) && has(stars(r.to, -1, r.from)))
+      return { changes: [{ from: r.from, to: r.from + n }, { from: r.to - n, to: r.to }], range: EditorSelection.range(r.from, r.to - 2 * n) };
+    return { changes: [{ from: r.from, insert: m }, { from: r.to, insert: m }], range: EditorSelection.range(r.from + n, r.to + n) };
   });
   view.dispatch({ ...tx, scrollIntoView: true, userEvent: "input" });
   return true;
-}
+};
 
 export function editorExtensions(): Extension[] {
   return [
     history(),
     drawSelection(),
     dropCursor(),
-    keymap.of([{ key: "Shift-Enter", run: lineInItem }, { key: "Mod-b", run: toggleBold }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+    keymap.of([{ key: "Shift-Enter", run: lineInItem }, { key: "Mod-b", run: emphasis(2) }, { key: "Mod-i", run: emphasis(1) }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
     markdown({ base: markdownLanguage }),
     EditorView.lineWrapping,
     theme,

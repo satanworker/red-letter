@@ -10,32 +10,6 @@ dsfdsf
 
 dfdsfdf
 sdfdsfdsfsdfd
-
-## Todo
-- open a link
-- edit together, live
-- leave a comment
-- jhfd
-- review agent changes
-- jgjyjjt
-- No fucking wayldsf sdfdsfdsfdsfdsf d ssdfldsk f;lsdkf;l sdkfl;kds;lfkdsl;fkdsl;fkdls;kf;ldskfl;dskfl;dskfl;dskfl;dks;lfkds;lfkdsl;fkdsl;fkds;lfkds;lfkdsl;fk
-- s
-- dfdsfsdf
-sdfsdfsdfsdf
-
-sdf
-dsfsdfsdf
-
-fds
-
-dsfdfdsf - asdsadsa
-dsfdsfdsfdsfsdfds
-
-Вот такой вот прикол
-sdfdfdf and here goes another one 
-bfjgg
-- bgnn
-Привет привет
 ДИМООН
 
 # The test

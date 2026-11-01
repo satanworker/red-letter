@@ -13,7 +13,7 @@ sdfdsfdsfsdfd
 ДИМООН
 
 # The test
-dsdas moved base
+dsdas <!--rl:vcvwwd-->moved base<!--/rl:vcvwwd-->
 dsfdsfdsf
 dsfdfdf
 
@@ -23,4 +23,7 @@ dfdf
 <!--rl:m0a246
 @satanworker 2026-11-01T11:21Z: PR-mode comment
 @satanworker 2026-11-01T11:21Z: PR reply
+-->
+<!--rl:vcvwwd
+@satanworker 2026-11-01T11:21Z: second
 -->

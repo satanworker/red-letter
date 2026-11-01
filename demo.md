@@ -1,7 +1,7 @@
 # Red Letter demo (agent edition)
 
 This file lives on the `demo` branch of satanworker/red-letter.
-Edit it in the <!--rl:btvijb-->browser<!--/rl:btvijb--> or push via git; both sides meet in the sameone file.
+Edit it in the <!--rl:btvijb-->browser<!--/rl:btvijb--> or push via git; both <!--rl:69soj5-->sides<!--/rl:69soj5--> meet in the sameone file.
 fdfdf sdfdf 
 sdfdf
 kdsfjd 
@@ -22,4 +22,7 @@ dfdf
 
 <!--rl:btvijb
 @satanworker 2026-11-01T18:12Z: setup comment
+-->
+<!--rl:69soj5
+@satanworker 2026-11-01T18:13Z: forced
 -->

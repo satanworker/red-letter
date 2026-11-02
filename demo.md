@@ -20,21 +20,9 @@ dsfdfdf
 
 dfdf
 
-```js
-const codeword = 1;
-```
-
-| Name | Value |
-| --- | --- |
-| alpha | <!--rl:e58kcp-->cellword<!--/rl:e58kcp-->X |
-
-
 <!--rl:2z9mpx
 @satanworker 2026-11-02T12:00Z: Test comment --&gt; with arrow
 @satanworker 2026-11-02T12:01Z: agreed, @agent please check
 @agent 2026-11-02: Checked: both sides
   meet in one file.
--->
-<!--rl:e58kcp
-@satanworker 2026-11-02T12:05Z: cell note
 -->

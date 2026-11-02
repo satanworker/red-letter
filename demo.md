@@ -20,6 +20,15 @@ dsfdfdf
 
 dfdf
 
+```js
+const codeword = 1;
+```
+
+| Name | Value |
+| --- | --- |
+| alpha | cellword |
+
+
 <!--rl:2z9mpx
 @satanworker 2026-11-02T12:00Z: Test comment --&gt; with arrow
 @satanworker 2026-11-02T12:01Z: agreed, @agent please check

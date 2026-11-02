@@ -105,11 +105,11 @@ export async function createDraft(name: string) {
   navigateTo(blobUrl(state.repo.full_name, branch, state.path));
 }
 
-// Land the open draft on its base branch and go there; the merge shows up there as a change to review.
+// Land the open draft on its base branch and go there; the merge shows up in its History.
 export async function mergeDraft() {
   const base = doc.session?.doc.base?.branch;
   const merged = await runDraft("Merging…", (s) => s.mergeIntoBase());
-  if (merged === false) noteDraft(`${base} had new edits: they're merged into the draft now. Review them, then merge again.`);
+  if (merged === false) noteDraft(`${base} had new edits: they're merged into the draft now (its History shows them). Check, then merge again.`);
   if (!merged || !base || !state.repo) return;
   set("drafts", state.drafts.filter((b) => b !== state.branch));
   navigateTo(blobUrl(state.repo.full_name, base, state.path));

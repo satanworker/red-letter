@@ -5,7 +5,7 @@ import { createStore, reconcile } from "solid-js/store";
 import { clearComments, commentViaPr, comments, loadComments, refreshComments } from "../comments/commentsStore.ts";
 import { addThread, apply, newId, now, plain, reply, resolve, sameProse, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, type User } from "../github.ts";
-import { branchProtected, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
+import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 import { inCode } from "./commentMarks.ts";
 import { selectIcon } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
@@ -19,6 +19,7 @@ type DocState = {
   status: Status;
   version: number;
   history: Commit[]; // the commits that touched the file, newest first
+  shown: { sha: string; patch?: string | null; error?: string } | null; // the History commit opened to its changes (patch: loading while undefined)
   picked: boolean; // the panel tab was chosen; until then it follows what there is to look at
   tab: Tab;
   activeThread: string;
@@ -38,6 +39,7 @@ const [state, set] = createStore<DocState>({
   status: idle(),
   version: 0,
   history: [],
+  shown: null,
   picked: false,
   tab: "comments",
   activeThread: "",
@@ -121,7 +123,7 @@ export function closeFile() {
   s?.close();
   clearComments();
   historyAt = "";
-  set({ session: null, opening: "", status: idle(), history: [] });
+  set({ session: null, opening: "", status: idle(), history: [], shown: null });
 }
 
 // The sidebar's icons: one per doc of the branch, from its text (background sync, closing a doc).
@@ -144,6 +146,19 @@ async function loadHistory(s: Session) {
   historyAt = at;
   const list = await fileHistory(s.repoName, at, s.path).catch((e) => (s.log("history:", String(e)), null));
   if (list && state.session === s && historyAt === at) set("history", list);
+}
+
+// A History row opens to the file's changes in that commit (GitHub's diff, cached for good: a sha never changes).
+export async function toggleCommit(sha: string) {
+  const s = state.session;
+  if (!s || state.shown?.sha === sha) return set("shown", null);
+  set("shown", { sha, patch: undefined, error: undefined });
+  try {
+    const patch = await commitPatch(s.repoName, sha, s.path);
+    if (state.shown?.sha === sha) set("shown", { sha, patch, error: undefined });
+  } catch (e) {
+    if (state.shown?.sha === sha) set("shown", { sha, patch: undefined, error: e instanceof Error ? e.message : String(e) });
+  }
 }
 
 // beforeunload: unsaved text and nobody else here to save it -> save now and ask the browser to hold the page

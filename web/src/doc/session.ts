@@ -1,21 +1,22 @@
 // One open file: CRDT doc <-> git. Snapshot ref load/claim, poll + deterministic replay of agent commits,
-// CAS commit of file + snapshot, agent-change and conflict marks stored in the doc.
+// CAS commit of file + snapshot, conflict marks (an agent's edit interleaved with a human's) stored in the doc.
 // This browser keeps a copy of the doc in IndexedDB: a file opens from it at once and catches up with git after.
 import * as A from "@automerge/automerge";
 import { Repo, type DocHandle, type DocumentId, type PeerId } from "@automerge/automerge-repo";
 import { HUB, HttpError, b64, cachedGet, encPath, gh, post, sha1, token, unb64, updateRefs } from "../github.ts";
 import { idbDelete, idbGet, idbPut } from "../idb.ts";
 import { HubAdapter } from "./hub.ts";
-import { editRegions, findConflicts, type Region } from "./regions.ts";
+import { findConflicts } from "./regions.ts";
 import { REPLAY_VERSION, replay } from "./replay.ts";
 
 // Ranges are stored as cursors: `from` = first char (inclusive); `to` = the range's last char, as a "before" cursor
 // (Automerge prefixes those with "-"), so text typed right after the range stays out of it. Anchors written before
 // that (no "-") hold the char after the range, or "end"; an empty range is `from` twice.
 export type Anchor = { from: string; to: string };
-export type Hunk = Anchor & { before: string };
-export type ConflictMark = Hunk & { human: string; agent: string };
-export type AgentMark = { sha: string; author: string; message: string; at: string; hunks: Hunk[]; conflicts: ConflictMark[] };
+// Where an agent's commit and a human's concurrent edit touched the same words, with each side's version. Docs from
+// before 2026-11-02 may also hold `hunks` (every agent change, kept until reviewed): ignored.
+export type ConflictMark = Anchor & { human: string; agent: string };
+export type AgentMark = { sha: string; author: string; message: string; at: string; conflicts: ConflictMark[] };
 // A draft: this branch forked from `branch` to edit this file. `commit`: the base branch's last commit merged into
 // the draft; `heads`: where the doc's text is exactly that commit's (the next merge from the base replays there);
 // `inGit`: the last of those commits recorded as a git merge parent (behind `commit` until that merge is saved).
@@ -365,21 +366,15 @@ export class Session {
     const fresh = !A.hasHeads(this.doc, r.heads);
     this.handle.update((d) => A.applyChanges(d, [r.change!])[0]);
     if (fresh) {
-      const doc = this.doc;
-      const anchor = (g: Region): Hunk => ({ ...this.anchor(g.from, g.to), before: g.before });
-      const mark: AgentMark = {
-        sha: c.sha,
-        author: c.author.name,
-        message,
-        at: c.author.date,
-        hunks: editRegions(doc, heads, r.heads, humanHeads).map(anchor),
-        conflicts: findConflicts(doc, heads, humanHeads, r.heads).map((g) => ({ ...anchor(g), human: g.human, agent: g.agent })),
-      };
-      this.handle.change((d) => {
-        d.marks ??= {};
-        d.marks[c.sha] = mark;
-      });
-      this.log("replayed", c.sha.slice(0, 7), `${mark.hunks.length} changes, ${mark.conflicts.length} conflicts`);
+      const conflicts = findConflicts(this.doc, heads, humanHeads, r.heads).map((g) => ({ ...this.anchor(g.from, g.to), human: g.human, agent: g.agent }));
+      if (conflicts.length) {
+        const mark: AgentMark = { sha: c.sha, author: c.author.name, message, at: c.author.date, conflicts };
+        this.handle.change((d) => {
+          d.marks ??= {};
+          d.marks[c.sha] = mark;
+        });
+      }
+      this.log("replayed", c.sha.slice(0, 7), `${conflicts.length} conflicts`);
     }
     return r.heads;
   }
@@ -454,30 +449,16 @@ export class Session {
       .map(([src, sha]) => ({ path: this.#repoPath(src), mode: "100644", type: "blob", sha }));
   }
 
-  revertHunk(sha: string, i: number) {
-    const h = this.doc.marks?.[sha]?.hunks[i];
-    const r = h && this.resolve(h);
-    if (!h || !r) return;
-    this.handle.change((d) => {
-      A.splice(d, ["text"], r.from, r.to - r.from, h.before);
-      d.marks![sha].hunks.splice(i, 1);
-    });
-  }
-
-  // Replace an interleaved conflict region with one side's version.
-  resolveConflict(sha: string, i: number, text: string) {
+  // Settle a conflict: replace the interleaved region with one side's version, or (text null) keep it as merged.
+  // The mark goes with its last conflict.
+  resolveConflict(sha: string, i: number, text: string | null) {
     const c = this.doc.marks?.[sha]?.conflicts[i];
     const r = c && this.resolve(c);
-    if (!c || !r) return;
+    if (!c || (text !== null && !r)) return;
     this.handle.change((d) => {
-      A.splice(d, ["text"], r.from, r.to - r.from, text);
+      if (text !== null && r) A.splice(d, ["text"], r.from, r.to - r.from, text);
       d.marks![sha].conflicts.splice(i, 1);
-    });
-  }
-
-  dismiss(sha: string) {
-    this.handle.change((d) => {
-      delete d.marks?.[sha];
+      if (!d.marks![sha].conflicts.length) delete d.marks![sha];
     });
   }
 
@@ -577,7 +558,7 @@ export class Session {
   // Land the draft: a merge commit on the base branch with the draft's tree; the draft branch and its snapshot are
   // deleted in the same atomic update, which fails if anyone moved either branch meanwhile. Tabs on the base see
   // the merge as an external push and replay it. false: the base had moved, its changes are now merged into the
-  // draft for review, and merging again lands exactly what was reviewed.
+  // draft to look at first, and merging again lands exactly what was looked at.
   async mergeIntoBase(): Promise<boolean> {
     const before = this.doc.base!.commit;
     await this.updateFromBase();

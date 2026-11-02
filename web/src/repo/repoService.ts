@@ -54,6 +54,14 @@ export async function fileHistory(repo: string, commit: string, path: string): P
   return list.map((c) => ({ sha: c.sha, message: c.commit.message.split("\n")[0], author: c.author?.login ?? c.commit.author.name, date: c.commit.author.date, merge: c.parents.length > 1 }));
 }
 
+// What `sha` changed in `path`: GitHub's unified diff hunks ("" when it didn't touch the file, null when GitHub
+// leaves the patch out: binary or too large). A merge is diffed against its first parent.
+export async function commitPatch(repo: string, sha: string, path: string): Promise<string | null> {
+  const c: { files?: { filename: string; patch?: string }[] } = JSON.parse(await cachedGet(`/repos/${repo}/commits/${sha}`, { immutable: true }));
+  const f = c.files?.find((x) => x.filename === path);
+  return f ? (f.patch ?? null) : "";
+}
+
 export async function createBranch(repo: string, branch: string, sha: string): Promise<void> {
   await post(`/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
 }

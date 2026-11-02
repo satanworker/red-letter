@@ -1,5 +1,5 @@
 // CodeMirror 6 (live preview) bound to the Automerge text. CodeMirror owns its DOM; Solid only mounts it and
-// pushes decorations (agent changes, a draft's changes, conflicts, comment highlights) when the doc or the comments change.
+// pushes decorations (a draft's changes, conflicts, comment highlights) when the doc or the comments change.
 import { automergeSyncPlugin, type DocHandle as PluginHandle } from "@automerge/automerge-codemirror";
 import { EditorState, StateEffect, StateField, Transaction, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip, type TooltipView } from "@codemirror/view";
@@ -181,18 +181,11 @@ function decorations(session: Session, len: number, marks: AgentMark[], changes:
     to = Math.min(to, len);
     if (to > from) out.push(Decoration.mark({ class: cls, attributes: attrs }).range(from, to));
   };
-  for (const m of marks) {
-    for (const hk of m.hunks) {
-      const r = session.resolve(hk);
-      if (!r) continue;
-      if (hk.before) del(r.from, hk.before, "by the agent");
-      mark(r.from, r.to, "rl-agent", { title: `${m.author}: ${m.message}` });
-    }
+  for (const m of marks)
     for (const c of m.conflicts) {
       const r = session.resolve(c);
-      if (r) mark(r.from, r.to, "rl-conflict", { title: "You and the agent both edited this. Pick a version in the panel." });
+      if (r) mark(r.from, r.to, "rl-conflict", { title: "You and the agent both edited this. Pick a version in History." });
     }
-  }
   for (const c of changes) {
     if (c.before) del(c.from, c.before, "in this draft");
     mark(c.from, c.to, "rl-draft", { title: "edited in this draft" });

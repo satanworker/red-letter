@@ -102,7 +102,7 @@ function Landing() {
         </h1>
         <p class="mb-8 text-[18px] leading-[1.6] text-muted">
           Open any markdown file from GitHub, edit it live with your team, and leave comments in the margin. Your agents keep using <code>git push</code>; their
-          changes show up here, ready to review.
+          changes show up here, live, each commit one click from its diff.
         </p>
         <form class="flex gap-2" onSubmit={open}>
           <input

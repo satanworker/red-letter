@@ -4,26 +4,30 @@ import { editRegions, type Region } from "./regions.ts";
 import type { AgentMark, Session } from "./session.ts";
 
 type PanelState = { picked: boolean; tab: "comments" | "history" };
-export type HistoryEntry = { commit: Commit; review?: AgentMark };
+export type HistoryEntry = { commit: Commit; conflicts?: AgentMark };
 
-export const selectMarks = (session: Session): AgentMark[] => Object.values(session.doc.marks ?? {}).sort((a, b) => a.at.localeCompare(b.at));
+// Agent commits with conflicts still to settle, oldest first (marks of older docs may hold none: left out).
+export const selectMarks = (session: Session): AgentMark[] =>
+  Object.values(session.doc.marks ?? {})
+    .filter((m) => m.conflicts?.length)
+    .sort((a, b) => a.at.localeCompare(b.at));
 
-// The file's commits, newest first, each agent commit still waiting for review carrying its mark. A mark whose commit
-// isn't in the list (not loaded yet, offline, older than the last 50) goes on top so it can still be reviewed.
+// The file's commits, newest first, each agent commit with conflicts to settle carrying its mark. A mark whose commit
+// isn't in the list (not loaded yet, offline, older than the last 50) goes on top so it can still be settled.
 export function selectHistory(history: Commit[], marks: AgentMark[]): HistoryEntry[] {
   const bySha = new Map(marks.map((m) => [m.sha, m]));
   const listed = new Set(history.map((c) => c.sha));
   const orphans = marks
     .filter((m) => !listed.has(m.sha))
     .reverse()
-    .map((m) => ({ commit: { sha: m.sha, message: m.message, author: m.author, date: m.at, merge: false }, review: m }));
-  return [...orphans, ...history.map((c) => ({ commit: c, review: bySha.get(c.sha) }))];
+    .map((m) => ({ commit: { sha: m.sha, message: m.message, author: m.author, date: m.at, merge: false }, conflicts: m }));
+  return [...orphans, ...history.map((c) => ({ commit: c, conflicts: bySha.get(c.sha) }))];
 }
 
 // A draft's edits against its base branch (as last merged in): ranges in the current text, deleted text in `before`.
 export const selectDraftChanges = (s: Session): Region[] => (s.doc.base ? editRegions(s.doc, s.doc.base.heads, A.getHeads(s.doc)) : []);
 
-// The chosen tab; until one is chosen, History when agent commits wait for review and no comments are open.
+// The chosen tab; until one is chosen, History when conflicts wait to be settled and no comments are open.
 export const selectTab = (s: PanelState, openThreads: number, marks: number) => (!s.picked && !openThreads && marks ? "history" : s.tab);
 
 const graphemes = new Intl.Segmenter();

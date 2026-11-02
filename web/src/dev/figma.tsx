@@ -39,9 +39,10 @@ export function showFigmaFixture() {
   const at = new Date(Date.now() - 23 * 60_000).toISOString().slice(0, 16) + "Z";
   const msg = `@Satanworker ${at}: I’m not sure we need to street it. Maybe lets try another way\n`;
   const threads = `\n<!--rl:t1\n${msg}${msg}${msg}-->\n<!--rl:t2\n${msg}-->\n`;
-  // the design's agent tab shows 10
+  // the design's history tab shows 10 (now: commits with conflicts to settle)
+  const conflicts = [{ from: "", to: "", human: "", agent: "" }];
   const marks: Record<string, AgentMark> = Object.fromEntries(
-    Array.from({ length: 10 }, (_, i) => [`fixture${i}`, { sha: `fixture${i}`, author: "agent", message: "edit", at, hunks: [], conflicts: [] }]),
+    Array.from({ length: 10 }, (_, i) => [`fixture${i}`, { sha: `fixture${i}`, author: "agent", message: "edit", at, conflicts }]),
   );
   const handle = new Repo({ network: [] }).create<RLDoc>({ text: TEXT + threads, marks });
   const session = {

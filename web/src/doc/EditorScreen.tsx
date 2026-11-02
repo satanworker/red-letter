@@ -98,7 +98,7 @@ export function EditorScreen() {
         aria-selected={tab() === "history"}
         aria-controls="panel"
         tabindex={tab() === "history" ? 0 : -1}
-        title={marks().length ? "History: agent commits to review" : "History"}
+        title={marks().length ? "History: agent edits that collided with yours, to settle" : "History"}
         class={tabClass(tab() === "history", "px-3")}
         onClick={() => showTab("history")}
       >

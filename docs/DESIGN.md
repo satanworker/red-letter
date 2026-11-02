@@ -117,10 +117,8 @@ Done:
 - **Live sync and saving:** edits sync through the Go hub, one room per file (repo + branch + path) with presence avatars of the other people there (your own other tabs aren't shown, but still count as "someone here" for saving on close). Saves happen 30–40 s after the last edit or on Save / Ctrl-S.
 - **Agent pushes:**
   - replayed into every open tab without duplicated text;
-  - shown inline as insertions plus struck-through deletions;
-  - counted on the History tab (the banner over the document is gone);
-  - reviewed in the History tab: the file's commits on the branch as a timeline (newest first, last 50, each linked to GitHub; merges hollow, commits awaiting review red), where an agent commit not yet reviewed opens into per-change Revert and "Looks good";
-  - where they interleave with a human edit, flagged with "Keep yours / Keep agent's".
+  - in the History tab: the file's commits on the branch as a timeline (newest first, last 50; merges hollow). Clicking a commit opens what it changed in the file (GitHub's diff of the commit, a merge against its first parent; cached for good) and clicking again closes it; ↗ opens it on GitHub. Nothing waits for approval and nothing stays highlighted in the text;
+  - where they interleave with a human edit, flagged in the text and on their History row (red dot, counted on the tab) with "Keep yours / Keep agent's / Keep as merged". Verified on `demo`: an agent push overlapping an unsaved edit flagged only the overlap, its other line went in unmarked, Keep yours settled it and the count went away.
   - Ctrl-Z never reverts an agent's or a peer's change.
   - a Red Letter save of *another* file on the branch is replayed (a no-op here) instead of stalling the walk: its trailer's heads belong to that file's doc.
 - **Drafts** (see Drafts above; branch `drafts` / worktree `red-letter-drafts`): the branch picker in the header lists the base branch and every `drafts/*` branch and has "+ New draft…". Inside a draft a bar over the doc offers Changes, "Update from <base>" (when the base moved) and "Merge into <base>". Verified on `demo` with a scratch file: draft edits plus a concurrent agent push to `demo` (one overlapping word) → Update merged both and flagged the overlap → the agent pushed again → Merge pulled that in and stopped for review → Merge again landed one merge commit on `demo` that touched only the drafted file, deleted the draft branch and its snapshot ref, and the `demo` tab replayed it as a reviewable change.

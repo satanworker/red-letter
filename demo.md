@@ -4,11 +4,11 @@ This file lives on the `demo` branch of satanworker/red-letter.
 Edit it in the browser or push via git; both sides meet in the sameone file.
 fdfdf sdfdf 
 sdfdf
-kdsfjd 
+kdsfAGENTjd 
 dsfdfdsfsdfdsf
 dsfdsf
 
-dfdsfdf
+dfdsfdf agent-only line edit
 sdfdsfdsfsdfd
 ДИМООН
 

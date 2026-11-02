@@ -10,7 +10,7 @@ dsfdsf
 
 dfdsfdf
 sdfdsfdsfsdfd
-ДИМООН
+<!--rl:awtmwm-->ДИМООН<!--/rl:awtmwm-->
 
 # The test
 dsdas
@@ -26,4 +26,7 @@ dfdf
 @agent 2026-11-02: Checked: both sides
   meet in one file.
 @satanworker 2026-11-02T12:09Z: reply from protected
+-->
+<!--rl:awtmwm
+@satanworker 2026-11-02T12:09Z: who is this
 -->

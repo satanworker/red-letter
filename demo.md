@@ -14,7 +14,7 @@ sdfdsfdsfsdfd
 
 # The test (moved upstream)
 dsdas
-dsfdsfdsf
+<!--rl:av8vyb-->dsfdsfdsf<!--/rl:av8vyb-->
 dsfdfdf
 
 
@@ -22,4 +22,7 @@ dfdf
 
 <!--rl:awtmwm
 @satanworker 2026-11-02T12:09Z: who is this
+-->
+<!--rl:av8vyb
+@satanworker 2026-11-02T12:10Z: after upstream move
 -->

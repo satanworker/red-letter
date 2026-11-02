@@ -4,7 +4,7 @@ This file lives on the `demo` branch of satanworker/red-letter.
 Edit it in the browser or push via git; both sides meet in the sameone file.
 fdfdf sdfdf 
 sdfdf
-kdsfAGENTjd 
+kdsHUMANfjd 
 dsfdfdsfsdfdsf
 dsfdsf
 

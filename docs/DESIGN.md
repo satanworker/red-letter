@@ -50,7 +50,7 @@ Draft = real branch: create branch + copy the CRDT ref (same doc identity). Publ
 ## The one hard primitive
 
 Agent pushes are applied **at the heads of the parent commit**, not against the live doc; diffing against the live doc would treat in-flight browser edits as agent deletions.
-
+ 
 Every open tab polls, so several tabs replay the same push. Replay must therefore be deterministic: fork at the recorded heads with actor `from[0:16] + to[0:16]`, `time: 0`, `updateText(newBlob)`, then `applyChanges` the resulting change. Identical change bytes on every tab → the CRDT dedupes. Replay every first-parent commit; skipping one produces a different change and duplicates text. Not `changeAt`: in automerge 3.5.0 its materialized text/patches are wrong ~half the time with concurrent edits. Code: `experiments/crdt/replay.ts`.
 
 Where both sides touched the same words, the merge can interleave (`pheople`, `GitHHub`). `findConflicts` (`experiments/crdt/conflicts.ts`) flags exactly those regions; they are stored in the doc as cursor pairs keyed by commit sha and highlighted for review.

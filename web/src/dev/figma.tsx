@@ -4,8 +4,6 @@
 import { Repo } from "@automerge/automerge-repo";
 import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
-import { fixtureComments } from "../comments/commentsStore.ts";
-import type { Comment } from "../comments/commentsService.ts";
 import { fixtureDoc } from "../doc/docStore.ts";
 import type { AgentMark, RLDoc, Session } from "../doc/session.ts";
 import { fixtureRepo } from "../repo/repoStore.ts";
@@ -20,13 +18,13 @@ Red-letter Bibles print the important words in red on top of the plain text: an 
 
 ## Red Letter — design sketch
 
-${sentence} Git conflicts become CRDT merges.
+<!--rl:t1-->${sentence}<!--/rl:t1--> Git conflicts become CRDT merges.
 
 ## Topology (no stateful server)
 
 ![architecture](diagrams/architecture.svg)
 
-${sentence} Git conflicts become CRDT merges.
+<!--rl:t2-->${sentence}<!--/rl:t2--> Git conflicts become CRDT merges.
 `;
 
 const DOCS = [
@@ -38,14 +36,14 @@ const DOCS = [
 ];
 
 export function showFigmaFixture() {
-  const at = new Date(Date.now() - 23 * 60_000).toISOString();
-  const body = "I’m not sure we need to street it. Maybe lets try another way";
-  const msg = (id: string, parent?: string): Comment => ({ id, parent, author: "Satanworker", body, createdAt: at, ...(parent ? {} : { quote: sentence }) });
+  const at = new Date(Date.now() - 23 * 60_000).toISOString().slice(0, 16) + "Z";
+  const msg = `@Satanworker ${at}: I’m not sure we need to street it. Maybe lets try another way\n`;
+  const threads = `\n<!--rl:t1\n${msg}${msg}${msg}-->\n<!--rl:t2\n${msg}-->\n`;
   // the design's agent tab shows 10
   const marks: Record<string, AgentMark> = Object.fromEntries(
     Array.from({ length: 10 }, (_, i) => [`fixture${i}`, { sha: `fixture${i}`, author: "agent", message: "edit", at, hunks: [], conflicts: [] }]),
   );
-  const handle = new Repo({ network: [] }).create<RLDoc>({ text: TEXT, marks });
+  const handle = new Repo({ network: [] }).create<RLDoc>({ text: TEXT + threads, marks });
   const session = {
     repoName: "satanworker/red-letter",
     branch: "demo",
@@ -61,7 +59,7 @@ export function showFigmaFixture() {
     resolve: () => null,
     imageUrl: async (src: string) => (src === "diagrams/architecture.svg" ? "/dev/architecture.png" : null),
     poll: async () => {},
-    anchor: () => ({ from: "", to: "" }), // threads fall back to their quote
+    anchor: () => ({ from: "", to: "" }),
     save: async () => {},
     close: () => {},
   } as unknown as Session;
@@ -77,7 +75,6 @@ export function showFigmaFixture() {
     path: "demo.md",
     filesHidden: false,
   });
-  fixtureComments([msg("t1"), msg("t1a", "t1"), msg("t1b", "t1"), msg("t2")], "demo/demo.md.json");
   fixtureDoc({
     session,
     login: "satanworker",

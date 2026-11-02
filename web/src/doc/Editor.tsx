@@ -5,10 +5,12 @@ import { EditorState, StateEffect, StateField, Transaction, type Range } from "@
 import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip, type TooltipView } from "@codemirror/view";
 import { Show, createEffect, createSignal, onCleanup, onMount, type Accessor } from "solid-js";
 import { render } from "solid-js/web";
-import type { Thread } from "../comments/commentsSelectors.ts";
+import { comments } from "../comments/commentsStore.ts";
+import type { Thread } from "../comments/inline.ts";
 import { createMentions } from "../comments/Mentions.tsx";
 import { AtIcon, SendIcon, TipArrow } from "../ui.tsx";
 import { cancelComment, doc, docChanged, insertImages, openThread, setView, startComment, submitComment } from "./docStore.ts";
+import { commentMarks, inCode } from "./commentMarks.ts";
 import { imageUrl } from "./images.ts";
 import { editorExtensions } from "./livePreview.ts";
 import { cellSelection } from "./tables.ts";
@@ -59,12 +61,18 @@ function commentTooltip() {
     const dom = document.createElement("div");
     dom.className = "sel-tip flex flex-col items-center";
     const dispose = render(() => <SelectionTip />, dom);
+    let cellRect = new DOMRect();
     return {
       dom,
-      // inside a table the position is the whole widget's edge: sit on the selected text instead
+      // inside a table the position is the whole widget's edge: sit on the selected text instead (as last seen in
+      // the cell: once the comment box has focus, the page selection is in the box)
       get getCoords() {
         if (!view.state.field(cellSelection)) return undefined;
-        return () => (getSelection()?.rangeCount ? getSelection()!.getRangeAt(0).getBoundingClientRect() : new DOMRect());
+        return () => {
+          const s = getSelection();
+          if (s?.rangeCount && !dom.contains(s.anchorNode)) cellRect = s.getRangeAt(0).getBoundingClientRect();
+          return cellRect;
+        };
       },
       destroy: () => {
         dispose();
@@ -74,7 +82,7 @@ function commentTooltip() {
   };
   const make = (state: EditorState): Tooltip | null => {
     const sel = state.field(cellSelection) ?? state.selection.main;
-    return sel.from === sel.to ? null : { pos: sel.from, end: sel.to, above: true, create };
+    return sel.from === sel.to || inCode(state, sel.from) || inCode(state, sel.to) ? null : { pos: sel.from, end: sel.to, above: true, create };
   };
   return StateField.define<Tooltip | null>({
     create: make,
@@ -189,8 +197,7 @@ function decorations(session: Session, len: number, marks: AgentMark[], changes:
     if (c.before) del(c.from, c.before, "in this draft");
     mark(c.from, c.to, "rl-draft", { title: "edited in this draft" });
   }
-  for (const t of threads)
-    if (t.range && !t.root.resolved) mark(t.range.from, t.range.to, t.root.id === active ? "rl-comment active" : "rl-comment", { "data-thread": t.root.id });
+  for (const t of threads) if (t.range) mark(t.range.from, t.range.to, t.id === active ? "rl-comment active" : "rl-comment", { "data-thread": t.id });
   return Decoration.set(out, true);
 }
 
@@ -212,9 +219,10 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
       extensions: [
         ...editorExtensions(),
         decoField,
+        commentMarks,
         remoteNotUndoable,
         EditorState.readOnly.of(!s.canWrite),
-        s.canWrite ? commentTooltip() : [],
+        s.canWrite || comments.viaPr ? commentTooltip() : [],
         s.canWrite
           ? EditorView.domEventHandlers({
               paste: (e, v) => images(e, e.clipboardData, v.state.selection.main.head),

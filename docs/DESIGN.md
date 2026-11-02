@@ -29,9 +29,28 @@ GitHub's callback goes to the static site (`/auth/callback`). The page POSTs `{c
 
 GitHub holds all state:
 
-- `refs/heads/<branch>` — the file. Truth.
+- `refs/heads/<branch>` — the file, comments included. Truth.
 - `refs/red-letter/v1/<sha1(branch)>/<sha1(path)>` — parentless commit holding `doc.automerge` + `meta.json {docId, branch, path, commit, heads}`. Doc identity and history. Hashed names: `<branch>/<path>` collides and hits ref directory/file conflicts.
-- orphan branch `red-letter-comments`: one JSON array per file at `<branch>/<path>.json` with cursor pair, quote, author and parent. Agents read it with `git show origin/red-letter-comments:<branch>/<path>.json` and can reply by pushing to it.
+- `red-letter/comments/<branch>/<path>` — only for a protected branch: the doc plus new comments, with one open pull request into `<branch>`.
+
+## Comments
+
+Comments are HTML comments in the doc (`web/src/comments/inline.ts`), so GitHub's rendered page hides them and agents read them with the text:
+
+```
+The hub <!--rl:c1-->relays live sync<!--/rl:c1--> and nothing else.
+…
+<!--rl:c1
+@satanworker 2026-11-01T10:12Z: Should this mention the OAuth exchange?
+@agent 2026-11-01: Added a sentence.
+-->
+```
+
+Markers wrap the commented text; each thread's block sits at the end of the doc. A message starts a line with `@login date: ` (the date is optional); lines indented two spaces continue it; `-->` in a body is written `--&gt;`. Resolving deletes the markers and the block: git history is the record. Nothing inside fenced code counts. Because comments are text, they sync live, save with the doc, survive offline and follow every edit (the CRDT carries them), and a draft's merge carries them along.
+
+- **Branch you can push to:** a comment is an edit to the doc, made outside the undo history. The editor hides the markup and keeps it intact (`web/src/doc/commentMarks.ts`): markers and blocks are atomic, typing at a range's edge stays outside it (and at the end of the doc, above the blocks), Backspace / Delete next to hidden markup delete the visible character, and a copy leaves the markup out.
+- **Protected branch** (GitHub's `protected` flag; the doc opens read-only, "protected" badge): comments go to the doc on `red-letter/comments/<branch>/<path>` through the contents API, and the first opens a pull request. With no open PR the branch starts over from `<branch>`; otherwise `<branch>` is merged into it first (`POST /merges`). New comments map from the doc to the PR's copy through the text without markup, so the two must differ only in comments: before each write the doc catches up with the branch (its first sync, then a fresh poll). Merging the PR changes nothing in the rendered page. The panel shows the PR's threads on the doc.
+- **No push access:** no comments.
 
 ## Browser, per open file
 
@@ -41,9 +60,9 @@ GitHub holds all state:
 4. Connect relay. Edit in CodeMirror 6. Replica in IndexedDB; offline works. The CRDT holds LF; the committer restores the file's EOL.
 5. Poll `GET git/ref/heads/<branch>` every ~15s with `cache:"no-store"` + manual `If-None-Match` (304s are free; default fetch serves refs from cache for 60s). Changed → step 3.
 6. Idle 30s / explicit save: `POST trees` (inline content) → `POST commits` (trailer) → snapshot `blob → tree → commit` → GraphQL `updateRefs` moving branch + snapshot ref atomically with CAS. Any error → poll, replay, retry. (REST `PATCH` has no CAS on non-branch refs.) 7 calls, ~3–4s.
-7. Comments: cursors + ~50-char context, written to the orphan branch. Render from cursors; fall back to context match if the doc identity was ever lost.
+7. Comments: edits to the doc (see Comments).
 
-Agent: `git pull`, edit, `git push`. `git show red-letter-comments:…` to read comments. Nothing to install.
+Agent: `git pull`, edit, `git push`. Comments are in the file: reply by adding a `@login: ` line to a thread block, resolve by deleting it. On a protected branch, new ones wait in the doc's comment PR (`gh pr list`). Nothing to install.
 
 ## Drafts
 
@@ -68,7 +87,7 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 |---|---|---|
 | CRDT | Automerge 3.5 | deterministic fork-at-heads replay (spiked: dedupes across tabs); `getCursor` for anchors; `getAuthors` for `Co-authored-by`. Loro char merges identically and is the swap if needed. Yjs: no historical-edit primitive, default GC drops the history we key on. |
 | Editor | CodeMirror 6 with an Obsidian-style live preview (`web/src/doc/livePreview.ts`): decorations over the raw markdown string; syntax markers hidden except on the cursor line | every tree editor (Tiptap, Milkdown, Outline, GitBook, Tina) canonicalises or corrupts markdown on round-trip; agents would see diff noise. Never a ProseMirror tree as the CRDT doc |
-| Comments | out of band, anchored by Automerge cursors + context | marks live in the doc and would serialise into the file |
+| Comments | HTML comments in the doc: range markers + a thread block at the end; a protected branch takes them through one PR per doc | hidden on GitHub's page, read by agents with the file, carried by the CRDT. The orphan branch they replaced was invisible to people and agents alike; PR review comments only attach to lines the PR changes |
 | Auth | Two options, both with tokens kept only in the browser. Default: classic OAuth App (`repo` scope, expiring tokens with refresh): one click, any repo the user can reach, nothing to install. Alternative: GitHub App user-to-server tokens, which see only repos where the App is installed | The OAuth App removes install friction when sharing links. The GitHub App suits people and orgs who want per-repo scoping. Orgs with OAuth access restrictions must approve the OAuth App. |
 | Commit | Git Data API + GraphQL `updateRefs` | atomic file + snapshot move with real CAS on both refs |
 | Transport | websocket relay | WebRTC adds signalling/NAT pain for nothing; offline merge is a CRDT property, not a transport property |
@@ -78,7 +97,8 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 - Myers diff ≠ keystrokes: same-word edits interleave. Flagged and highlighted (see above); humans review. `updateText` is Beta.
 - Signed-commit branch protection rejects unsigned user-token API commits. Use draft branches; main gets bot-signed + `Co-authored-by` if needed.
 - Secondary rate limit: ≤80 content-creating req/min, ≤500/h per token. A save is 6 writes + reads. Serialise, keep idle ≥30s.
-- Doc identity: comment anchors are op IDs in one specific Automerge doc. Lose the snapshot ref, lose the anchors; hence the context snippet. An agent's `git push --mirror` deletes `refs/red-letter/*`; a default clone doesn't fetch them.
+- Doc identity: change anchors (agent marks, conflicts) are op IDs in one specific Automerge doc. Lose the snapshot ref, lose those. An agent's `git push --mirror` deletes `refs/red-letter/*`; a default clone doesn't fetch them. Comments don't depend on it: they're text.
+- Comments are in the file: an unresolved one ships wherever the file goes (hidden when rendered, visible in the source), and each comment or resolve changes the doc's history.
 - Agent→browser latency is the poll interval, not ~1s webhook.
 - `@automerge/automerge-codemirror` is 0.2.0 vs `y-codemirror.next` at 171k/wk. Price of the right primitive. Works in the smoke test.
 - `updateRefs` with a GitHub App user-to-server token: verified working in the prototype (autosave commits on `demo`).
@@ -86,7 +106,7 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 - The relay accepts ops from anyone holding a docId, and an honest tab later commits them under its own name. Done: the hub admits a tab only with push access to the repo.
 - Replayed agent changes must stay off the human's undo stack. Done: remote transactions are marked `addToHistory: false`; verified that Ctrl-Z skips the agent's edit.
 
-## Prototype status (updated 2026-10-26)
+## Prototype status (updated 2026-11-01)
 
 Live at `diff.satanworker.com`; code in `web/` and `server/`; run/deploy notes in `README.md`. Verified end to end with two tabs and a git-pushing "agent" on the `demo` branch of this repo.
 
@@ -104,12 +124,12 @@ Done:
   - Ctrl-Z never reverts an agent's or a peer's change.
   - a Red Letter save of *another* file on the branch is replayed (a no-op here) instead of stalling the walk: its trailer's heads belong to that file's doc.
 - **Drafts** (see Drafts above; branch `drafts` / worktree `red-letter-drafts`): the branch picker in the header lists the base branch and every `drafts/*` branch and has "+ New draft…". Inside a draft a bar over the doc offers Changes, "Update from <base>" (when the base moved) and "Merge into <base>". Verified on `demo` with a scratch file: draft edits plus a concurrent agent push to `demo` (one overlapping word) → Update merged both and flagged the overlap → the agent pushed again → Merge pulled that in and stopped for review → Merge again landed one merge commit on `demo` that touched only the drafted file, deleted the draft branch and its snapshot ref, and the `demo` tab replayed it as a reviewable change.
-- **Comments** (optimistic: shown at once, written to git in the background in order; pending writes and the last list are kept in IndexedDB, so they survive reloads and offline and go out when the network is back):
-  - written to `red-letter-comments`, started from the "Add a comment" pill on a selection, which turns into the comment box in place (Enter sends, Esc cancels); the thread shows in the side panel only once sent (Figma `22:561`);
+- **Comments** (inline HTML comments, see Comments above):
+  - started from the "Add a comment" pill on a selection, which turns into the comment box in place (Enter sends, Esc cancels); the thread shows in the side panel only once sent (Figma `22:561`);
   - `@` in a comment or reply lists the repo's collaborators with their avatars (`GET /repos/{repo}/collaborators`, first 100); bodies keep plain `@login` text, as on GitHub, shown as chips. No notifications yet;
-  - shown as threads with replies and resolve;
-  - the agent read one via `git show` and replied by pushing;
-  - the anchor followed the text through edits; text typed right after a commented range (end of a line, end of the doc) stays out of it. Its end is a cursor on the range's last char; comments and agent marks from before that fix still end on the char after.
+  - shown as threads with replies; Resolve deletes the thread;
+  - verified on `demo`: comment, reply and resolve (the file came back byte for byte, except a final newline it lacked); text typed after the commented word stays out of it, Backspace after it deletes the word's last letter, a copy has no markers;
+  - verified on a protected scratch branch: the first comment opened the PR, a reply and a resolve added commits, a push to the branch was merged into the PR's copy before the next comment, and a reload showed the PR's threads on the doc; after the PR was closed (branch kept or deleted) the next comment opened a fresh one. Forced with delayed responses: a comment sent while this browser's copy was still behind a push lands, and a refresh that read the PR before a comment and answered after it doesn't take the comment off the panel.
 - **URLs and file browser:** `/owner/repo` opens the default branch's README with a sidebar listing the branch's markdown files (collapsible tree + filter); `/owner/repo/tree/<branch>`, `/owner/repo/blob/<branch>/<path>` (GitHub's shape) and `/owner/repo/<path>` (default branch) all work. Missing files show the sidebar with a not-found note. "+" in the sidebar (writers only) creates a markdown file, prefilled with the open file's folder (`.md` added if no extension): it joins the list and opens at once with a `# Title` line, and the file and its snapshot are committed by a background save (one `updateRefs`, which also creates the snapshot ref).
 - **UI:** Notion-style live-preview editor: a centred column up to 780 px wide; headings, emphasis, lists (wrapped lines and Shift-Enter continuations align with the item's text), quotes, code and images styled inline. Markdown syntax always shows, muted, so moving the cursor never reflows the text: heading marks (`## `) hang in the left margin at body size, list markers stay as typed, a task's `[ ]` toggles on click. GFM tables are edited Obsidian-style (`web/src/doc/tables.ts`): cells are edited in place (the focused cell shows its raw markdown), Tab / Shift-Tab / Enter move between cells and add a row past the end, arrows and Escape leave the table, right-click inserts or deletes rows and columns, Ctrl-Z/Y go to the editor's history. A cell edit writes only the changed characters of that cell. Breadcrumb header with branch pill, save state and Share. Built with Solid 1.9 (compiled by `@dschz/bun-plugin-solid` under `bun build`); state lives in per-feature stores (`repoStore`, `docStore`, `commentsStore`), components only render and call actions.
 - **Wide blocks:** tables and diagrams stay in the text column: a wide table wraps its cells (whole words), then scrolls.
@@ -117,7 +137,7 @@ Done:
 - **Keyboard:** every control is a button or link with a visible focus ring; Up/Down walk the file tree; Left/Right switch the panel tabs; Esc closes every input; ⌘⌥M / Ctrl+Alt+M comments on the selection. ⌘K / Ctrl+K opens a palette of files and actions (comment, show comments / history, show or hide files, copy link). In the editor, ⌘B / ⌘I (Ctrl on Linux/Windows) wrap the selection in `**` / `*` or unwrap it, and combine into `***bold italic***`; `/` at the start of a line opens a menu of blocks (headings, lists, task, quote, code, mermaid, table, divider; `web/src/doc/slash.ts`, CodeMirror autocomplete) that filters as you type and replaces the `/word` with the block's markdown; Tab indents: Esc then Tab leaves it (CodeMirror's tab focus mode).
 - **Pasted and dropped images:** uploaded at once as git blobs and linked on their own line as `![name](images/<name>-<sha7>.<ext>)` next to the doc; the doc's `images` map (src → blob sha) lets every tab show them before they're saved. A save commits the ones the text still links to, with the file, in the same commit; a draft's merge carries them to the base (not yet exercised). Verified on `demo`: paste, drop mid-line, save committed both linked images and skipped an unlinked one.
 - **Doc icon:** an emoji at the start of the doc's first `# ` heading (`# 🚀 Title`), so it's plain markdown GitHub shows too. Writers get "Add icon" / "Change icon" over the title while the pointer is on the doc (`web/src/doc/IconPicker.tsx`): a grid of common emoji, a field for any emoji (focused on open, so the OS emoji picker works), Remove. A doc without a `# ` heading gets `# <icon> <file name>` at the top. The browser tab's favicon is the open doc's icon (the ¶ otherwise). The file sidebar shows each doc's icon in place of the file icon: background sync reads it from every doc's copy, closing a doc records its latest, and the open doc's follows its text live. Not shown yet in the breadcrumb or palette.
-- **Comments on table cells:** text selected in the focused cell maps to doc positions (`cellSelection` in `tables.ts`); the "Add a comment" pill sits on it and the comment anchors to those characters.
+- **Comments on table cells:** text selected in the focused cell maps to doc positions (`cellSelection` in `tables.ts`); the "Add a comment" pill sits on it, the selection holds while the comment box has focus, and the comment's markers go around those characters. Cells never show the markers: typing in a focused cell is diffed against its text without them and mapped back, so the markers stay put as in the rest of the doc. Verified on `demo`: comment a cell, comment text beside a commented range, type at both edges and inside, replace the whole cell, undo.
 - **Mermaid:** ` ```mermaid ` blocks render as SVG diagrams (`web/src/doc/mermaid.ts`) under their source, which always shows like any code block; while typing, the last picture stays until the new one has loaded, and a source that doesn't parse fades it (the error is its tooltip). Renderer lukilabs `beautiful-mermaid` 1.1 (ELK layout, no DOM): lazy chunk of 1.6 MB (470 KB gzipped), 20–70 ms a diagram, cached per source. `@vercel/beautiful-mermaid` (45 KB gzipped, ~5 ms) shipped first and was dropped: it showed the quotes of `A["label"]`, ignored `<br/>` and drew back edges outside the picture. mermaid.js is 1.5 MB gzipped and needs the DOM; Selkie (Rust/WASM, ~725 KB gzipped) isn't on npm.
 - **Dark mode:** follows the system (`prefers-color-scheme`); every colour is a CSS variable in `web/src/app.css`, the editor themes use them too. Diagrams are `<img>`s carrying their own dark-scheme media query.
 - **Code highlighting:** fenced code blocks get syntax colours from Pierre's `@pierre/highlights` (hand-written WebAssembly; tokenizing is ~0.3 ms per 1,000 lines) with the Pierre light/dark themes combined through CSS `light-dark()` (`web/src/doc/highlight.ts`). Loaded on the first code block (267 KB chunk, wasm inlined); tokens are cached per block, so only the block being typed in is re-tokenized.
@@ -127,8 +147,8 @@ Done:
   - `http`: GitHub GET responses. Sha-addressed ones (commits, trees, blobs, file contents at a sha) are never refetched; the rest revalidate with ETags and are used as-is offline.
   - Safari can drop the connection: every operation reopens once and retries; without IndexedDB the app runs as before, from the network. `navigator.storage.persist()` is requested after the first file opens. Sign-out clears both stores.
 - **Service worker** (`web/src/sw.ts`): precaches this build's hashed assets (the 3.6 MB Automerge wasm included), serves them from the cache, and fetches pages network-first with the cached shell as the offline fallback. A repo opened before loads fully offline.
-- **Background sync:** after a repo opens, every doc of the branch (snapshot merged into this browser's copy) and its comments are fetched, four at a time, pausing while a file opens. Any file then opens from the copy (measured: 200 ms to switch, ~0.7 s for a reload).
-- **Network:** first paint never waits on GitHub (repo info, branch, file list and App install checks come from this browser's copy and revalidate behind it); concurrent reads of one URL share a request, and reads within 2 s share the answer; compare-and-swap paths (saves, comment writes, lost races) always ask GitHub.
+- **Background sync:** after a repo opens, every doc of the branch (snapshot merged into this browser's copy) is fetched, four at a time, pausing while a file opens. Any file then opens from the copy (measured: 200 ms to switch, ~0.7 s for a reload).
+- **Network:** first paint never waits on GitHub (repo info, branch, branch protection, file list and App install checks come from this browser's copy and revalidate behind it); concurrent reads of one URL share a request, and reads within 2 s share the answer; compare-and-swap paths (saves, comment PR writes, lost races) always ask GitHub.
 - **Infra:**
   - static site on Cloudflare (Workers static assets);
   - Go hub + OAuth exchange on home-satan as systemd user units behind a Cloudflare Tunnel (`diff-api.satanworker.com`);
@@ -139,8 +159,9 @@ Not built yet:
 - BroadcastChannel between tabs: skipped, the hub already syncs tabs on the same file, and adding a second adapter would announce the same peer twice;
 - strip the wasm's 687 KB name section (−19% raw, −6% brotli);
 - presence cursors inside the text (avatars only today);
-- notifications for mentions;
-- drafts: publish as a PR instead of merging in-app; retroactive drafts (move unsaved edits off main into a new draft); comments carried across a merge; tabs still open on a merged draft get save errors (the branch is gone); a base commit merged into a draft outside Red Letter isn't recorded in `base`, so the next Update would duplicate its text;
+- notifications for mentions; the comment PR doesn't mention anyone either;
+- comments: a protected-branch comment that fails isn't queued (the error shows its text to copy); admins who could bypass a branch's protection still comment through the PR (`refUpdateRule.viewerCanPush` would tell them apart); text in fenced code takes no comments (the pill doesn't show there);
+- drafts: publish as a PR instead of merging in-app; retroactive drafts (move unsaved edits off main into a new draft); tabs still open on a merged draft get save errors (the branch is gone); a base commit merged into a draft outside Red Letter isn't recorded in `base`, so the next Update would duplicate its text;
 - read-only viewing without signing in;
 - git authors (agents) get a GitHub avatar by name, which can be a stranger's account; show an initial instead.
 - tables: agent-change and comment highlights inside a table aren't shown (the table is one widget); after some undos the caret leaves the table; no column resizing or drag to reorder.

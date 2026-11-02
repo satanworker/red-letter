@@ -6,6 +6,7 @@
 import { syntaxTree } from "@codemirror/language";
 import { StateEffect, StateField, type EditorState, type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, runScopeHandlers, type DecorationSet } from "@codemirror/view";
+import { plain } from "../comments/inline.ts";
 
 type Cell = { from: number; to: number; end: number }; // trimmed text (from === to: empty); end: the next pipe
 type Row = { from: number; to: number; cells: Cell[] };
@@ -71,13 +72,13 @@ const raws = new WeakMap<HTMLElement, string[][]>(); // the table element -> cur
 let editing: { from: number; r: number; c: number; lostAt: number } | null = null;
 
 class TableWidget extends WidgetType {
-  readonly cells: string[][]; // raw text per source row (delimiter row included)
+  readonly cells: string[][]; // raw text per source row (delimiter row included), without comment markers
   readonly align: string[];
   constructor(readonly src: string) {
     super();
     let at = 0;
     this.cells = src.split("\n").map((line) => {
-      const row = splitRow(line, at).map((c) => unescape(src.slice(c.from, c.to)));
+      const row = splitRow(line, at).map((c) => unescape(plain(src.slice(c.from, c.to)).text));
       at += line.length + 1;
       return row;
     });
@@ -188,22 +189,25 @@ function selectedInCell(view: EditorView): { from: number; to: number } | null {
   if (!el || !wrap || el !== document.activeElement || !view.contentDOM.contains(wrap)) return null;
   const cell = tableAt(view.state, view.posAtDOM(wrap))?.rows[Number(el.dataset.r)]?.cells[Number(el.dataset.c)];
   if (!cell) return null;
-  // The focused cell shows its raw text, with "\|" shown as "|": count source characters up to a shown offset.
-  const src = view.state.doc.sliceString(cell.from, cell.to);
-  const pos = (container: Node, offset: number) => {
+  // The focused cell shows its raw text, with "\|" shown as "|" and no comment markers: count source characters up
+  // to a shown offset, then step over the markers (side 1: after markers there, -1: before).
+  const src = plain(view.state.doc.sliceString(cell.from, cell.to));
+  const pos = (container: Node, offset: number, side: -1 | 1) => {
     const before = document.createRange();
     before.selectNodeContents(el);
     before.setEnd(container, offset);
     let i = 0;
-    for (let n = before.toString().length; n > 0 && i < src.length; n--) i += src.startsWith("\\|", i) ? 2 : 1;
-    return cell.from + i;
+    for (let n = before.toString().length; n > 0 && i < src.text.length; n--) i += src.text.startsWith("\\|", i) ? 2 : 1;
+    return cell.from + src.toText(i, side);
   };
-  const from = pos(range.startContainer, range.startOffset), to = pos(range.endContainer, range.endOffset);
+  const from = pos(range.startContainer, range.startOffset, 1), to = pos(range.endContainer, range.endOffset, -1);
   return from < to ? { from, to } : null;
 }
 
 const cellSelectionSync = ViewPlugin.define((view) => {
   const sync = () => {
+    // the comment box (a tooltip) took focus: the selection it's about stays
+    if (document.activeElement?.closest(".cm-tooltip")) return;
     const next = selectedInCell(view), cur = view.state.field(cellSelection);
     if (next?.from !== cur?.from || next?.to !== cur?.to) view.dispatch({ effects: setCellSelection.of(next) });
   };
@@ -246,15 +250,19 @@ function wire(wrap: HTMLElement, view: EditorView) {
     if (cell) {
       // Only the changed span: keystrokes become plain inserts, so undo groups them like normal typing and a
       // peer typing elsewhere in the same cell isn't overwritten. One space of padding is kept when the cell had
-      // some, so typed spaces don't pile up at the end.
-      const old = view.state.doc.sliceString(cell.from, cell.end);
+      // some, so typed spaces don't pile up at the end. The cell shows no comment markers, so the change is found
+      // without them and mapped back; commentMarks' guard keeps it off the markers, as in the rest of the doc.
+      const old = plain(view.state.doc.sliceString(cell.from, cell.end));
       const next = text.trimEnd() + (cell.end > cell.to ? " " : "");
+      const o = old.text;
       let p = 0;
-      while (p < old.length && p < next.length && old[p] === next[p]) p++;
+      while (p < o.length && p < next.length && o[p] === next[p]) p++;
       let s = 0;
-      while (s < old.length - p && s < next.length - p && old[old.length - 1 - s] === next[next.length - 1 - s]) s++;
-      if (p === old.length && p === next.length) return;
-      view.dispatch({ changes: { from: cell.from + p, to: cell.end - s, insert: next.slice(p, next.length - s) }, userEvent: "input.type" });
+      while (s < o.length - p && s < next.length - p && o[o.length - 1 - s] === next[next.length - 1 - s]) s++;
+      if (p === o.length && p === next.length) return;
+      const from = cell.from + old.toText(p, -1);
+      const to = o.length - s > p ? cell.from + old.toText(o.length - s, 1) : from;
+      view.dispatch({ changes: { from, to, insert: next.slice(p, next.length - s) }, userEvent: "input.type" });
       return;
     }
     // a short row: pad it to this column

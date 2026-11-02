@@ -2,11 +2,11 @@
 // The CRDT doc isn't copied into the store: `version` ticks (once per frame) when it changes, selectors re-read it.
 import type { EditorView } from "@codemirror/view";
 import { createStore, reconcile } from "solid-js/store";
-import { addComment, clearComments, loadComments, refreshComments, setResolved } from "../comments/commentsStore.ts";
-import type { Comment } from "../comments/commentsService.ts";
-import type { Thread } from "../comments/commentsSelectors.ts";
+import { clearComments, commentViaPr, comments, loadComments, refreshComments } from "../comments/commentsStore.ts";
+import { addThread, apply, newId, now, plain, reply, resolve, sameProse, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, type User } from "../github.ts";
-import { fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
+import { branchProtected, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
+import { inCode } from "./commentMarks.ts";
 import { selectIcon } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection } from "./tables.ts";
@@ -74,7 +74,11 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
   closeFile();
   set({ opening: path, login: user.login, picked: false, tab: "comments", activeThread: "", composing: null, showChanges: false, draftNote: "" });
   document.title = `${path.split("/").pop()} · Red Letter`;
-  const session = new Session(repo.full_name, repo.node_id, branch, path, repo.permissions?.push === true, user.login);
+  // a protected branch takes no direct edits; its comments go through a pull request (commentsStore)
+  const push = repo.permissions?.push === true;
+  const viaPr = push && (await branchProtected(repo.full_name, branch).catch(() => false));
+  if (state.opening !== path) return true; // another file was picked meanwhile
+  const session = new Session(repo.full_name, repo.node_id, branch, path, push && !viaPr, user.login);
   try {
     await session.open(create, draftOf);
   } catch (e) {
@@ -96,10 +100,10 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
     docChanged();
   };
   session.handle.on("change", docChanged);
+  loadComments(repo.full_name, branch, path, viaPr); // before the editor mounts: it reads comments.viaPr
   set({ session, opening: "" });
   pushStatus();
   ticker = window.setInterval(tick, 15_000);
-  void loadComments(repo.full_name, branch, path);
   void navigator.storage?.persist?.(); // ask the browser not to evict this origin's copies under disk pressure
   session.synced.catch((e) => {
     if (e instanceof DocReset && state.session === session) {
@@ -154,7 +158,7 @@ export function leavingWithUnsaved(): boolean {
 export function startComment() {
   const s = state.session;
   const sel = view && (view.state.field(cellSelection) ?? view.state.selection.main);
-  if (!s?.canWrite || !view || !sel || sel.from === sel.to) return;
+  if (!s || !(s.canWrite || comments.viaPr) || !view || !sel || sel.from === sel.to || inCode(view.state, sel.from) || inCode(view.state, sel.to)) return;
   set("composing", { anchor: s.anchor(sel.from, sel.to), quote: view.state.sliceDoc(sel.from, sel.to) });
 }
 export const cancelComment = () => set("composing", null);
@@ -194,31 +198,54 @@ export function setIcon(icon: string) {
 }
 
 export function selectThread(t: Thread) {
-  set("activeThread", t.root.id);
+  set("activeThread", t.id);
   if (t.range) jump(t.range.from, t.range.to);
 }
 
-// ---- comments (shown at once; commentsStore writes them in the background) ----
+// ---- comments: edits to the doc (inline.ts), or on a protected branch to its comment PR's copy ----
+function editComments(message: string, edits: (text: string) => Edit[], body = "") {
+  const s = state.session;
+  if (!s) return;
+  if (s.canWrite) {
+    // no userEvent: not on the undo stack, and commentMarks' guard leaves it alone
+    if (view) view.dispatch({ changes: edits(view.state.doc.toString()) });
+    return;
+  }
+  if (!comments.viaPr) return;
+  // The PR's copy is about to take in the branch's latest commit: bring the doc there too (a copy from this
+  // browser that hasn't caught up yet, a push since the last poll), so the two differ only in comments.
+  const caughtUp = s.synced.catch(() => {}).then(() => s.poll(true));
+  void commentViaPr(`${message} ${s.path}`, (t) => apply(t, edits(t)), body, caughtUp);
+}
+
 export function submitComment(body: string) {
   const s = state.session;
   const c = state.composing;
-  if (!s || !c) return;
   set("composing", null);
-  const root: Comment = { id: crypto.randomUUID(), author: state.login, body, createdAt: new Date().toISOString(), docId: s.docId, ...c.anchor, quote: c.quote };
-  addComment(root);
+  const r = s && c && s.resolve(c.anchor);
+  if (!s || !c || !r || r.from === r.to) return;
+  const id = newId();
+  const msg = { author: state.login, at: now(), body };
+  editComments("Comment on", (t) => {
+    if (s.canWrite) return addThread(t, r.from, r.to, id, msg);
+    // the comment PR's copy: the same doc plus comments, so positions correspond through the text without markup;
+    // the anchor is resolved again, the doc may have caught up meanwhile
+    const at = s.resolve(c.anchor);
+    const doc = plain(s.doc.text), pr = plain(t);
+    if (!at || at.from === at.to) throw new Error("The commented text is gone");
+    if (!sameProse(doc, pr)) throw new Error("The comment PR's copy of this doc differs from it in more than comments");
+    return addThread(t, pr.toText(doc.toPlain(at.from), 1), pr.toText(doc.toPlain(at.to), -1), id, msg);
+  }, body);
   // the comment shows on the right only now that it's sent (Figma 22:561)
-  set({ activeThread: root.id, tab: "comments", picked: true });
+  set({ activeThread: id, tab: "comments", picked: true });
   if (view) {
     view.dispatch({ selection: { anchor: view.state.selection.main.to } });
     view.focus();
   }
 }
 
-export function submitReply(rootId: string, body: string) {
-  addComment({ id: crypto.randomUUID(), parent: rootId, author: state.login, body, createdAt: new Date().toISOString() });
-}
-
-export const toggleResolved = (root: Comment) => setResolved(root.id, !root.resolved);
+export const submitReply = (id: string, body: string) => editComments("Reply on", (t) => reply(t, id, { author: state.login, at: now(), body }), body);
+export const resolveThread = (id: string) => editComments("Resolve a comment on", (t) => resolve(t, id));
 
 // ---- drafts ----
 export const toggleChanges = () => set("showChanges", (v) => !v);

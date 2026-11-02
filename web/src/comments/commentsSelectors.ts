@@ -1,23 +1,18 @@
-import type { Session } from "../doc/session.ts";
-import type { Comment } from "./commentsService.ts";
+import { parse, plain, sameProse, type Thread } from "./inline.ts";
 
-export type Thread = { root: Comment; replies: Comment[]; range: { from: number; to: number } | null; moved: boolean };
-
-// Threads in document order. A comment is placed by its Automerge cursors, or by its quote when the doc was
-// recreated since; `moved` = the anchored text no longer matches the quote.
-export function selectThreads(session: Session, list: Comment[]): Thread[] {
-  const text = session.doc.text;
-  return list
-    .filter((c) => !c.parent)
-    .map((root) => {
-      let range: Thread["range"] = null;
-      if (root.docId === session.docId && root.from && root.to) range = session.resolve({ from: root.from, to: root.to });
-      if (!range && root.quote) {
-        const i = text.indexOf(root.quote);
-        if (i >= 0) range = { from: i, to: i + root.quote.length };
-      }
-      const moved = !!range && !!root.quote && text.slice(range.from, range.to) !== root.quote;
-      return { root, replies: list.filter((c) => c.parent === root.id), range, moved };
-    })
-    .sort((a, b) => (a.range?.from ?? Infinity) - (b.range?.from ?? Infinity));
+// Threads in document order, with ranges in `text` (the open doc). prText: the comment PR's copy of the doc on a
+// protected branch, whose threads are mapped onto the doc's text (by quote if the two differ in more than comments).
+export function selectThreads(text: string, prText: string | null): Thread[] {
+  let threads = parse(prText ?? text).threads;
+  if (prText !== null) {
+    const doc = plain(text), pr = plain(prText);
+    const same = sameProse(doc, pr);
+    threads = threads.map((t) => {
+      let range = t.range && same ? { from: doc.toText(pr.toPlain(t.range.from), 1), to: doc.toText(pr.toPlain(t.range.to), -1) } : null;
+      const i = t.range && !same && t.quote ? doc.text.indexOf(t.quote) : -1;
+      if (i >= 0) range = { from: doc.toText(i, 1), to: doc.toText(i + t.quote.length, -1) };
+      return { ...t, range };
+    });
+  }
+  return threads.sort((a, b) => (a.range?.from ?? Infinity) - (b.range?.from ?? Infinity));
 }

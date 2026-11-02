@@ -37,6 +37,13 @@ export async function branchHead(repo: string, branch: string): Promise<string> 
   return ref.object.sha;
 }
 
+// Protected: no direct edits from Red Letter, even for admins who could bypass the rule (stale-first, like getRepo).
+// ponytail: GitHub's `protected` flag; GraphQL refUpdateRule.viewerCanPush if bypassing admins should edit directly
+export async function branchProtected(repo: string, branch: string): Promise<boolean> {
+  const b: { protected: boolean } = JSON.parse(await cachedGet(`/repos/${repo}/branches/${encPath(branch)}`, { stale: true }));
+  return b.protected;
+}
+
 export type Commit = { sha: string; message: string; author: string; date: string; merge: boolean };
 
 // The commits that touched `path`, newest first, as of `commit` (a sha: the answer never changes, so it's cached for good).

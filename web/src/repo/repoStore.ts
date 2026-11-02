@@ -1,8 +1,6 @@
 // Which screen is showing, and the open repo + branch: info, the branch's markdown files, the current path.
 // openRoute is the one entry point: page load, links, back/forward (see main.tsx).
 import { createStore } from "solid-js/store";
-import { commentsHead } from "../comments/commentsService.ts";
-import { warmComments } from "../comments/commentsStore.ts";
 import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, runDraft } from "../doc/docStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, token, type User } from "../github.ts";
@@ -197,14 +195,14 @@ function sleep(ms: number): Promise<void> {
   return promise;
 }
 
-// After a repo opens: bring every doc of the branch (and its comments) into this browser, one at a time, so any
-// file then opens at once. Opening a file always goes first: the loop waits while one is opening. Read-only:
+// After a repo opens: bring every doc of the branch into this browser, one at a time, so any file then opens at
+// once. Opening a file always goes first: the loop waits while one is opening. Read-only:
 // it never creates snapshots. Stops when another repo or branch opens, or when GitHub can't be reached.
 async function syncAll(repo: string, branch: string, cached: string[]) {
   const run = ++syncRun;
   clearIcons(); // another repo or branch: its docs' icons come in as they sync
   try {
-    const [docs, heads, head, comments] = await Promise.all([listDocs(repo, branch), snapshotHeads(repo, branch), branchHead(repo, branch), commentsHead(repo)]);
+    const [docs, heads, head] = await Promise.all([listDocs(repo, branch), snapshotHeads(repo, branch), branchHead(repo, branch)]);
     // the sidebar showed this browser's last list; files added or removed since show up now
     if (run === syncRun && docs.join("\n") !== cached.join("\n")) set("docs", docs);
     // four at a time: GitHub's latency (~400 ms per request), not bandwidth, is the limit
@@ -218,7 +216,6 @@ async function syncAll(repo: string, branch: string, cached: string[]) {
         if (isOpen()) continue;
         const text = await syncCopy(repo, branch, p, heads.get(await snapshotRef(branch, p)) ?? NO_SNAPSHOT, head, isOpen);
         if (run === syncRun) noteIcon(p, text);
-        if (comments) await warmComments(repo, branch, p, comments);
       }
     };
     await Promise.all([worker(), worker(), worker(), worker()]);

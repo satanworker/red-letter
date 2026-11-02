@@ -24,7 +24,7 @@ export function EditorScreen() {
   const canWrite = () => repo.repo?.permissions?.push === true;
   const threads = createMemo(() => {
     doc.version;
-    return doc.session ? selectThreads(doc.session, comments.list) : [];
+    return doc.session ? selectThreads(doc.session.doc.text, comments.text) : [];
   });
   const marks = createMemo(() => {
     doc.version;
@@ -54,7 +54,7 @@ export function EditorScreen() {
     const name = prompt("Name the draft", `${file().replace(/\.[^.]+$/, "")}-edits`);
     if (name) void createDraft(name);
   };
-  const openCount = () => threads().filter((t) => !t.root.resolved).length;
+  const openCount = () => threads().length;
   const tab = () => selectTab(doc, openCount(), marks().length);
   // other people on this file; your own other tabs count for saving (Session.close) but aren't shown
   const people = () => [...new Set(doc.status.people)].filter((p) => p !== repo.user?.login);
@@ -156,6 +156,11 @@ export function EditorScreen() {
           <Show when={!canWrite()}>
             <span class={`ml-2 ${badge} px-1.5`}>read-only</span>
           </Show>
+          <Show when={comments.viaPr}>
+            <span class={`ml-2 ${badge} px-1.5`} title={`${repo.branch} is protected: no edits here; comments go through a pull request`}>
+              protected
+            </span>
+          </Show>
         </nav>
         <div class="flex w-[312px] shrink-0 items-start">
           <Show when={doc.session}>
@@ -168,7 +173,7 @@ export function EditorScreen() {
                   </a>
                 </Show>
               </Show>
-              <Show when={canWrite() && !doc.status.online}>
+              <Show when={doc.session?.canWrite && !doc.status.online}>
                 <span class="text-[#d9730d]" title="Live sync is reconnecting; edits are kept and saved to git">
                   offline
                 </span>
@@ -269,7 +274,7 @@ export function EditorScreen() {
                     </Show>
                   </div>
                 </Show>
-                <Show when={canWrite()}>
+                <Show when={s.canWrite}>
                   <IconPicker icon={icon()} />
                 </Show>
                 <Editor session={s} marks={marks} changes={changes} threads={threads} />
@@ -286,7 +291,7 @@ export function EditorScreen() {
                   <History session={s} entries={history} />
                 </div>
                 <div id="comments" role="tabpanel" aria-labelledby="tab-comments" class="flex flex-col gap-4" hidden={tab() !== "comments"}>
-                  <CommentsPanel canWrite={s.canWrite} threads={threads} />
+                  <CommentsPanel canComment={s.canWrite || comments.viaPr} threads={threads} />
                 </div>
               </>
             )}

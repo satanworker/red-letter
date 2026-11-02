@@ -10,26 +10,23 @@
     { "id": "relay", "kind": "component", "name": "sync relay", "fields": [] },
     { "id": "oauth", "kind": "component", "name": "OAuth exchange fn", "fields": [] },
     { "id": "branch", "kind": "ref", "name": "refs/heads/<branch>", "focus": true, "fields": [
-      { "name": "<path>", "type": "markdown" } ] },
+      { "name": "<path>", "type": "markdown" },
+      { "name": "<!--rl:id-->…<!--/rl:id-->", "type": "comment range" },
+      { "name": "<!--rl:id @login: … -->", "type": "thread, at doc end" } ] },
     { "id": "docref", "kind": "ref", "name": "refs/red-letter/v1/<sha1 branch>/<sha1 path>", "fields": [
       { "name": "doc.automerge", "type": "blob" },
       { "name": "meta.json", "type": "docId, commit, heads" } ] },
-    { "id": "comments", "kind": "branch", "name": "red-letter-comments (orphan)", "fields": [
-      { "name": "id", "type": "ulid", "key": "PK" },
-      { "name": "doc", "type": "branch/path" },
-      { "name": "anchor_from", "type": "cursor" },
-      { "name": "anchor_to", "type": "cursor" },
-      { "name": "context", "type": "text" },
-      { "name": "author", "type": "github login" },
-      { "name": "parent_id", "type": "ulid?", "key": "FK" } ], "more": 2 }
+    { "id": "comments", "kind": "branch", "name": "red-letter/comments/<branch>/<path>", "fields": [
+      { "name": "<path>", "type": "doc + new comments" },
+      { "name": "open PR", "type": "into a protected <branch>" } ] }
   ],
   "edges": [
     { "from": "agent", "to": "branch", "label": "git push / pull" },
-    { "from": "agent", "to": "comments", "label": "git read" },
+    { "from": "agent", "to": "comments", "label": "gh pr" },
     { "from": "browser", "to": "relay", "label": "ws ops" },
     { "from": "browser", "to": "oauth", "label": "token" },
     { "from": "browser", "to": "branch", "label": "poll ref / updateRefs", "focus": true },
     { "from": "browser", "to": "docref", "label": "load / updateRefs" },
-    { "from": "browser", "to": "comments", "label": "read / write" }
+    { "from": "browser", "to": "comments", "label": "comments if protected" }
   ]
 }

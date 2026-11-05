@@ -21,6 +21,8 @@ Turn on **Request user authorization (OAuth) during installation**. Org install 
 
 **OAuth App / PAT:** skip for this product.
 
+/
+
 ## 2. Git Data API vs Contents API
 
 **Contents** `PUT /repos/{owner}/{repo}/contents/{path}`: one file → one commit. Body: `message`, base64 `content`, `sha` (required on update), optional `branch`/`author`/`committer`. GET: ≤1 MB full JSON; 1–100 MB raw/object only (`content` empty); **>100 MB unsupported**. Dir listing cap 1,000. Empty-repo bootstrap: this endpoint (Git Data returns **409** on empty/unavailable repos).

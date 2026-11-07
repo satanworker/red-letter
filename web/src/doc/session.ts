@@ -106,6 +106,7 @@ export class Session {
   #polling?: Promise<void>;
   #saving?: Promise<void>;
   #autosave: number | undefined;
+  #removed = false; // deleted or moved away: nothing more goes to IndexedDB or git
   #localTimer: number | undefined;
   readonly #key: string;
 
@@ -262,6 +263,7 @@ export class Session {
   #flushLocal() {
     clearTimeout(this.#localTimer);
     this.#localTimer = undefined;
+    if (this.#removed) return;
     const local: Local = { docId: this.docId, bytes: A.save(this.doc), crlf: this.#crlf, crdtHead: this.#crdtHead };
     void idbPut("docs", this.#key, local);
   }
@@ -274,7 +276,7 @@ export class Session {
     clearTimeout(this.#autosave);
     const alone = this.status.people.length === 0;
     void this.#repo.shutdown();
-    if (this.canWrite && this.status.dirty && alone) void this.save();
+    if (this.canWrite && this.status.dirty && alone && !this.#removed) void this.save();
   }
 
   #committedText(): string {
@@ -577,5 +579,33 @@ export class Session {
     if (err) throw new Error(`merge lost a race, try again: ${err}`);
     this.log("merged into", b.branch, m.sha.slice(0, 7));
     return true;
+  }
+
+  // Delete the file, or move it to `to`, in one commit (unsaved text is saved first); its snapshot ref is deleted in
+  // the same atomic update and this browser's copy with it. A moved file starts over at its new path: its comments
+  // go with it (they're text), its agent marks don't. Other tabs on the file replay the commit and find it empty.
+  // ponytail: images linked by relative path break when a move changes folders; rewrite the links if that bites.
+  async remove(to?: string) {
+    await this.save();
+    if (this.status.error) throw new Error(this.status.error);
+    const parent = this.doc.git!.commit;
+    const content = this.#crlf ? this.doc.text.replaceAll("\n", "\r\n") : this.doc.text;
+    const tree = await post<{ sha: string }>(`/repos/${this.repoName}/git/trees`, {
+      base_tree: (await object<GitCommit>(this.repoName, "commits", parent)).tree.sha,
+      tree: [{ path: this.path, mode: "100644", type: "blob", sha: null }, ...(to ? [{ path: to, mode: "100644", type: "blob", content }] : [])],
+    });
+    const message = to ? `Move ${this.path} to ${to} in Red Letter` : `Delete ${this.path} in Red Letter`;
+    const c = await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message, tree: tree.sha, parents: [parent] });
+    const snap = await this.#crdtRefSha(true);
+    const err = await updateRefs(this.repoId, [
+      { name: `refs/heads/${this.branch}`, beforeOid: parent, afterOid: c.sha },
+      ...(snap === ZERO ? [] : [{ name: this.#crdtRef, beforeOid: snap, afterOid: ZERO }]),
+    ]);
+    if (err) throw new Error(`someone saved meanwhile, try again: ${err}`);
+    this.#removed = true;
+    clearTimeout(this.#autosave);
+    await idbDelete("docs", this.#key);
+    await headOf(this.repoName, this.branch, true); // a moved file opens from the new head, not a cached one
+    this.log(to ? "moved to" : "deleted", to ?? this.path, c.sha.slice(0, 7));
   }
 }

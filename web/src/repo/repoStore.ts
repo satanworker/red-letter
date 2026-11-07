@@ -2,8 +2,8 @@
 // openRoute is the one entry point: page load, links, back/forward (see main.tsx).
 import { createStore } from "solid-js/store";
 import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, runDraft } from "../doc/docStore.ts";
-import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy } from "../doc/session.ts";
-import { HttpError, authKind, completeSignIn, currentUser, token, type User } from "../github.ts";
+import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
+import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
 import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listCollaborators, listDocs, listDrafts, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
@@ -101,23 +101,79 @@ export function closeTab(path: string) {
   if (path === state.path) navigateTo(blobUrl(state.repo!.full_name, state.branch, tabs[Math.min(i, tabs.length - 1)]!));
 }
 
-// Paths created in this tab and not opened yet: openRoute creates them instead of loading them.
-const creating = new Set<string>();
+// Paths created in this tab and not opened yet, with their starting text: openRoute creates them instead of loading them.
+const creating = new Map<string, string>();
+
+// A path as typed, ".md" added when it has no markdown extension; or why it can't be one.
+function docPath(input: string): { path: string } | { error: string } {
+  const path = input.trim().replace(/^\/+/, "").replace(/\/{2,}/g, "/");
+  if (!path || path.endsWith("/")) return { error: "Type a file name" };
+  if (path.split("/").some((s) => s === "." || s === "..")) return { error: "No . or .. in the path" };
+  return { path: /\.(md|markdown|mdx|txt)$/i.test(path) ? path : `${path}.md` };
+}
 
 // New markdown file in the current branch. Optimistic: it joins the file list and opens at once; the file is
 // committed in the background. Returns an error message for an unusable path.
 export function createFile(input: string): string | null {
-  let path = input.trim().replace(/^\/+/, "").replace(/\/{2,}/g, "/");
-  if (!path || path.endsWith("/")) return "Type a file name";
-  if (path.split("/").some((s) => s === "." || s === "..")) return "No . or .. in the path";
-  if (!/\.(md|markdown|mdx|txt)$/i.test(path)) path += ".md";
+  const p = docPath(input);
+  if ("error" in p) return p.error;
   if (!state.repo) return "No repository open";
-  if (!state.docs.includes(path)) {
-    creating.add(path);
-    set("docs", [...state.docs, path]);
+  if (!state.docs.includes(p.path)) {
+    creating.set(p.path, `# ${p.path.split("/").pop()!.replace(/\.[^.]+$/, "")}\n\n`);
+    set("docs", [...state.docs, p.path]);
   }
-  navigateTo(blobUrl(state.repo.full_name, state.branch, path));
+  navigateTo(blobUrl(state.repo.full_name, state.branch, p.path));
   return null;
+}
+
+// A copy of the open file next to it ("x copy.md", "x copy 2.md", …), opened in a tab right after it.
+export function duplicateFile() {
+  const s = doc.session;
+  if (!s || !state.repo) return;
+  const [, stem, ext = ""] = /^(.*?)(\.[^./]+)?$/.exec(s.path)!;
+  let path = `${stem} copy${ext}`;
+  for (let n = 2; state.docs.includes(path); n++) path = `${stem} copy ${n}${ext}`;
+  creating.set(path, s.doc.text);
+  set("docs", [...state.docs, path]);
+  navigateTo(blobUrl(state.repo.full_name, state.branch, path), true);
+}
+
+// Move the open file to another path (its tab follows), or delete it (its tab closes; the next one opens). Both are
+// one commit; progress and errors show over the doc.
+export async function moveFile(input: string) {
+  const s = doc.session;
+  const p = docPath(input);
+  if (!s || !state.repo) return;
+  if ("error" in p) return noteDraft(p.error);
+  if (p.path === s.path) return;
+  if (state.docs.includes(p.path)) return noteDraft(`${p.path} already exists`);
+  if (!(await removeFile(s, `Moving to ${p.path}…`, p.path))) return;
+  set("docs", state.docs.map((d) => (d === s.path ? p.path : d)));
+  setTabs(state.tabs.map((t) => (t === s.path ? p.path : t)));
+  navigateTo(blobUrl(state.repo.full_name, state.branch, p.path));
+}
+
+export async function deleteFile() {
+  const s = doc.session;
+  if (!s || !state.repo || !(await removeFile(s, `Deleting ${s.path}…`))) return;
+  const i = state.tabs.indexOf(s.path);
+  const tabs = state.tabs.filter((t) => t !== s.path);
+  set("docs", state.docs.filter((d) => d !== s.path));
+  setTabs(tabs);
+  const next = tabs[Math.min(i, tabs.length - 1)];
+  // no tab left: the branch's README or first doc
+  navigateTo(next ? blobUrl(state.repo.full_name, state.branch, next) : `/${state.repo.full_name}/tree/${encPath(state.branch)}`);
+}
+
+async function removeFile(s: Session, busy: string, to?: string): Promise<boolean> {
+  noteDraft(busy);
+  try {
+    await s.remove(to);
+    return true;
+  } catch (e) {
+    noteDraft(e instanceof Error ? e.message : String(e));
+    return false;
+  }
 }
 
 // Branches forked in this tab and not opened yet: openRoute opens them as drafts of the branch they came from.
@@ -222,11 +278,11 @@ export async function openRoute(url: URL, newTab = false): Promise<void> {
       return;
     }
     if (url.pathname !== blobUrl(full, branch, path)) history.replaceState(null, "", blobUrl(full, branch, path));
-    const isNew = creating.delete(path); // created here: start it with a title instead of loading it
-    const title = `# ${path.split("/").pop()!.replace(/\.[^.]+$/, "")}\n\n`;
+    const create = creating.get(path); // created here: start it with this text instead of loading it
+    creating.delete(path);
     const draftOf = drafting.get(branch);
     drafting.delete(branch);
-    if (!(await openFile(info, branch, path, user, isNew ? title : undefined, draftOf)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
+    if (!(await openFile(info, branch, path, user, create, draftOf)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
     if (fresh && !stale()) void syncAll(full, branch, docs);
   } catch (e) {
     if (!stale()) set({ screen: "error", message: e instanceof Error ? e.message : String(e) });

@@ -202,6 +202,9 @@ export function toggleReading() {
   localStorage.setItem("rl_mode", state.reading ? "reading" : "editing");
 }
 
+// The doc's markdown without the comment markup, as a copy from the editor gives it.
+export const copyContents = () => state.session && navigator.clipboard.writeText(plain(state.session.doc.text).text);
+
 export function jump(from: number, to: number) {
   view?.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
   view?.focus();

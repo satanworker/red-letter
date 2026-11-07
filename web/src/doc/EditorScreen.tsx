@@ -5,13 +5,14 @@ import { CommentsPanel } from "../comments/CommentsPanel.tsx";
 import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments } from "../comments/commentsStore.ts";
 import { encPath } from "../github.ts";
-import { DocIcon, FileSidebar } from "../repo/FileSidebar.tsx";
+import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
 import { closeTab, createDraft, mergeDraft, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CommentIcon, EditIcon, Logo, SidebarIcon, Spinner, badge, count, fine, ghostBtn } from "../ui.tsx";
+import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, PlusIcon, SidebarIcon, Spinner, badge, count, fine, ghostBtn } from "../ui.tsx";
 import { Editor } from "./Editor.tsx";
+import { PageMenu } from "./PageMenu.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab } from "./docSelectors.ts";
@@ -132,7 +133,7 @@ export function EditorScreen() {
             <SidebarIcon closed={repo.filesHidden} />
           </button>
         </span>
-        <nav aria-label="File path" class="mt-[9px] flex min-w-0 flex-1 items-center overflow-hidden px-3 text-muted">
+        <nav aria-label="File path" class="mt-[9px] flex min-w-0 flex-1 items-center overflow-hidden px-3 text-fg">
           <a href={`/${full()}/tree/${encPath(repo.branch)}`} class="truncate hover:underline">
             {full()}
           </a>
@@ -219,6 +220,7 @@ export function EditorScreen() {
           <button class="mt-2.5 cursor-pointer hover:underline" onClick={() => void share()}>
             {copied() ? "Link copied" : "Share"}
           </button>
+          <Show when={doc.session}>{(s) => <PageMenu canWrite={s().canWrite} />}</Show>
         </div>
       </header>
       <main class="relative flex min-h-0 flex-1">
@@ -340,7 +342,8 @@ export function EditorScreen() {
   );
 }
 
-// Figma 129:1304: the open files as tabs over the doc; the open one is the page's white. "+" opens a file in a new tab.
+// Figma 140:2830: the open files as tabs over the doc. The open one is the page's white, 3px wider on each side and
+// running into the doc; a hovered one is a grey pill; a 1px rule parts two tabs unless either is open or hovered.
 // Like Chrome's and Obsidian's, tabs are up to 200px and shrink to share the strip; only past their 56px minimum do
 // they scroll sideways, without a scrollbar (trackpad, wheel; the open tab scrolls into view). "+" stays in sight.
 function Tabs() {
@@ -351,38 +354,41 @@ function Tabs() {
     nav.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   });
   return (
-    <div class="flex h-[35px] shrink-0 items-end bg-side px-2">
+    <div class="flex h-[35px] shrink-0 items-center bg-side">
       <nav
         ref={nav}
         aria-label="Open files"
-        class="flex h-full min-w-0 items-end overflow-x-auto [scrollbar-width:none]"
+        class="flex h-full min-w-0 items-center gap-[5px] overflow-x-auto px-[3px] [scrollbar-width:none]"
         onWheel={(e) => !e.deltaX && (nav.scrollLeft += e.deltaY)}
       >
         <For each={repo.tabs}>
           {(path) => (
             <div
-              class={`group/tab relative flex h-[30px] min-w-14 flex-[0_1_200px] items-center rounded-t-lg pr-1 pl-3 ${path === repo.path ? "bg-bg" : "hover:bg-rule"}`}
+              class={`group/tab relative flex h-full w-[200px] min-w-14 shrink items-center after:absolute after:top-1/2 after:-right-[3px] after:h-[18px] after:w-px after:-translate-y-1/2 after:rounded-[1px] after:bg-rule hover:after:hidden has-[+:hover]:after:hidden has-[+[data-open]]:after:hidden ${path === repo.path ? "after:hidden" : ""}`}
+              data-open={path === repo.path ? "" : undefined}
               title={path}
             >
-              <a href={href(path)} aria-current={path === repo.path ? "page" : undefined} class="flex min-w-0 flex-1 items-center gap-1.5 self-stretch">
-                <DocIcon path={path} />
+              <span
+                class={`pointer-events-none absolute ${path === repo.path ? "-inset-x-[3px] top-[3px] bottom-0 rounded-t-lg bg-bg" : "inset-x-0 top-1/2 h-[26px] -translate-y-1/2 rounded-lg group-hover/tab:bg-rule"}`}
+              />
+              <a href={href(path)} aria-current={path === repo.path ? "page" : undefined} class="relative flex h-6 min-w-0 flex-1 items-center px-2">
                 <span class="truncate">{path.split("/").pop()}</span>
               </a>
               <Show when={repo.tabs.length > 1}>
                 <button
-                  class="grid size-5 cursor-pointer place-items-center rounded text-muted opacity-0 group-hover/tab:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100"
+                  class={`relative mr-[3px] shrink-0 cursor-pointer rounded hover:bg-hover focus-visible:opacity-100 ${path === repo.path ? "" : "opacity-0 group-hover/tab:opacity-100"}`}
                   aria-label={`Close ${path}`}
                   onClick={() => closeTab(path)}
                 >
-                  ×
+                  <CloseIcon />
                 </button>
               </Show>
             </div>
           )}
         </For>
       </nav>
-      <button class="mb-[3px] ml-1 grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted hover:bg-rule hover:text-fg" title="Open a file in a new tab" aria-label="Open a file in a new tab" onClick={openInNewTab}>
-        +
+      <button class="ml-[5px] grid size-6 shrink-0 cursor-pointer place-items-center rounded-lg hover:bg-rule" title="Open a file in a new tab" aria-label="Open a file in a new tab" onClick={openInNewTab}>
+        <PlusIcon />
       </button>
     </div>
   );

@@ -2,6 +2,12 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-07: Tab styling, page menu
+
+- **Tabs** styled to Figma: file names only, the open tab white and running into the page, a grey pill on hover, thin rules between the others, 15 px × and + icons.
+- **"…" menu** in the header: Copy link, Duplicate, Copy page contents (without comment markup), Move to and Delete page. Move and delete are one commit each and take the doc's snapshot with them.
+- **Header path** in Onyx, like the rest of the text (was grey).
+
 ## 2026-11-07: Reading mode, typography
 
 - **Reading and editing modes:** the pencil in the word-count corner switches modes, and the choice is remembered per browser. Reading hides the markdown, draws bullets as dots, tasks as boxes (checked ones filled and struck through) and `---` as a rule, and makes the doc read-only. Comments still work. Docs you can't push to always open in reading mode.

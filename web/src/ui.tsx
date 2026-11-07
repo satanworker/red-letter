@@ -12,6 +12,14 @@ import tipArrowSvg from "./icons/tip-arrow.svg";
 import atSignSvg from "./icons/at-sign.svg";
 import editSvg from "./icons/edit.svg";
 import findSvg from "./icons/find.svg";
+import closeSvg from "./icons/close.svg";
+import plusSvg from "./icons/plus.svg";
+import dotsSvg from "./icons/dots.svg";
+import linkSvg from "./icons/link.svg";
+import duplicateSvg from "./icons/duplicate.svg";
+import copyPageSvg from "./icons/copy-page.svg";
+import moveSvg from "./icons/move.svg";
+import deleteSvg from "./icons/delete.svg";
 
 // Figma "Reply"/"Resolve": 24px tall, width = text + 24 with the .4px stroke inside.
 export const btn =
@@ -85,6 +93,16 @@ export const CommentIcon = () => <Img src={commentSvg} w={16} />;
 export const TipArrow = () => <Img src={tipArrowSvg} w={10} h={8} />;
 export const AtIcon = () => <Img src={atSignSvg} w={14} />;
 export const EditIcon = () => <Img src={editSvg} w={15} />;
+// Figma 140:2835 / 140:2846: a tab's close and the tab strip's "+"
+export const CloseIcon = () => <Img src={closeSvg} w={15} />;
+export const PlusIcon = () => <Img src={plusSvg} w={15} />;
+// Figma 140:2673: the header's "…"; 134:1701: its menu
+export const DotsIcon = () => <Img src={dotsSvg} w={15} />;
+export const LinkIcon = () => <Img src={linkSvg} w={15} />;
+export const DuplicateIcon = () => <Img src={duplicateSvg} w={15} />;
+export const CopyPageIcon = () => <Img src={copyPageSvg} w={15} />;
+export const MoveIcon = () => <Img src={moveSvg} w={15} />;
+export const DeleteIcon = () => <Img src={deleteSvg} w={15} />;
 
 const Svg = (props: { size?: number; children: JSX.Element }) => (
   <svg width={props.size ?? 16} height={props.size ?? 16} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">

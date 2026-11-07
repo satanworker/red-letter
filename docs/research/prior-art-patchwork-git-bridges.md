@@ -1,4 +1,4 @@
-# Patchwork, Automerge, and git↔CRDT prior art
+# 🎯 Patchwork, Automerge, and git↔CRDT prior art
 
 **Truth models:** I&S work is **CRDT-as-truth** (disk/git, if any, is a projection). Jupyter RTC is the closest **git/disk-as-truth + CRDT live layer**. No production **git remote helper** for Automerge was found.
 

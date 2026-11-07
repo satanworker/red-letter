@@ -4,7 +4,7 @@ Verdict: **the serverless design holds.** Every primitive ran end to end in a re
 
 ## What ran
 
-| spike | how | result |e
+| spike | how | result |
 |---|---|---|
 | S1 merge quality | `crdt/merge-quality.ts`: 11 human-vs-agent scenarios. Compared against Loro and `git merge-file` | Automerge is as good as Loro char and better than git: ideal in 6/11 and acceptable in 2 more, where git conflicts in 8/11. Every bad merge gets flagged (see table) |
 | S1b two tabs replay one push | `crdt/deterministic-replay.ts` | naive replay **duplicates** the agent's text. Deterministic replay produces byte-identical changes and converges |

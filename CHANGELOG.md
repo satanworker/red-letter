@@ -9,6 +9,9 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **File tree:** switching files no longer closes the folders you opened. The "+" new-file button is gone with the new design, for now.
 - **Resolve and Delete are separate:** a resolved thread stays in the file (`<!--rl:c1 resolved`), folds under "N resolved" in the panel and loses its highlight, which comes back while you hover its card; Reopen brings it back. Delete removes the thread from the file, after a confirm.
 - **Clicks below images, tables and diagrams** land where you click again: those blocks had vertical margins, which CodeMirror doesn't measure, so every line under them was mapped higher than it's drawn.
+- **Tabs**, as in Chrome: a click on a file replaces the open tab's file (or goes to its tab), ⌘/Ctrl+click opens it in a background tab, "+" opens the file finder into a new tab, × closes one. Tabs shrink to share the strip, then scroll sideways without a scrollbar; "+" stays in sight. Kept per repo and branch across reloads. Functional first; the Figma styling comes next.
+- **Switching files no longer blanks the screen:** the open file stays until the next one is ready, then the two swap in one update, so the comments panel and header status no longer vanish and come back on every switch. Clicking the open file's own link does nothing instead of reopening it.
+- **A clicked comment lets go:** clicking anywhere in the text outside a comment's highlight takes the highlight off it and its card; before, it stayed lit until another comment was picked.
 
 ## 2026-11-02: History without approvals
 - **History tab:** clicking a commit shows what it changed in the file (its GitHub diff); clicking again hides it. Agent commits no longer wait for "Looks good" or stay highlighted in the text; only edits that collided with yours are flagged, with Keep yours / Keep agent's / Keep as merged. Per-change Revert is gone.

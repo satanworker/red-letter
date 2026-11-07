@@ -9,7 +9,7 @@ import { comments } from "../comments/commentsStore.ts";
 import type { Thread } from "../comments/inline.ts";
 import { createMentions } from "../comments/Mentions.tsx";
 import { AtIcon, TipArrow, btn } from "../ui.tsx";
-import { cancelComment, doc, docChanged, insertImages, openThread, setView, startComment, submitComment } from "./docStore.ts";
+import { cancelComment, closeThread, doc, docChanged, insertImages, openThread, setView, startComment, submitComment } from "./docStore.ts";
 import { commentMarks, inCode } from "./commentMarks.ts";
 import { showPanel } from "../repo/repoStore.ts";
 import { imageUrl } from "./images.ts";
@@ -250,10 +250,10 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
       view.destroy();
     });
   });
-  // clicking a comment highlight opens its thread
+  // clicking a comment highlight opens its thread; clicking anywhere else in the text lets it go
   const click = (e: MouseEvent) => {
     const id = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-thread]")?.dataset.thread : undefined;
-    if (!id) return;
+    if (!id) return closeThread();
     openThread(id);
     showPanel();
   };

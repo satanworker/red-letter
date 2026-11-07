@@ -8,7 +8,7 @@ import "./app.css";
 import { comments } from "./comments/commentsStore.ts";
 import { doc, leavingWithUnsaved, tick } from "./doc/docStore.ts";
 import { showFigmaFixture } from "./dev/figma.tsx";
-import { openRoute, repo } from "./repo/repoStore.ts";
+import { openInBackground, openRoute, repo } from "./repo/repoStore.ts";
 import { togglePalette } from "./palette/paletteStore.ts";
 
 await initializeWasm(wasmUrl);
@@ -19,7 +19,15 @@ render(() => <App />, document.getElementById("app")!);
 window.navigation?.addEventListener("navigate", (e) => {
   const url = new URL(e.destination.url);
   if (!e.canIntercept || e.hashChange || e.downloadRequest !== null || url.pathname === "/auth/callback") return;
-  e.intercept({ handler: () => openRoute(url) });
+  e.intercept({ handler: () => openRoute(url, (e.info as { newTab?: boolean } | undefined)?.newTab === true) });
+});
+// ⌘/Ctrl+click on a link into a repo: a background tab here, not a new browser tab. Plain clicks replace the open tab's file.
+addEventListener("click", (e) => {
+  const a = e.target instanceof Element ? e.target.closest("a") : null;
+  if (!(e.metaKey || e.ctrlKey) || !a || a.target || a.origin !== location.origin || !window.navigation || repo.screen !== "workspace") return;
+  if (a.pathname.split("/").filter(Boolean).length < 2) return; // the logo: the landing page has no tabs
+  e.preventDefault();
+  openInBackground(a.pathname);
 });
 // /__figma: dev page comparing the editor with the Figma design (src/dev/figma.tsx)
 if (location.pathname === "/__figma") showFigmaFixture();

@@ -29,7 +29,7 @@ function moveFocus(e: KeyboardEvent) {
 const byName = (a: string, b: string) => a.localeCompare(b);
 
 // The doc's emoji icon (the start of its first `# ` heading), else the file icon. The open doc's follows its text.
-function DocIcon(props: { path: string }) {
+export function DocIcon(props: { path: string }) {
   const icon = createMemo(() => {
     if (doc.session?.path !== props.path) return doc.icons[props.path] ?? "";
     doc.version;

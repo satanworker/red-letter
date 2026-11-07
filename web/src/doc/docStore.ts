@@ -1,6 +1,7 @@
 // The open file: its Session, status, history, and the editor's UI intent (panel tab, active thread, draft comment).
 // The CRDT doc isn't copied into the store: `version` ticks (once per frame) when it changes, selectors re-read it.
 import type { EditorView } from "@codemirror/view";
+import { batch } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { clearComments, commentViaPr, comments, loadComments, refreshComments } from "../comments/commentsStore.ts";
 import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
@@ -74,9 +75,10 @@ export function tick() {
 
 // false: the file doesn't exist on that branch. create: make it, starting with this text.
 // draftOf: the branch was just forked from that one as a draft of this file.
+// The open file stays on screen until the new one is ready, then the two swap in one update: switching files never
+// unmounts the editor's surroundings (panel, header status) or flashes an empty doc.
 export async function openFile(repo: RepoInfo, branch: string, path: string, user: User, create?: string, draftOf?: string): Promise<boolean> {
-  closeFile();
-  set({ opening: path, login: user.login, picked: false, tab: "comments", activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "" });
+  set({ opening: path, login: user.login });
   document.title = `${path.split("/").pop()} · Red Letter`;
   // a protected branch takes no direct edits; its comments go through a pull request (commentsStore)
   const push = repo.permissions?.push === true;
@@ -87,7 +89,7 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
     await session.open(create, draftOf);
   } catch (e) {
     session.close();
-    if (state.opening === path) set("opening", "");
+    if (state.opening === path) closeFile();
     if (e instanceof HttpError && e.status === 404) return false;
     throw e;
   }
@@ -104,9 +106,12 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
     docChanged();
   };
   session.handle.on("change", docChanged);
-  loadComments(repo.full_name, branch, path, viaPr); // before the editor mounts: it reads comments.viaPr
-  set({ session, opening: "" });
-  pushStatus();
+  batch(() => {
+    release();
+    loadComments(repo.full_name, branch, path, viaPr); // before the editor mounts: it reads comments.viaPr
+    set({ session, opening: "", history: [], shown: null, picked: false, tab: "comments", activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "" });
+    pushStatus();
+  });
   ticker = window.setInterval(tick, 15_000);
   void navigator.storage?.persist?.(); // ask the browser not to evict this origin's copies under disk pressure
   session.synced.catch((e) => {
@@ -118,13 +123,18 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
   return true;
 }
 
-export function closeFile() {
+// Leave the open file: its icon goes to the sidebar, the Session leaves live sync (saving if nobody else will).
+function release() {
   clearInterval(ticker);
   const s = state.session;
   if (s?.handle) noteIcon(s.path, s.doc.text); // the sidebar keeps an icon set or changed while it was open
   s?.close();
   clearComments();
   historyAt = "";
+}
+
+export function closeFile() {
+  release();
   set({ session: null, opening: "", status: idle(), history: [], shown: null });
 }
 
@@ -181,6 +191,7 @@ export function startComment() {
 export const cancelComment = () => set("composing", null);
 export const showTab = (tab: Tab) => set({ tab, picked: true });
 export const openThread = (id: string) => set({ activeThread: id, tab: "comments", picked: true });
+export const closeThread = () => set("activeThread", "");
 export const hoverThread = (id: string) => set("hoveredThread", id);
 
 export function jump(from: number, to: number) {

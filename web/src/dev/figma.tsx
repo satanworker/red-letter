@@ -83,6 +83,7 @@ export function showFigmaFixture() {
     branch: "demo",
     docs: DOCS,
     path: "demo.md",
+    tabs: ["demo.md"],
     filesHidden: false,
     panelHidden: false,
   });

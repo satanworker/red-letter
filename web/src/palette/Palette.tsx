@@ -5,7 +5,7 @@ import { showTab, startComment } from "../doc/docStore.ts";
 import { blobUrl } from "../repo/repoService.ts";
 import { navigateTo, repo, showPanel, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { FileIcon, card } from "../ui.tsx";
-import { closePalette } from "./paletteStore.ts";
+import { closePalette, palette } from "./paletteStore.ts";
 
 type Item = { label: string; hint?: string; file?: boolean; run: () => void };
 
@@ -36,7 +36,7 @@ export function Palette() {
   ];
   const items = createMemo(() => {
     const q = query().trim().toLowerCase();
-    const files: Item[] = repo.docs.map((p) => ({ label: p, file: true, run: () => navigateTo(blobUrl(repo.repo!.full_name, repo.branch, p)) }));
+    const files: Item[] = repo.docs.map((p) => ({ label: p, file: true, run: () => navigateTo(blobUrl(repo.repo!.full_name, repo.branch, p), palette.newTab) }));
     const all = [...actions(), ...files];
     if (!q) return all;
     return all

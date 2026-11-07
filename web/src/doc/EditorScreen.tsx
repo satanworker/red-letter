@@ -5,11 +5,11 @@ import { CommentsPanel } from "../comments/CommentsPanel.tsx";
 import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments } from "../comments/commentsStore.ts";
 import { encPath } from "../github.ts";
-import { FileSidebar } from "../repo/FileSidebar.tsx";
+import { DocIcon, FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
-import { createDraft, mergeDraft, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
+import { closeTab, createDraft, mergeDraft, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
-import { palette } from "../palette/paletteStore.ts";
+import { openInNewTab, palette } from "../palette/paletteStore.ts";
 import { Avatar, BranchIcon, CommentIcon, EditIcon, Logo, SidebarIcon, Spinner, badge, count, fine, ghostBtn } from "../ui.tsx";
 import { Editor } from "./Editor.tsx";
 import { History } from "./History.tsx";
@@ -223,86 +223,89 @@ export function EditorScreen() {
       </header>
       <main class="relative flex min-h-0 flex-1">
         <FileSidebar />
-        {/* over the header's shadow: in Figma the tab strip sits there, so the shadow never lands on the white page */}
-        <div id="doc" class="group/doc relative z-[4] min-w-0 flex-1 overflow-auto bg-bg">
-          <Show
-            when={doc.session}
-            keyed
-            fallback={
-              <Show
-                when={doc.opening}
-                fallback={
-                  <div class="mx-auto my-[20vh] max-w-[440px] px-6 text-[14px] text-muted">
-                    <p>{repo.message}</p>
-                    <p class={fine}>Pick a file on the left.</p>
+        {/* over the header's shadow: the tab strip sits there, so the shadow never lands on the white page */}
+        <div class="relative z-[4] flex min-w-0 flex-1 flex-col">
+          <Tabs />
+          <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg">
+            <Show
+              when={doc.session}
+              keyed
+              fallback={
+                <Show
+                  when={doc.opening}
+                  fallback={
+                    <div class="mx-auto my-[20vh] max-w-[440px] px-6 text-[14px] text-muted">
+                      <p>{repo.message}</p>
+                      <p class={fine}>Pick a file on the left.</p>
+                    </div>
+                  }
+                >
+                  <div class="flex h-[60vh] items-center justify-center gap-2.5 text-muted">
+                    <Spinner />
+                    Opening {doc.opening.split("/").pop()}…
                   </div>
-                }
-              >
-                <div class="flex h-[60vh] items-center justify-center gap-2.5 text-muted">
-                  <Spinner />
-                  Opening {doc.opening.split("/").pop()}…
-                </div>
-              </Show>
-            }
-          >
-            {(s) => (
-              <>
-                <Show when={draft() || doc.draftNote}>
-                  {/* floats in the doc's top padding instead of pushing the text down */}
-                  <div class="sticky top-0 z-[5] h-0">
-                    <Show when={draft()}>
-                      {(b) => (
-                        <div class="mx-auto mt-2 flex max-w-[440px] items-center gap-1 rounded-xl bg-card py-1 pr-1.5 pl-3 whitespace-nowrap shadow-figma">
-                          <span class="flex-1 truncate text-muted">draft of {b().branch}</span>
-                          <button
-                            class={doc.showChanges ? "inline-flex h-6 cursor-pointer items-center rounded bg-on px-1 text-fg" : `${ghostBtn} h-6`}
-                            aria-pressed={doc.showChanges}
-                            title={`Highlight what this draft changed from ${b().branch}`}
-                            onClick={toggleChanges}
-                          >
-                            Changes
-                          </button>
-                          <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
+                </Show>
+              }
+            >
+              {(s) => (
+                <>
+                  <Show when={draft() || doc.draftNote}>
+                    {/* floats in the doc's top padding instead of pushing the text down */}
+                    <div class="sticky top-0 z-[5] h-0">
+                      <Show when={draft()}>
+                        {(b) => (
+                          <div class="mx-auto mt-2 flex max-w-[440px] items-center gap-1 rounded-xl bg-card py-1 pr-1.5 pl-3 whitespace-nowrap shadow-figma">
+                            <span class="flex-1 truncate text-muted">draft of {b().branch}</span>
+                            <button
+                              class={doc.showChanges ? "inline-flex h-6 cursor-pointer items-center rounded bg-on px-1 text-fg" : `${ghostBtn} h-6`}
+                              aria-pressed={doc.showChanges}
+                              title={`Highlight what this draft changed from ${b().branch}`}
+                              onClick={toggleChanges}
+                            >
+                              Changes
+                            </button>
+                            <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
+                              <button
+                                class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
+                                disabled={!!doc.drafting}
+                                title={`${b().branch} has new edits: merge them into this draft`}
+                                onClick={() => void updateDraft()}
+                              >
+                                Update from {b().branch}
+                              </button>
+                            </Show>
                             <button
                               class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
-                              disabled={!!doc.drafting}
-                              title={`${b().branch} has new edits: merge them into this draft`}
-                              onClick={() => void updateDraft()}
+                              disabled={!!doc.drafting || !canWrite()}
+                              title={`Merge this draft into ${b().branch} and delete it`}
+                              onClick={() => void mergeDraft()}
                             >
-                              Update from {b().branch}
+                              {doc.drafting || `Merge into ${b().branch}`}
                             </button>
-                          </Show>
-                          <button
-                            class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
-                            disabled={!!doc.drafting || !canWrite()}
-                            title={`Merge this draft into ${b().branch} and delete it`}
-                            onClick={() => void mergeDraft()}
-                          >
-                            {doc.drafting || `Merge into ${b().branch}`}
-                          </button>
-                        </div>
-                      )}
-                    </Show>
-                    <Show when={doc.draftNote}>
-                      <p class="mx-auto mt-1.5 max-w-[440px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
-                    </Show>
+                          </div>
+                        )}
+                      </Show>
+                      <Show when={doc.draftNote}>
+                        <p class="mx-auto mt-1.5 max-w-[440px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
+                      </Show>
+                    </div>
+                  </Show>
+                  <Show when={s.canWrite}>
+                    <IconPicker icon={icon()} />
+                  </Show>
+                  <Editor session={s} marks={marks} changes={changes} threads={threads} />
+                  {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls */}
+                  <div class="sticky bottom-0 z-[5] h-0">
+                    <p class="absolute right-0 bottom-0 flex h-6 items-center gap-2.5 rounded-tl-xl border-t-[.4px] border-l-[.4px] border-rule bg-card px-3 font-light whitespace-nowrap text-muted">
+                      <EditIcon />
+                      <span>{size().words} words</span>
+                      <span>{size().chars} characters</span>
+                    </p>
                   </div>
-                </Show>
-                <Show when={s.canWrite}>
-                  <IconPicker icon={icon()} />
-                </Show>
-                <Editor session={s} marks={marks} changes={changes} threads={threads} />
-                {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls */}
-                <div class="sticky bottom-0 z-[5] h-0">
-                  <p class="absolute right-0 bottom-0 flex h-6 items-center gap-2.5 rounded-tl-xl border-t-[.4px] border-l-[.4px] border-rule bg-card px-3 font-light whitespace-nowrap text-muted">
-                    <EditIcon />
-                    <span>{size().words} words</span>
-                    <span>{size().chars} characters</span>
-                  </p>
-                </div>
-              </>
-            )}
-          </Show>
+                </>
+              )}
+            </Show>
+          </div>
         </div>
         {/* no top edge: the header's bottom line is this frame's top too (Figma's centred strokes overlap) */}
         <aside id="panel" aria-label="Comments and history" hidden={!doc.session || repo.panelHidden} class="w-80 shrink-0 overflow-auto border-[.5px] border-t-0 border-line bg-side px-3 py-4">
@@ -324,6 +327,54 @@ export function EditorScreen() {
       <Show when={palette.open}>
         <Palette />
       </Show>
+    </div>
+  );
+}
+
+// Figma 129:1304: the open files as tabs over the doc; the open one is the page's white. "+" opens a file in a new tab.
+// Like Chrome's and Obsidian's, tabs are up to 200px and shrink to share the strip; only past their 56px minimum do
+// they scroll sideways, without a scrollbar (trackpad, wheel; the open tab scrolls into view). "+" stays in sight.
+function Tabs() {
+  const href = (path: string) => blobUrl(repo.repo!.full_name, repo.branch, path);
+  let nav!: HTMLElement;
+  createEffect(() => {
+    repo.path;
+    nav.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+  return (
+    <div class="flex h-[35px] shrink-0 items-end bg-side px-2">
+      <nav
+        ref={nav}
+        aria-label="Open files"
+        class="flex h-full min-w-0 items-end overflow-x-auto [scrollbar-width:none]"
+        onWheel={(e) => !e.deltaX && (nav.scrollLeft += e.deltaY)}
+      >
+        <For each={repo.tabs}>
+          {(path) => (
+            <div
+              class={`group/tab relative flex h-[30px] min-w-14 flex-[0_1_200px] items-center rounded-t-lg pr-1 pl-3 ${path === repo.path ? "bg-bg" : "hover:bg-rule"}`}
+              title={path}
+            >
+              <a href={href(path)} aria-current={path === repo.path ? "page" : undefined} class="flex min-w-0 flex-1 items-center gap-1.5 self-stretch">
+                <DocIcon path={path} />
+                <span class="truncate">{path.split("/").pop()}</span>
+              </a>
+              <Show when={repo.tabs.length > 1}>
+                <button
+                  class="grid size-5 cursor-pointer place-items-center rounded text-muted opacity-0 group-hover/tab:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100"
+                  aria-label={`Close ${path}`}
+                  onClick={() => closeTab(path)}
+                >
+                  ×
+                </button>
+              </Show>
+            </div>
+          )}
+        </For>
+      </nav>
+      <button class="mb-[3px] ml-1 grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted hover:bg-rule hover:text-fg" title="Open a file in a new tab" aria-label="Open a file in a new tab" onClick={openInNewTab}>
+        +
+      </button>
     </div>
   );
 }

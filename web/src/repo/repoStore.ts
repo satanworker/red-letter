@@ -17,6 +17,7 @@ type RepoState = {
   branch: string;
   docs: string[];
   path: string;
+  tabs: string[]; // open files of this repo + branch, in tab order; the route's file is always one of them
   drafts: string[]; // draft branches of the repo (drafts/<login>/<name>)
   filesHidden: boolean;
   panelHidden: boolean; // the comments / history panel
@@ -33,6 +34,7 @@ const [state, set] = createStore<RepoState>({
   branch: "",
   docs: [],
   path: "",
+  tabs: [],
   drafts: [],
   filesHidden: localStorage.getItem("rl_files") === "hidden" || innerWidth < 900,
   panelHidden: localStorage.getItem("rl_panel") === "hidden",
@@ -67,9 +69,36 @@ export function loadCollaborators() {
 }
 
 // Without the Navigation API (older browsers) this is a page load, which works too.
-export function navigateTo(path: string) {
-  if (window.navigation) void window.navigation.navigate(path);
+// newTab: the file gets a tab of its own instead of replacing the open tab's (⌘/Ctrl+click, "+").
+export function navigateTo(path: string, newTab = false) {
+  if (window.navigation) void window.navigation.navigate(path, { info: { newTab } });
   else location.assign(path);
+}
+
+// Tabs are per repo + branch, kept across reloads. Opening a file that has a tab goes to it; otherwise the file replaces
+// the open tab's, or with newTab gets a new tab right after it.
+const tabsKey = (full: string, branch: string) => `rl_tabs:${full}@${branch}`;
+function setTabs(tabs: string[]) {
+  set("tabs", tabs);
+  localStorage.setItem(tabsKey(state.repo!.full_name, state.branch), JSON.stringify(tabs));
+}
+
+// ⌘/Ctrl+click, as in Chrome: a file of this branch gets a tab right after the open one and stays in the background.
+// A link anywhere else (another branch or repo) opens there in a new tab.
+export function openInBackground(pathname: string) {
+  const prefix = blobUrl(state.repo!.full_name, state.branch, "");
+  const path = pathname.startsWith(prefix) ? decodeURIComponent(pathname.slice(prefix.length)) : "";
+  if (!state.docs.includes(path)) return navigateTo(pathname, true);
+  if (!state.tabs.includes(path)) setTabs(state.tabs.toSpliced(state.tabs.indexOf(state.path) + 1, 0, path));
+}
+
+// Closing the open tab opens its right neighbour, else its left one. The last tab stays: the route always names a file.
+export function closeTab(path: string) {
+  const i = state.tabs.indexOf(path);
+  if (i < 0 || state.tabs.length < 2) return;
+  const tabs = state.tabs.filter((p) => p !== path);
+  setTabs(tabs);
+  if (path === state.path) navigateTo(blobUrl(state.repo!.full_name, state.branch, tabs[Math.min(i, tabs.length - 1)]!));
 }
 
 // Paths created in this tab and not opened yet: openRoute creates them instead of loading them.
@@ -121,13 +150,14 @@ export async function mergeDraft() {
   if (merged === false) noteDraft(`${base} had new edits: they're merged into the draft now (its History shows them). Check, then merge again.`);
   if (!merged || !base || !state.repo) return;
   set("drafts", state.drafts.filter((b) => b !== state.branch));
+  localStorage.removeItem(tabsKey(state.repo.full_name, state.branch)); // the draft branch is gone
   navigateTo(blobUrl(state.repo.full_name, base, state.path));
 }
 
 let current = 0;
 
 // /owner/repo · /owner/repo/tree/<branch> · /owner/repo/blob/<branch>/<path> · /owner/repo/<path> (default branch)
-export async function openRoute(url: URL): Promise<void> {
+export async function openRoute(url: URL, newTab = false): Promise<void> {
   const id = ++current;
   const stale = () => id !== current; // a newer navigation took over
   try {
@@ -178,7 +208,13 @@ export async function openRoute(url: URL): Promise<void> {
     path ||= docs.find((p) => /^readme\.md$/i.test(p)) ?? docs.find((p) => /(^|\/)readme\.md$/i.test(p)) ?? docs[0] ?? "";
     const user = state.user ?? (await currentUser());
     if (stale() || !user) return;
+    if (!fresh && path === state.path && doc.session?.path === path && !doc.opening) return; // already open: the active tab, a link to itself
+    const at = fresh ? -1 : state.tabs.indexOf(state.path);
+    const saved: string[] = fresh ? JSON.parse(localStorage.getItem(tabsKey(full, branch)) ?? "[]") : [];
+    const kept = fresh ? saved.filter((p) => docs.includes(p)) : state.tabs;
+    const tabs = !path || kept.includes(path) ? kept : at < 0 ? [...kept, path] : newTab ? kept.toSpliced(at + 1, 0, path) : kept.with(at, path);
     set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path, message: "" });
+    setTabs(tabs);
     if (fresh) void listDrafts(full).then((drafts) => !stale() && set("drafts", drafts), () => {});
     if (!path) {
       closeFile();

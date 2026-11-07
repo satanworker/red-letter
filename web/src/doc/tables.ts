@@ -74,7 +74,8 @@ let editing: { from: number; r: number; c: number; lostAt: number } | null = nul
 class TableWidget extends WidgetType {
   readonly cells: string[][]; // raw text per source row (delimiter row included), without comment markers
   readonly align: string[];
-  constructor(readonly src: string) {
+  // readOnly: switching between reading and editing patches the cells' contentEditable (updateDOM)
+  constructor(readonly src: string, readonly readOnly: boolean) {
     super();
     let at = 0;
     this.cells = src.split("\n").map((line) => {
@@ -88,7 +89,7 @@ class TableWidget extends WidgetType {
     return this.cells[0]?.length ?? 0;
   }
   eq(o: TableWidget) {
-    return o.src === this.src;
+    return o.src === this.src && o.readOnly === this.readOnly;
   }
   // Same rows and columns: patch the cells in place, so the cell being typed in keeps its caret.
   updateDOM(dom: HTMLElement, view: EditorView) {
@@ -400,7 +401,7 @@ function tables(state: EditorState): DecorationSet {
       if (n.name === "Paragraph" || n.name === "FencedCode" || n.name.includes("Heading")) return false; // no tables inside
       if (n.name !== "Table") return;
       const first = doc.lineAt(n.from), last = doc.lineAt(n.to);
-      out.push(Decoration.replace({ widget: new TableWidget(doc.sliceString(first.from, last.to)), block: true }).range(first.from, last.to));
+      out.push(Decoration.replace({ widget: new TableWidget(doc.sliceString(first.from, last.to), state.readOnly), block: true }).range(first.from, last.to));
       return false;
     },
   });
@@ -411,7 +412,8 @@ function tables(state: EditorState): DecorationSet {
 // ponytail: rebuilt on every doc change by walking the block tree; fine for docs of a few thousand lines.
 export const tableField = StateField.define<DecorationSet>({
   create: tables,
-  update: (deco, tr) => (tr.docChanged || syntaxTree(tr.state) !== syntaxTree(tr.startState) ? tables(tr.state) : deco),
+  update: (deco, tr) =>
+    tr.docChanged || syntaxTree(tr.state) !== syntaxTree(tr.startState) || tr.state.readOnly !== tr.startState.readOnly ? tables(tr.state) : deco,
   provide: (f) => EditorView.decorations.from(f),
 });
 

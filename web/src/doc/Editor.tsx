@@ -1,19 +1,19 @@
 // CodeMirror 6 (live preview) bound to the Automerge text. CodeMirror owns its DOM; Solid only mounts it and
 // pushes decorations (a draft's changes, conflicts, comment highlights) when the doc or the comments change.
 import { automergeSyncPlugin, type DocHandle as PluginHandle } from "@automerge/automerge-codemirror";
-import { EditorState, StateEffect, StateField, Transaction, type Range } from "@codemirror/state";
+import { Compartment, EditorState, StateEffect, StateField, Transaction, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip, type TooltipView } from "@codemirror/view";
-import { Show, createEffect, createSignal, onCleanup, onMount, type Accessor } from "solid-js";
+import { Show, createEffect, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js";
 import { render } from "solid-js/web";
 import { comments } from "../comments/commentsStore.ts";
 import type { Thread } from "../comments/inline.ts";
 import { createMentions } from "../comments/Mentions.tsx";
 import { AtIcon, TipArrow, btn } from "../ui.tsx";
-import { cancelComment, closeThread, doc, docChanged, insertImages, openThread, setView, startComment, submitComment } from "./docStore.ts";
+import { cancelComment, closeThread, doc, docChanged, insertImages, isReading, openThread, setView, startComment, submitComment } from "./docStore.ts";
 import { commentMarks, inCode } from "./commentMarks.ts";
 import { showPanel } from "../repo/repoStore.ts";
 import { imageUrl } from "./images.ts";
-import { editorExtensions } from "./livePreview.ts";
+import { editorExtensions, readingMode } from "./livePreview.ts";
 import { cellSelection } from "./tables.ts";
 import type { Region } from "./regions.ts";
 import type { AgentMark, RLDoc, Session } from "./session.ts";
@@ -201,6 +201,10 @@ function decorations(session: Session, len: number, marks: AgentMark[], changes:
   return Decoration.set(out, true);
 }
 
+// Reading mode: read-only (paste, typing and table cells off) with the markdown rendered; the comment tooltip stays.
+const mode = new Compartment();
+const modeOf = (reading: boolean) => [EditorState.readOnly.of(reading), readingMode.of(reading), reading ? EditorView.editorAttributes.of({ class: "cm-reading" }) : []];
+
 // Pasted or dropped image files go to git (insertImages); anything else is CodeMirror's.
 function images(e: Event, data: DataTransfer | null, pos: number): boolean {
   const files = [...(data?.files ?? [])].filter((f) => f.type.startsWith("image/"));
@@ -221,12 +225,12 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
         decoField,
         commentMarks,
         remoteNotUndoable,
-        EditorState.readOnly.of(!s.canWrite),
+        mode.of(modeOf(isReading())),
         s.canWrite || comments.viaPr ? commentTooltip() : [],
         s.canWrite
           ? EditorView.domEventHandlers({
-              paste: (e, v) => images(e, e.clipboardData, v.state.selection.main.head),
-              drop: (e, v) => images(e, e.dataTransfer, v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.selection.main.head),
+              paste: (e, v) => !v.state.readOnly && images(e, e.clipboardData, v.state.selection.main.head),
+              drop: (e, v) => !v.state.readOnly && images(e, e.dataTransfer, v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.selection.main.head),
             })
           : [],
         imageUrl.of((src) => s.imageUrl(src)),
@@ -240,6 +244,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
       parent: host,
     });
     setView(view);
+    createEffect(on(isReading, (r) => view.dispatch({ effects: mode.reconfigure(modeOf(r)) }), { defer: true }));
     createEffect(() => {
       doc.version; // the CRDT doc changed
       if (view.state.doc.length !== s.doc.text.length) return docChanged(); // binding hasn't caught up: next frame

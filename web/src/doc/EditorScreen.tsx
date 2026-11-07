@@ -15,7 +15,7 @@ import { Editor } from "./Editor.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab } from "./docSelectors.ts";
-import { doc, showFavicon, showTab, toggleChanges, updateDraft } from "./docStore.ts";
+import { doc, isReading, showFavicon, showTab, toggleChanges, toggleReading, updateDraft } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -290,14 +290,23 @@ export function EditorScreen() {
                       </Show>
                     </div>
                   </Show>
-                  <Show when={s.canWrite}>
+                  <Show when={!isReading()}>
                     <IconPicker icon={icon()} />
                   </Show>
                   <Editor session={s} marks={marks} changes={changes} threads={threads} />
-                  {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls */}
+                  {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls; the pencil switches
+                      between editing and reading (faded); read-only docs stay in reading */}
                   <div class="sticky bottom-0 z-[5] h-0">
                     <p class="absolute right-0 bottom-0 flex h-6 items-center gap-2.5 rounded-tl-xl border-t-[.4px] border-l-[.4px] border-rule bg-card px-3 font-light whitespace-nowrap text-muted">
-                      <EditIcon />
+                      <button
+                        class={`cursor-pointer rounded hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent ${isReading() ? "opacity-40" : ""}`}
+                        disabled={!s.canWrite}
+                        aria-pressed={!isReading()}
+                        title={!s.canWrite ? "Read-only" : isReading() ? "Reading: click to edit" : "Editing: click to read"}
+                        onClick={toggleReading}
+                      >
+                        <EditIcon />
+                      </button>
                       <span>{size().words} words</span>
                       <span>{size().chars} characters</span>
                     </p>

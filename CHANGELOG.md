@@ -2,6 +2,11 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-07: Reading mode, typography
+
+- **Reading and editing modes:** the pencil in the word-count corner switches modes, and the choice is remembered per browser. Reading hides the markdown, draws bullets as dots, tasks as boxes (checked ones filled and struck through) and `---` as a rule, and makes the doc read-only. Comments still work. Docs you can't push to always open in reading mode.
+- **Typography** to the Figma "Basic Typography" guide: body text on 16 px lines, H1 24 px (was 28), quotes with a darker bar and 4 px above and below, list items a blank line apart so wrapped ones don't run together, and list and task markers in the text colour when editing.
+
 ## 2026-11-07: Nov 5 redesign, collapsible sides
 - **Restyle** to the Figma frame "RED LETTER 5 NOV": a 620 px text column, a header split over the sidebar (logo and files toggle) with a muted path and a plain Share, your avatar and name atop the file sidebar, 15 px file and folder icons, a white comment box ("Write down what you think", a Send button) and a white "Add a comment" pill, quieter tab counts and quotes. Where two frames meet there is now one hairline instead of two.
 - **Collapsible sides:** the file sidebar folds to a 38 px rail (avatar, file search) and the comments panel folds away, each from its header toggle and remembered per browser. Opening a thread or a panel tab brings the panel back.

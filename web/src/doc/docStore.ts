@@ -30,6 +30,7 @@ type DocState = {
   drafting: string; // the draft action under way ("Merging…"), one at a time
   draftNote: string; // what the last draft action ended with, if it needs saying
   icons: Record<string, string>; // path -> the doc's icon ("": none), for the branch's docs as last synced or closed
+  reading: boolean; // reading mode chosen (the footer's pencil); read-only docs are always read
 };
 
 // A fresh object with every key each time: the store merges into the object it holds.
@@ -51,6 +52,7 @@ const [state, set] = createStore<DocState>({
   drafting: "",
   draftNote: "",
   icons: {},
+  reading: localStorage.getItem("rl_mode") === "reading",
 });
 export const doc = state;
 // The /__figma dev page (src/dev/figma.tsx).
@@ -193,6 +195,12 @@ export const showTab = (tab: Tab) => set({ tab, picked: true });
 export const openThread = (id: string) => set({ activeThread: id, tab: "comments", picked: true });
 export const closeThread = () => set("activeThread", "");
 export const hoverThread = (id: string) => set("hoveredThread", id);
+// Reading mode: the markdown rendered and the doc read-only; comments still work.
+export const isReading = () => !state.session?.canWrite || state.reading;
+export function toggleReading() {
+  set("reading", (r) => !r);
+  localStorage.setItem("rl_mode", state.reading ? "reading" : "editing");
+}
 
 export function jump(from: number, to: number) {
   view?.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });

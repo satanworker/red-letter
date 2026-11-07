@@ -1,8 +1,10 @@
 // Obsidian-style live preview: the markdown string is never touched; decorations render it Notion-like.
-// Editing mode: syntax markers always show, muted, so moving the cursor never reflows the text; heading marks hang
-// in the left margin. Reading mode (readingMode, read-only): the markers are hidden and lists, tasks and rules are
-// drawn (Figma 140:2782 "Basic Typography"). Images and mermaid diagrams render under their source (images.ts,
-// mermaid.ts); tables are the one exception, a widget in place of the source (tables.ts).
+// Typography: Figma 140:2782 "Typography Guideline" (pages: 148:3509 markdown/editing, 150:3757 reading).
+// Editing mode: syntax markers always show, so moving the cursor never reflows the text. They take their content's
+// style (`**` bold, backticks inside the grey highlight, a link's brackets blue); heading marks hang in the left
+// margin in Dark Grey, a link's (url) is Shadows grey. Reading mode (readingMode, read-only): the markers are hidden
+// and lists and tasks are drawn. Rules are drawn in both. Images and mermaid diagrams render under their source
+// (images.ts, mermaid.ts); tables are the one exception, a widget in place of the source (tables.ts).
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
@@ -15,8 +17,6 @@ import { mermaidField, mermaidTheme } from "./mermaid.ts";
 import { slashCommands } from "./slash.ts";
 import { cellComments, tableField, tableTheme } from "./tables.ts";
 
-const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-
 export const readingMode = Facet.define<boolean, boolean>({ combine: (v) => v.some(Boolean) });
 
 const theme = EditorView.theme({
@@ -24,9 +24,9 @@ const theme = EditorView.theme({
   "&.cm-focused": { outline: "none" },
   // Figma 140:2782 "Basic Text": 12px on 16px lines
   ".cm-scroller": { fontFamily: "var(--sans)", lineHeight: "16px" },
-  // a centred 620px text column (30px padding each side), 80px down (Figma 142:2967); heading marks hang into the
-  // side margin
-  ".cm-content": { boxSizing: "border-box", maxWidth: "680px", margin: "0 auto", padding: "80px 30px 30vh", caretColor: "var(--blue)" },
+  // a centred 620px text column (30px padding each side, plus the lines' 2px for the caret), 80px down (Figma
+  // 142:2967); heading marks hang into the side margin
+  ".cm-content": { boxSizing: "border-box", maxWidth: "684px", margin: "0 auto", padding: "80px 30px 30vh", caretColor: "var(--blue)" },
   ".cm-line": { padding: "0 2px" },
   // CodeMirror wraps with break-spaces, so a space at the end of a line takes room and pushes the last word down.
   // pre-wrap lets it hang past the edge, as Figma does (Figma 8:198 fits 61 characters in 440px).
@@ -35,58 +35,70 @@ const theme = EditorView.theme({
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, ::selection": {
     backgroundColor: "var(--sel) !important",
   },
-  // Figma 140:2782: H1 24px / H2 20px / H3 16px Medium on 1.25 lines; 28px between blocks = one blank line (16px)
-  // + 12px padding.
-  ".cm-lp-h1": { fontSize: "24px", fontWeight: "500", lineHeight: "1.25", padding: "12px 2px" },
-  ".cm-lp-h2": { fontSize: "20px", fontWeight: "500", lineHeight: "1.25", padding: "12px 2px" },
-  ".cm-lp-h3": { fontSize: "16px", fontWeight: "500", lineHeight: "1.25", padding: "12px 2px" },
-  ".cm-lp-h4, .cm-lp-h5, .cm-lp-h6": { fontWeight: "500", padding: "12px 2px" },
-  // "## " in body size, hung left of the heading text (margin set per mark: its length in ch)
-  ".cm-lp-hmark": { fontSize: "12px", fontWeight: "400", color: "var(--faint)" },
+  // Figma 140:2782: H1 24px / H2 20px / H3 16px Medium on 1.25 lines. Figma 148:3509 / 150:3757 keep 28px between
+  // blocks: a blank line next to a heading is 16px and the heading adds 12px of padding; any other blank line that
+  // follows a block is 28px itself (cm-lp-gap).
+  ".cm-lp-h1": { position: "relative", fontSize: "24px", fontWeight: "500", lineHeight: "1.25", padding: "12px 2px" },
+  ".cm-lp-h2": { position: "relative", fontSize: "20px", fontWeight: "500", lineHeight: "1.25", padding: "12px 2px" },
+  ".cm-lp-h3": { position: "relative", fontSize: "16px", fontWeight: "500", lineHeight: "1.25", padding: "12px 2px" },
+  ".cm-lp-h4, .cm-lp-h5, .cm-lp-h6": { position: "relative", fontWeight: "500", padding: "12px 2px" },
+  ".cm-lp-gap": { paddingTop: "12px" },
+  // "## " at the heading's size in Dark Grey, hung in the margin 12px left of the text (10px + the line's 2px), beside
+  // the heading's last line as Figma 148:3509 draws it; its space takes no room. One line: it has no width to wrap in.
+  ".cm-lp-hmark": { position: "absolute", right: "calc(100% + 10px)", bottom: "12px", whiteSpace: "pre", wordSpacing: "-1ch", color: "var(--mark)" },
+  ".cm-lp-hmark-empty": { position: "static", wordSpacing: "calc(12px - 1ch)" },
   ".cm-content > .cm-line:first-child": { paddingTop: "0" },
   ".cm-lp-mark": { color: "var(--mark)" },
   ".cm-lp-strong": { fontWeight: "600" },
   ".cm-lp-em": { fontStyle: "italic" },
   ".cm-lp-strike": { textDecoration: "line-through" },
-  ".cm-lp-code": {
-    fontFamily: mono, fontSize: "85%", color: "var(--code)", background: "var(--code-bg)",
-    borderRadius: "4px", padding: "0.2em 0.4em",
-  },
-  ".cm-lp-link": { color: "inherit", borderBottom: "1px solid var(--faint)", cursor: "pointer" },
+  // Figma "Highlight": Middle Grey behind the word (and its backticks), 4px corners, the text's own font and colour
+  ".cm-lp-code": { background: "var(--code-bg)", borderRadius: "4px", padding: "0 2px" },
+  // Figma "Links": the name blue (its brackets too while editing), underlined while reading; "(url)" Shadows grey,
+  // the url underlined
+  ".cm-lp-link": { color: "var(--link)", cursor: "pointer" },
+  ".cm-lp-url": { color: "var(--muted)" },
+  ".cm-lp-u": { textDecoration: "underline", textDecorationThickness: "from-font", textUnderlinePosition: "from-font" },
   // List items keep their raw marker ("- ", "1. ", "- [ ] "), in the text colour (Figma 140:2782 "Mark down"
   // columns). The font is monospace, so the indent is the marker's length in ch: wrapped lines hang under the item's
   // text, as do continuation lines indented to it.
-  ".cm-lp-li": { paddingLeft: "calc(var(--lp-in) + 2px) !important", textIndent: "calc(-1 * var(--lp-in))" },
-  // items of one list sit a blank line (16px) apart, so a wrapped item doesn't run into the next
-  ".cm-lp-li-gap": { paddingTop: "16px !important" },
+  // Figma 140:2782: a list's items on consecutive 18px lines (bullet and task lists; numbered ones too, which the
+  // guideline draws at 16px but then sit cramped beside them)
+  ".cm-lp-li": { paddingLeft: "calc(var(--lp-in) + 2px) !important", textIndent: "calc(-1 * var(--lp-in))", lineHeight: "18px" },
   ".cm-lp-taskmark": { cursor: "pointer" },
   // Figma 140:2943: a 2px Shadows bar, 12px gap, muted text, 4px above and below the quote
   ".cm-lp-quote": { borderLeft: "2px solid var(--muted)", paddingLeft: "12px !important", color: "var(--muted)" },
   ".cm-lp-quote-first": { paddingTop: "4px" },
   ".cm-lp-quote-last": { paddingBottom: "4px" },
-  // Reading mode (Figma 140:2782): a 4px dot and the text 20px in; an 8px box and the text 16px in, filled and the
-  // text struck through when checked; a rule 20px in from the column's edges, in a 20px line.
+  // Reading mode (Figma 140:2782): a 4px dot or an 8px box, centred on the 18px line, the text 16px in; a checked
+  // box filled and its text struck through.
   "&.cm-reading .cm-cursorLayer": { display: "none" },
-  ".cm-lp-bullet, .cm-lp-box": { display: "inline-block", verticalAlign: "top", textIndent: "0" },
-  ".cm-lp-bullet": { width: "20px" },
-  ".cm-lp-bullet::before": { content: '""', display: "block", width: "4px", height: "4px", marginTop: "6px", borderRadius: "50%", background: "var(--fg)" },
-  ".cm-lp-box": { width: "16px" },
+  ".cm-lp-bullet, .cm-lp-box": { display: "inline-block", verticalAlign: "top", textIndent: "0", width: "16px" },
+  ".cm-lp-bullet::before": { content: '""', display: "block", width: "4px", height: "4px", marginTop: "7px", borderRadius: "50%", background: "var(--fg)" },
   ".cm-lp-box::before": {
-    content: '""', display: "block", boxSizing: "border-box", width: "8px", height: "8px", marginTop: "4px",
+    content: '""', display: "block", boxSizing: "border-box", width: "8px", height: "8px", marginTop: "5px",
     border: ".4px solid var(--fg)", borderRadius: "2px",
   },
   ".cm-lp-box-on::before": { background: "var(--fg)" },
   ".cm-lp-done": { textDecoration: "line-through" },
+  // Figma "_________": a .5px Onyx line at 50% across the column. Figma 148:3509 keeps 28px from the rule to the
+  // blocks around it: a 24px line (12 + a blank line), and a heading right after it drops its 12px top padding.
   ".cm-lp-hr": {
-    display: "inline-block", verticalAlign: "top", width: "calc(100% - 36px)", height: "20px", margin: "0 18px",
-    background: "linear-gradient(var(--fg), var(--fg)) center / 100% .8px no-repeat",
+    display: "inline-block", verticalAlign: "top", width: "100%", height: "24px",
+    background: "linear-gradient(var(--hr), var(--hr)) center / 100% .5px no-repeat",
   },
-  ".cm-lp-codeblock": { background: "var(--bg2)", fontFamily: mono, fontSize: "12px", padding: "0 16px !important" },
-  ".cm-lp-fence": { color: "var(--faint)", fontSize: "11px" },
-  // Figma 82:749: the image fits the column (block widgets skip the line's 2px padding), 28px under its markdown line
-  // and 28px above the next block (12 + a blank line)
+  ".cm-lp-hrline + .cm-line + :is(.cm-lp-h1, .cm-lp-h2, .cm-lp-h3, .cm-lp-h4, .cm-lp-h5, .cm-lp-h6)": { paddingTop: "0" },
+  // Figma "Code Block": Middle Grey, 4px corners, 16px above and below the code, 20px in from the sides. Reading:
+  // the emptied fence lines are the 16px. Editing: the fences show, 16px from the edge and 12px from the code.
+  ".cm-lp-codeblock": { background: "var(--code-bg)", padding: "0 20px !important" },
+  ".cm-lp-cb-first": { borderRadius: "4px 4px 0 0" },
+  ".cm-lp-cb-last": { borderBottomLeftRadius: "4px", borderBottomRightRadius: "4px" },
+  ".cm-lp-fence-open": { paddingTop: "16px !important", paddingBottom: "12px !important" },
+  ".cm-lp-fence-close": { paddingTop: "12px !important", paddingBottom: "16px !important" },
+  // Figma 82:749: the image fits the column (block widgets skip the line's 2px padding), 28px under its markdown line;
+  // the blank line after it is the 28px to the next block
   // Padding, not margin: CodeMirror measures a block widget's box, and a margin it can't see shifts every click below.
-  ".cm-lp-img": { display: "block", maxWidth: "calc(100% - 4px)", margin: "0 2px", padding: "28px 0 12px" },
+  ".cm-lp-img": { display: "block", maxWidth: "calc(100% - 4px)", margin: "0 2px", padding: "28px 0 0" },
 });
 
 const muted = Decoration.mark({ class: "cm-lp-mark" });
@@ -110,8 +122,22 @@ const marks: Record<string, Decoration> = {
   InlineCode: Decoration.mark({ class: "cm-lp-code" }),
 };
 const link = Decoration.mark({ class: "cm-lp-link" });
+const linkU = Decoration.mark({ class: "cm-lp-link cm-lp-u" });
+const url = Decoration.mark({ class: "cm-lp-url" });
+const underline = Decoration.mark({ class: "cm-lp-u" });
+// A line may break after a url's "/" or "." (Figma 148:3509 wraps urls there) instead of the whole url jumping to the
+// next line.
+class Wbr extends WidgetType {
+  eq() { return true; }
+  toDOM() { return document.createElement("wbr"); }
+}
+const wbr = Decoration.widget({ widget: new Wbr(), side: 1 });
 const line = (cls: string) => Decoration.line({ class: cls });
 const taskMark = Decoration.mark({ class: "cm-lp-taskmark", attributes: { title: "Click to check or uncheck" } });
+const hmark = Decoration.mark({ class: "cm-lp-hmark" });
+const gap = line("cm-lp-gap");
+// a heading or rule line (a Setext underline counts): the blank lines beside it stay 16px
+const headingOrRule = /^ {0,3}(?:#{1,6}(?:\s|$)|[-=]+ *$|(?:[-*_] *){3,}$)/;
 
 function build(view: EditorView): DecorationSet {
   const { state } = view;
@@ -120,12 +146,21 @@ function build(view: EditorView): DecorationSet {
   const out: Range<Decoration>[] = [];
   // a syntax marker: muted while editing, gone while reading
   const marker = (from: number, to: number) => to > from && out.push((reading ? hidden : muted).range(from, to));
+  // a marker styled as its content while editing (`**`, backticks), gone while reading
+  const plainMarker = (from: number, to: number) => reading && to > from && out.push(hidden.range(from, to));
+  const urlBreaks = (from: number, to: number) => {
+    const s = doc.sliceString(from, to);
+    const at: Range<Decoration>[] = [];
+    for (let i = 0; i < s.length - 1; i++) if ((s[i] === "/" && s[i + 1] !== "/") || s[i] === ".") at.push(wbr.range(from + i + 1));
+    return at;
+  };
   const lines = (from: number, to: number, vfrom: number, vto: number, deco: (l: number, first: number, last: number) => Decoration) => {
     const first = doc.lineAt(from).number, last = doc.lineAt(to).number;
     for (let l = doc.lineAt(Math.max(from, vfrom)).number; l <= doc.lineAt(Math.min(to, vto)).number; l++)
       out.push(deco(l, first, last).range(doc.line(l).from));
   };
   const listed = new Set<number>(); // line starts already indented (items can span visible ranges)
+  const code: { from: number; to: number }[] = []; // code blocks: their blank lines are code
   // One item: its first line and the later lines of its own text (soft-wrapped in the source, or Shift-Enter) hang
   // at the width of the marker. Nested lists are their own items. Reading: a bullet's "- " becomes a dot and a
   // task's "- [ ] " a box; numbers stay.
@@ -147,16 +182,16 @@ function build(view: EditorView): DecorationSet {
       width = `calc(${mark.from - first.from}ch + 16px)`;
     } else if (item.parent?.name === "BulletList") {
       out.push(bullet.range(mark.from, start));
-      width = `calc(${mark.from - first.from}ch + 20px)`;
+      width = `calc(${mark.from - first.from}ch + 16px)`;
     }
     const style = `--lp-in:${width}`;
     const indent = Decoration.line({ class: "cm-lp-li", attributes: { style } });
-    const indentLine = (from: number, deco = indent) => {
+    const indentLine = (from: number) => {
       if (from < vfrom || from > vto || listed.has(from)) return;
       listed.add(from);
-      out.push(deco.range(from));
+      out.push(indent.range(from));
     };
-    indentLine(first.from, item.prevSibling ? Decoration.line({ class: "cm-lp-li cm-lp-li-gap", attributes: { style } }) : indent);
+    indentLine(first.from);
     for (let c = item.firstChild; c; c = c.nextSibling) {
       if (c.name !== "Paragraph" && c.name !== "Task") continue;
       for (let l = doc.lineAt(c.from).number; l <= doc.lineAt(c.to).number; l++) indentLine(doc.line(l).from);
@@ -177,33 +212,42 @@ function build(view: EditorView): DecorationSet {
         }
         switch (name) {
           case "HeaderMark": {
-            // the leading "## " (with its space) hangs left of the text; a closing "##" and Setext underlines stay put
+            // the leading "## " (with its space) hangs in the margin (cm-lp-hmark); a closing "##" and Setext
+            // underlines stay put. A heading with no text yet keeps its mark in the line, pulled into the margin, so
+            // the caret after it sits where the text will start.
             const end = doc.sliceString(n.to, n.to + 1) === " " ? n.to + 1 : n.to;
             if (n.parent?.name.startsWith("Setext") || n.prevSibling) marker(n.from, n.to);
             else if (reading) out.push(hidden.range(n.from, end));
-            else out.push(Decoration.mark({ class: "cm-lp-hmark", attributes: { style: `margin-left:-${end - n.from}ch` } }).range(n.from, end));
+            else if (end < doc.lineAt(n.from).to) out.push(hmark.range(n.from, end));
+            else out.push(Decoration.mark({ class: "cm-lp-hmark cm-lp-hmark-empty", attributes: { style: `margin-left:calc(-${n.to - n.from}ch - 12px)` } }).range(n.from, end));
             return;
           }
           case "StrongEmphasis": case "Emphasis": case "Strikethrough": case "InlineCode":
             out.push(marks[name]!.range(n.from, n.to));
             return;
           case "EmphasisMark": case "StrikethroughMark":
-            marker(n.from, n.to);
+            plainMarker(n.from, n.to);
             return;
           case "CodeMark":
-            if (n.parent?.name === "InlineCode") marker(n.from, n.to);
+            if (n.parent?.name === "InlineCode") plainMarker(n.from, n.to);
             return;
           case "Link": {
             const marksIn = n.getChildren("LinkMark");
             const open = marksIn[0], close = marksIn[1];
             if (!open || !close || doc.sliceString(open.from, open.to) !== "[") return false; // autolink etc.
-            if (close.from > open.to) out.push(link.range(open.to, close.from));
-            marker(open.from, open.to);
-            marker(close.from, n.to);
+            if (reading) {
+              if (close.from > open.to) out.push(linkU.range(open.to, close.from));
+              out.push(hidden.range(open.from, open.to), hidden.range(close.from, n.to));
+              return false;
+            }
+            out.push(link.range(open.from, close.to));
+            if (n.to > close.to) out.push(url.range(close.to, n.to));
+            const href = n.getChild("URL");
+            if (href) out.push(underline.range(href.from, href.to), ...urlBreaks(href.from, href.to));
             return false;
           }
-          case "URL":
-            if (n.parent?.name !== "Image") out.push(link.range(n.from, n.to));
+          case "URL": // a bare or <autolink>
+            if (n.parent?.name !== "Image") out.push(linkU.range(n.from, n.to), ...urlBreaks(n.from, n.to));
             return;
           case "Image": // imageField renders the picture under the line
             marker(n.from, n.to);
@@ -221,18 +265,35 @@ function build(view: EditorView): DecorationSet {
             marker(n.from, reading && doc.sliceString(n.to, n.to + 1) === " " ? n.to + 1 : n.to);
             return;
           case "HorizontalRule":
-            out.push((reading ? rule : muted).range(n.from, n.to));
+            out.push(line("cm-lp-hrline").range(doc.lineAt(n.from).from), rule.range(n.from, n.to));
             return;
+          case "CodeBlock":
+            code.push(n);
+            return false;
           case "FencedCode": {
+            code.push(n);
             const closed = n.lastChild?.name === "CodeMark" && doc.lineAt(n.lastChild.from).number > doc.lineAt(n.from).number;
-            lines(n.from, n.to, vfrom, vto, (l, first, last) =>
-              line(l === first || (closed && l === last) ? "cm-lp-codeblock cm-lp-fence" : "cm-lp-codeblock"));
+            lines(n.from, n.to, vfrom, vto, (l, first, last) => {
+              let cls = "cm-lp-codeblock";
+              if (l === first) cls += reading ? " cm-lp-cb-first" : " cm-lp-cb-first cm-lp-fence-open";
+              if (l === last) cls += reading || !closed ? " cm-lp-cb-last" : " cm-lp-cb-last cm-lp-fence-close";
+              return line(cls);
+            });
             if (reading) for (let c = n.firstChild; c; c = c.nextSibling) if (c.name === "CodeMark" || c.name === "CodeInfo") marker(c.from, c.to);
             return false;
           }
         }
       },
     });
+    // 28px between blocks: a blank line after a block (not the next blank in a run), unless a heading or rule
+    // borders it. Decided by the line before it, so typing on a new line below never moves that line.
+    for (let l = doc.lineAt(vfrom).number; l <= doc.lineAt(vto).number; l++) {
+      const ln = doc.line(l);
+      if (ln.text.trim() || l === 1 || code.some((c) => c.from <= ln.from && ln.from <= c.to)) continue;
+      const prev = doc.line(l - 1).text;
+      if (!prev.trim() || headingOrRule.test(prev) || (l < doc.lines && headingOrRule.test(doc.line(l + 1).text))) continue;
+      out.push(gap.range(ln.from));
+    }
   }
   return Decoration.set(out, true);
 }

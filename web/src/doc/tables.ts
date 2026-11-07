@@ -1,5 +1,6 @@
-// GFM tables, Obsidian-style: always rendered as a table whose cells are edited in place. The focused cell shows
-// its raw markdown; Tab / Shift-Tab / Enter move between cells (adding a row past the end), arrows and Escape
+// GFM tables, Obsidian-style: always a table whose cells are edited in place. While editing, cells show their
+// markdown styled as the text around them (Figma 148:3509), so focusing one changes no character; reading renders it.
+// Tab / Shift-Tab / Enter move between cells (adding a row past the end), arrows and Escape
 // leave the table, right-click inserts or deletes rows and columns.
 // Editing a cell rewrites only that cell's text in the file (agents' diffs stay one cell wide); column changes
 // rewrite every row of the table.
@@ -50,17 +51,22 @@ const toCell = (s: string) => s.replace(/\s*\n\s*/g, " ").replace(/(?<!\\)\|/g, 
 const rowText = (cells: string[]) => `| ${cells.join(" | ")} |`;
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
-// Cell text -> HTML: code spans, bold, italic, link text. Everything from the doc is escaped first.
-const cellHtml = (s: string) =>
+// Cell text -> HTML: code spans, bold, italic, links. Reading: rendered (a link shows its name). Editing (markdown):
+// the markers stay, in their content's style; a link's (url) is grey. Everything from the doc is escaped first.
+const cellHtml = (s: string, markdown: boolean) =>
   s
     .split(/(`[^`]+`)/)
     .map((part, i) =>
       i % 2
-        ? `<code>${esc(part.slice(1, -1))}</code>`
+        ? `<code>${esc(markdown ? part : part.slice(1, -1))}</code>`
         : esc(part)
-            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-            .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
-            .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1"),
+            .replace(/\*\*(.+?)\*\*/g, markdown ? "<strong>**$1**</strong>" : "<strong>$1</strong>")
+            .replace(/(^|[^*])\*([^*]+)\*/g, markdown ? "$1<em>*$2*</em>" : "$1<em>$2</em>")
+            .replace(/\[([^\]]+)\]\(([^)]*)\)/g, (_, name: string, href: string) =>
+              markdown
+                ? `<span class="cm-lp-link">[${name}]</span><span class="cm-lp-url">(<span class="cm-lp-u">${href.replace(/(\/(?!\/)|\.)(?=.)/g, "$1<wbr>")}</span>)</span>`
+                : `<span class="cm-lp-link cm-lp-u">${name}</span>`,
+            ),
     )
     .join("");
 
@@ -102,7 +108,7 @@ class TableWidget extends WidgetType {
     }
     for (const el of dom.querySelectorAll<HTMLElement>("[data-r]")) {
       const raw = this.raw(Number(el.dataset.r), Number(el.dataset.c));
-      if (el !== document.activeElement) el.innerHTML = cellHtml(raw);
+      if (el !== document.activeElement) el.innerHTML = cellHtml(raw, !this.readOnly);
       // The file trims cells, so a space just typed at an end isn't stored yet: compare what would be stored.
       else if (unescape(toCell(el.textContent ?? "")).trim() !== raw) {
         el.textContent = raw; // undo or a remote edit changed the cell being edited
@@ -133,7 +139,7 @@ class TableWidget extends WidgetType {
         el.style.textAlign = this.align[c] ?? "left";
         el.contentEditable = view.state.readOnly ? "false" : "true";
         el.spellcheck = false;
-        el.innerHTML = cellHtml(this.raw(r, c));
+        el.innerHTML = cellHtml(this.raw(r, c), !this.readOnly);
       }
     });
     raws.set(wrap, this.cells);
@@ -229,7 +235,7 @@ function wire(wrap: HTMLElement, view: EditorView) {
   });
   wrap.addEventListener("focusout", (e) => {
     const el = cellOf(e.target);
-    if (el) el.innerHTML = cellHtml(raws.get(wrap)?.[Number(el.dataset.r)]?.[Number(el.dataset.c)] ?? "");
+    if (el) el.innerHTML = cellHtml(raws.get(wrap)?.[Number(el.dataset.r)]?.[Number(el.dataset.c)] ?? "", !view.state.readOnly);
     if (cellOf(e.relatedTarget)) return; // another cell
     if (e.relatedTarget) editing = null; // the user moved focus elsewhere
     else if (editing) editing.lostAt = performance.now(); // to nowhere: a redraw (or the window lost focus)
@@ -420,17 +426,23 @@ export const tableField = StateField.define<DecorationSet>({
 export const tableTheme = EditorView.theme({
   // a wide table wraps its cells, then scrolls
   // padding, not margin: CodeMirror can't see a block widget's margins, and clicks below it would land too low
-  ".cm-lp-tablewrap": { overflowX: "auto", paddingTop: "6px", paddingBottom: "6px" },
+  // Figma 140:2782 "Table": full width, .5px Onyx lines over and under every row (drawn as backgrounds, so they take
+  // no room: rows are 8 + text + 8), no column lines, 12px between columns, the header row SemiBold; 20px above and
+  // below
+  ".cm-lp-tablewrap": { overflowX: "auto", paddingTop: "20px", paddingBottom: "20px" },
   // CodeMirror's wrapping (overflow-wrap: anywhere, word-break: break-word) makes every column's minimum one
   // letter, so a squeezed table broke words mid-way
-  ".cm-lp-table": { maxWidth: "100%", borderCollapse: "collapse", fontSize: "12px", lineHeight: "1.5", overflowWrap: "break-word", wordBreak: "normal" },
-  ".cm-lp-table th, .cm-lp-table td": { border: "1px solid var(--rule)", padding: "6px 10px", verticalAlign: "top", outline: "none", cursor: "text", minWidth: "3em" },
-  ".cm-lp-table th": { background: "var(--bg2)", fontWeight: "600" },
-  ".cm-lp-table th:focus, .cm-lp-table td:focus": { boxShadow: "inset 0 0 0 2px rgba(35,131,226,.6)", whiteSpace: "pre-wrap" },
-  ".cm-lp-table code": {
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: "85%", color: "var(--code)",
-    background: "var(--code-bg)", borderRadius: "4px", padding: "0.1em 0.3em",
+  ".cm-lp-table": { width: "100%", borderCollapse: "collapse", fontSize: "12px", lineHeight: "16px", overflowWrap: "break-word", wordBreak: "normal" },
+  ".cm-lp-table th, .cm-lp-table td": {
+    padding: "8px 12px 8px 0", verticalAlign: "top", outline: "none", cursor: "text", minWidth: "3em",
+    background: "linear-gradient(var(--fg), var(--fg)) bottom / 100% .5px no-repeat",
   },
+  ".cm-lp-table th": {
+    background: "linear-gradient(var(--fg), var(--fg)) top / 100% .5px no-repeat, linear-gradient(var(--fg), var(--fg)) bottom / 100% .5px no-repeat",
+  },
+  ".cm-lp-table :is(th, td):last-child": { paddingRight: "0" },
+  ".cm-lp-table th:focus, .cm-lp-table td:focus": { boxShadow: "inset 0 0 0 2px rgba(35,131,226,.6)", whiteSpace: "pre-wrap" },
+  ".cm-lp-table code": { font: "inherit", color: "inherit", background: "var(--code-bg)", borderRadius: "4px", padding: "0 2px" },
   ".cm-lp-menu": {
     position: "fixed", zIndex: "50", display: "flex", flexDirection: "column", padding: "4px", minWidth: "180px", background: "var(--card)", borderRadius: "6px",
     boxShadow: "var(--pop)",

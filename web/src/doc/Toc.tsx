@@ -20,10 +20,10 @@ export function Toc(props: { session: Session }) {
   const [active, setActive] = createSignal(0);
   const [railHeight, setRailHeight] = createSignal(0);
   let scroller!: HTMLElement;
-  let rail!: HTMLDivElement;
+  let rail: HTMLDivElement | undefined; // unset while there are too few headings to show it
   const update = () => {
     setActive(headingInView(headings(), scroller));
-    setRailHeight(rail.clientHeight);
+    setRailHeight(rail?.clientHeight ?? 0);
   };
   onMount(() => {
     scroller = document.getElementById("doc")!;
@@ -54,7 +54,10 @@ export function Toc(props: { session: Session }) {
       >
         {/* the rail: only its bars and a little room to their right catch the pointer, as in Linear */}
         <div
-          ref={rail}
+          ref={(el) => {
+            rail = el;
+            queueMicrotask(update); // the rail can appear long after mount (a second heading typed)
+          }}
           class="pointer-events-auto my-1 ml-1 max-h-[calc(100%-60px)] overflow-hidden pr-6 transition-opacity duration-100 group-focus-within/toc:opacity-0 group-hover/toc:opacity-0 group-hover/toc:duration-200"
           style={{ "mask-image": mask() }}
           aria-hidden="true"

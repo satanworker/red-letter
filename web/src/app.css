@@ -8,8 +8,11 @@
   --fg: #373737; --muted: #adadad; --faint: #adadad; --mark: #d8d8d8;
   --line: #adadad; --rule: #d8d8d8; --hover: rgba(55, 55, 55, .06); --on: #d9d9d9;
   --blue: #2383e2; --red: #c4342d; --red-bg: #fdebec; --del: #9f2f2d; --green-bg: #edf3ec; --green: #448361; --yellow-bg: rgba(255, 212, 0, .14); --yellow: #dfab01;
-  --brand: #fe0000; --code: #ee8181; --code-bg: rgba(55, 55, 55, .06); --sel: rgba(0, 64, 255, .5);
+  --brand: #fe0000; --code: #ee8181; --code-bg: rgba(55, 55, 55, .1); --sel: rgba(0, 64, 255, .5);
   --glass: rgba(235, 235, 235, .5);
+  /* Figma 140:2782 typography: --code-bg is Middle Grey #EBEBEB over white, --hl the comment highlight #FFEEBA (both
+     translucent, so the selection and each other show through), links #4E0DFF, rules Onyx at 50% */
+  --link: #4e0dff; --hr: rgba(55, 55, 55, .5); --hl: rgba(255, 192, 0, .27); --hl-on: rgba(255, 192, 0, .5);
   --shadow: 0 .5px 3px rgba(55, 55, 55, .09), 0 4px 10px rgba(235, 235, 235, .25), inset 0 -.5px 1px rgba(0, 0, 0, .05);
   --pop: rgba(15, 15, 15, .05) 0 0 0 1px, rgba(15, 15, 15, .1) 0 3px 6px, rgba(15, 15, 15, .2) 0 9px 24px;
   --sans: "Google Sans Code", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -22,6 +25,7 @@
     --red: #e5534b; --red-bg: #3e2523; --del: #f08a83; --green-bg: #22372b; --green: #6cc08f;
     --yellow-bg: rgba(255, 212, 0, .12); --code: #ff8f8f; --code-bg: rgba(255, 255, 255, .08);
     --sel: rgba(64, 120, 255, .45); --glass: rgba(60, 60, 60, .6);
+    --link: #a48cff; --hr: rgba(255, 255, 255, .3); --hl: rgba(255, 200, 0, .18); --hl-on: rgba(255, 200, 0, .36);
     --shadow: 0 .5px 3px rgba(0, 0, 0, .3), inset 0 -.5px 1px rgba(255, 255, 255, .04);
     --pop: rgba(255, 255, 255, .08) 0 0 0 1px, rgba(0, 0, 0, .3) 0 3px 6px, rgba(0, 0, 0, .45) 0 9px 24px;
   }
@@ -55,8 +59,8 @@
 .rl-del { background: var(--red-bg); color: var(--del); text-decoration: line-through; border-radius: 2px; opacity: .8; }
 .rl-conflict { background: var(--red-bg); box-shadow: 0 2px 0 var(--red); }
 .rl-draft { background: rgba(35, 131, 226, .12); box-shadow: 0 2px 0 rgba(35, 131, 226, .45); border-radius: 2px; }
-.rl-comment { background: var(--yellow-bg); box-shadow: 0 2px 0 rgba(223, 171, 1, .8); cursor: pointer; }
-.rl-comment.active { background: rgba(255, 212, 0, .4); }
+.rl-comment { background: var(--hl); border-radius: 4px; cursor: pointer; }
+.rl-comment.active { background: var(--hl-on); }
 .cm-editor .cm-tooltip.sel-tip { border: 0; background: none; }
 /* CodeMirror aligns its zero-width widget buffers to the baseline, which makes a heading line 1px taller than its
    line-height when a hidden "#" sits in it (Figma: H1 is exactly 35px, H2 25px). */

@@ -2,6 +2,18 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-07: Typography guideline
+
+- **Typography** to the Figma "Typography Guideline" for both modes, checked block by block against Figma's two example pages (same text, measured positions). Editing shows the markdown the way Figma's markdown mode does: `**`, `*` and backticks look like the text they wrap instead of greyed out, `#` marks hang 12 px left of the heading at its size, beside its last line, a link's `[name]` is blue and its `(url)` grey with the url underlined. Reading shows link names blue and underlined.
+- **28 px between blocks**, as in the Figma pages: a blank line after a paragraph, list, table or code block is 28 px tall; next to a heading or a rule it stays one line and the heading's own padding makes up the rest.
+- **Text runs the full 620 px** of the column (it was 616), and long urls wrap after a `/` or `.` instead of jumping whole to the next line.
+- **Inline code and code blocks** on a light grey in the doc's own font and colour (were red, in a system monospace); code blocks have rounded corners and 16 / 20 px of room around the code.
+- **Lists:** items sit on consecutive 18 px lines again, numbered lists included; reading-mode dots and boxes are centred on the line, the text 16 px in.
+- **Rules** (`---`) are drawn in editing mode too, as a thin line across the column, 28 px from the blocks around them.
+- **Tables** run the full column width with hairlines only between rows, a bold header and no shaded header row. While editing, cells show their markdown (styled like the text) so clicking into one changes nothing; reading renders it, links as links.
+- **Comment highlights** in Figma's pale yellow with rounded corners, without the underline.
+- **Table of contents** no longer throws on every scroll of a doc with fewer than two headings, and measures its rail as soon as a second heading appears.
+
 ## 2026-11-07: Tab styling, page menu
 
 - **Tabs** styled to Figma: file names only, the open tab white and running into the page, a grey pill on hover, thin rules between the others, 15 px × and + icons.

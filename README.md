@@ -1,4 +1,4 @@
-# Red Letter
+# ⭐ Red Letter
 
 Live co-editing and margin comments for markdown files in a GitHub repo. Git stays the source of truth: agents `git pull` / `git push`, and their commits show up in the browser as reviewable changes.
 

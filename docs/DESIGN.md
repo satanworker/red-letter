@@ -22,7 +22,7 @@ Infra we run, none of it a source of truth, none of it holding user keys:
 
 - static site: `diff.satanworker.com` on R2 (dedicated public bucket + custom domain; no egress fees for the ~3.6 MB wasm). Hashed assets are `immutable`; `index.html` is `no-cache`; `.wasm` is uploaded as `application/wasm`. Deep links need a Cloudflare URL-rewrite rule to `/index.html`, since R2 has no SPA fallback.
 - `diff-api.satanworker.com`: one Go binary on home-satan, reached through a Cloudflare Tunnel (`cloudflared` dials out), so no inbound ports open. A first-level subdomain is required because Universal SSL doesn't cover `*.diff.satanworker.com`. Cloudflare drops idle WebSockets after 100 s, so the hub pings every 30 s.
-  - sync hub: a dumb room router that doesn't know about CRDTs. Room = repo. Tabs mesh-sync through it, using our own ~80-line automerge-repo `NetworkAdapter` (multi-peer, routes by `targetId`). We can't use the stock websocket adapter: it assumes a single remote peer that is itself an automerge-repo server. The first message carries the GitHub token; the hub admits a tab only with push access to the room's repo (checked via the GitHub API, cached briefly). Read-only viewers get no live sync, because any sync peer can inject ops that a writer later commits. In-memory only. A tab alone has no peer; it loads from the snapshot ref.
+<!--rl:hp0ean-->  - sync hub: a dumb room router that doesn't know about CRDTs. Room = repo. Tabs mesh-sync through it, using our own ~80-line automerge-repo `NetworkAdapter` (multi-peer, routes by `targetId`). We can't use the stock websocket adapter: it assumes a single remote peer that is itself an automerge-repo server. The first message carries the GitHub token; the hub admits a tab only with push access to the room's repo (checked via the GitHub API, cached briefly). Read-only viewers get no live sync, because any sync peer can inject ops that a writer later <!--/rl:hp0ean-->commits. In-memory only. A tab alone has no peer; it loads from the snapshot ref.
   - `POST /oauth/token` and `/oauth/refresh`: exchanges the code using the GitHub App `client_secret` and returns tokens to the browser without storing them. CORS allows the site origin only.
 
 GitHub's callback goes to the static site (`/auth/callback`). The page POSTs `{code, code_verifier}` to the VPS.
@@ -87,3 +87,7 @@ Done 2026-10-12, all passing: `experiments/RESULTS.md` (merge quality, determini
 ## Research
 
 `docs/research/` — five reports, 2026-10-12: prior art (Patchwork, Jupyter RTC, pushwork), CRDT comparison, markdown editors, existing products, GitHub integration mechanics. Plus `crdts-in-production.md`, 2026-10-13: Notion, Zed, Figma, Linear, Liveblocks and others, agent-editing patterns, and file→CRDT bridges compared with our replay.
+
+<!--rl:hp0ean
+@satanworker 2026-11-07T18:47Z: Why do we need back-end at all? I don't actually remember is for realtime editing?
+-->

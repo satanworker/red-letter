@@ -3,7 +3,7 @@
 import type { EditorView } from "@codemirror/view";
 import { createStore, reconcile } from "solid-js/store";
 import { clearComments, commentViaPr, comments, loadComments, refreshComments } from "../comments/commentsStore.ts";
-import { addThread, apply, newId, now, plain, reply, resolve, sameProse, type Edit, type Thread } from "../comments/inline.ts";
+import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, type User } from "../github.ts";
 import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 import { inCode } from "./commentMarks.ts";
@@ -23,6 +23,7 @@ type DocState = {
   picked: boolean; // the panel tab was chosen; until then it follows what there is to look at
   tab: Tab;
   activeThread: string;
+  hoveredThread: string; // the panel card under the pointer: a resolved thread's text lights up only then
   composing: { anchor: Anchor; quote: string } | null;
   showChanges: boolean; // a draft's edits highlighted against its base branch
   drafting: string; // the draft action under way ("Merging…"), one at a time
@@ -43,6 +44,7 @@ const [state, set] = createStore<DocState>({
   picked: false,
   tab: "comments",
   activeThread: "",
+  hoveredThread: "",
   composing: null,
   showChanges: false,
   drafting: "",
@@ -74,7 +76,7 @@ export function tick() {
 // draftOf: the branch was just forked from that one as a draft of this file.
 export async function openFile(repo: RepoInfo, branch: string, path: string, user: User, create?: string, draftOf?: string): Promise<boolean> {
   closeFile();
-  set({ opening: path, login: user.login, picked: false, tab: "comments", activeThread: "", composing: null, showChanges: false, draftNote: "" });
+  set({ opening: path, login: user.login, picked: false, tab: "comments", activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "" });
   document.title = `${path.split("/").pop()} · Red Letter`;
   // a protected branch takes no direct edits; its comments go through a pull request (commentsStore)
   const push = repo.permissions?.push === true;
@@ -179,6 +181,7 @@ export function startComment() {
 export const cancelComment = () => set("composing", null);
 export const showTab = (tab: Tab) => set({ tab, picked: true });
 export const openThread = (id: string) => set({ activeThread: id, tab: "comments", picked: true });
+export const hoverThread = (id: string) => set("hoveredThread", id);
 
 export function jump(from: number, to: number) {
   view?.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
@@ -260,7 +263,9 @@ export function submitComment(body: string) {
 }
 
 export const submitReply = (id: string, body: string) => editComments("Reply on", (t) => reply(t, id, { author: state.login, at: now(), body }), body);
-export const resolveThread = (id: string) => editComments("Resolve a comment on", (t) => resolve(t, id));
+export const resolveThread = (id: string) => editComments("Resolve a comment on", (t) => setResolved(t, id, true));
+export const reopenThread = (id: string) => editComments("Reopen a comment on", (t) => setResolved(t, id, false));
+export const deleteThread = (id: string) => editComments("Delete a comment on", (t) => remove(t, id));
 
 // ---- drafts ----
 export const toggleChanges = () => set("showChanges", (v) => !v);

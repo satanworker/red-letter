@@ -1,10 +1,11 @@
 // Comment threads beside the doc. Rows are keyed by thread id, so a reply being typed survives updates.
 // New comments are written in the editor (Editor.tsx) and show here once sent.
-// Keyboard: each thread's quote is a button that jumps to the text; Reply / Resolve are buttons; Esc closes inputs.
+// Keyboard: each thread's quote is a button that jumps to the text; Reply / Resolve / Reopen / Delete are buttons;
+// Esc closes inputs. Resolved threads wait, collapsed, under "N resolved"; hovering one's card lights up its text.
 import { For, Show, createMemo, createSignal, type Accessor } from "solid-js";
-import { doc, resolveThread, selectThread, submitReply } from "../doc/docStore.ts";
+import { deleteThread, doc, hoverThread, reopenThread, resolveThread, selectThread, submitReply } from "../doc/docStore.ts";
 import { repo } from "../repo/repoStore.ts";
-import { Avatar, ago, btn, card } from "../ui.tsx";
+import { Avatar, ago, btn, card, linkBtn } from "../ui.tsx";
 import type { Message as Msg, Thread } from "./inline.ts";
 import { MentionText, createMentions } from "./Mentions.tsx";
 import { comments } from "./commentsStore.ts";
@@ -16,15 +17,24 @@ const quote = "line-clamp-3 border-l-2 border-on pl-2 text-left whitespace-pre-w
 
 export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Thread[]> }) {
   const byId = createMemo(() => new Map(props.threads().map((t) => [t.id, t])));
-  const ids = createMemo(() => props.threads().map((t) => t.id));
+  const ids = (resolved: boolean) => props.threads().filter((t) => t.resolved === resolved).map((t) => t.id);
+  const open = createMemo(() => ids(false));
+  const resolved = createMemo(() => ids(true));
+  const cards = (list: Accessor<string[]>) => <For each={list()}>{(id) => <Show when={byId().get(id)}>{(t) => <ThreadCard thread={t} canComment={props.canComment} />}</Show>}</For>;
   return (
     <>
-      <Show when={!ids().length}>
+      <Show when={!open().length}>
         <p class="px-0.5 py-3 text-muted">
           Select text and click <b>Add a comment</b> to start a discussion.
         </p>
       </Show>
-      <For each={ids()}>{(id) => <Show when={byId().get(id)}>{(t) => <ThreadCard thread={t} canComment={props.canComment} />}</Show>}</For>
+      {cards(open)}
+      <Show when={resolved().length}>
+        <details>
+          <summary class="cursor-pointer list-none px-0.5 text-muted hover:text-fg">{resolved().length} resolved</summary>
+          <div class="mt-4 flex flex-col gap-4">{cards(resolved)}</div>
+        </details>
+      </Show>
       <Show when={comments.sending}>
         <p class="text-muted">Sending to the comment pull request…</p>
       </Show>
@@ -35,7 +45,7 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
       <p class="flex flex-col gap-2 py-1 text-muted">
         <Show
           when={comments.viaPr}
-          fallback="Comments are HTML comments in the file: hidden on GitHub's page, read by agents with the text. Resolving one deletes it."
+          fallback="Comments are HTML comments in the file: hidden on GitHub's page, read by agents with the text. Resolved ones stay in the file until deleted."
         >
           <span>
             {repo.branch} is protected, so comments go through{" "}
@@ -93,6 +103,8 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean }) {
       onClick={(e) => {
         if (!(e.target instanceof Element && e.target.closest("form, button"))) selectThread(t());
       }}
+      onMouseEnter={() => t().resolved && hoverThread(t().id)}
+      onMouseLeave={() => hoverThread("")}
     >
       <div>
         <button type="button" class={`${quote} cursor-pointer`} title="Go to the text" onClick={() => selectThread(t())}>
@@ -109,11 +121,27 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean }) {
           when={replying()}
           fallback={
             <div class="flex items-center gap-3">
-              <button type="button" class={btn} onClick={() => setReplying(true)}>
-                Reply
-              </button>
-              <button type="button" class={btn} onClick={() => resolveThread(t().id)}>
-                Resolve
+              <Show
+                when={!t().resolved}
+                fallback={
+                  <button type="button" class={btn} onClick={() => reopenThread(t().id)}>
+                    Reopen
+                  </button>
+                }
+              >
+                <button type="button" class={btn} onClick={() => setReplying(true)}>
+                  Reply
+                </button>
+                <button type="button" class={btn} onClick={() => resolveThread(t().id)}>
+                  Resolve
+                </button>
+              </Show>
+              <button
+                type="button"
+                class={`${linkBtn} ml-auto`}
+                onClick={() => confirm("Delete this comment and its replies? Git history keeps them.") && deleteThread(t().id)}
+              >
+                Delete
               </button>
             </div>
           }

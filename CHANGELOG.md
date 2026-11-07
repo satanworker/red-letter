@@ -8,6 +8,8 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **Collapsible sides:** the file sidebar folds to a 38 px rail (avatar, file search) and the comments panel folds away, each from its header toggle and remembered per browser. Opening a thread or a panel tab brings the panel back.
 - **Word count** in the doc's bottom-right corner, live as you type.
 - **File tree:** switching files no longer closes the folders you opened. The "+" new-file button is gone with the new design, for now.
+- **Resolve and Delete are separate:** a resolved thread stays in the file (`<!--rl:c1 resolved`), folds under "N resolved" in the panel and loses its highlight, which comes back while you hover its card; Reopen brings it back. Delete removes the thread from the file, after a confirm.
+- **Clicks below images, tables and diagrams** land where you click again: those blocks had vertical margins, which CodeMirror doesn't measure, so every line under them was mapped higher than it's drawn.
 
 ## 2026-11-02: History without approvals
 

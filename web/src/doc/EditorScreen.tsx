@@ -54,7 +54,7 @@ export function EditorScreen() {
     const name = prompt("Name the draft", `${file().replace(/\.[^.]+$/, "")}-edits`);
     if (name) void createDraft(name);
   };
-  const openCount = () => threads().length;
+  const openCount = () => threads().filter((t) => !t.resolved).length;
   const tab = () => selectTab(doc, openCount(), marks().length);
   // other people on this file; your own other tabs count for saving (Session.close) but aren't shown
   const people = () => [...new Set(doc.status.people)].filter((p) => p !== repo.user?.login);

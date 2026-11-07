@@ -175,7 +175,7 @@ function CommentBox() {
   );
 }
 
-function decorations(session: Session, len: number, marks: AgentMark[], changes: Region[], threads: Thread[], active: string): DecorationSet {
+function decorations(session: Session, len: number, marks: AgentMark[], changes: Region[], threads: Thread[], active: string, hovered: string): DecorationSet {
   const out: Range<Decoration>[] = [];
   const del = (at: number, text: string, by: string) => out.push(Decoration.widget({ widget: new DelWidget(text, by), side: -1 }).range(Math.min(at, len)));
   const mark = (from: number, to: number, cls: string, attrs?: Record<string, string>) => {
@@ -192,7 +192,12 @@ function decorations(session: Session, len: number, marks: AgentMark[], changes:
     if (c.before) del(c.from, c.before, "in this draft");
     mark(c.from, c.to, "rl-draft", { title: "edited in this draft" });
   }
-  for (const t of threads) if (t.range) mark(t.range.from, t.range.to, t.id === active ? "rl-comment active" : "rl-comment", { "data-thread": t.id });
+  for (const t of threads) {
+    if (!t.range) continue;
+    // a resolved thread's text shows only while its card in the panel is hovered, and isn't a link to it
+    if (!t.resolved) mark(t.range.from, t.range.to, t.id === active ? "rl-comment active" : "rl-comment", { "data-thread": t.id });
+    else if (t.id === hovered) mark(t.range.from, t.range.to, "rl-comment active");
+  }
   return Decoration.set(out, true);
 }
 
@@ -238,7 +243,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
     createEffect(() => {
       doc.version; // the CRDT doc changed
       if (view.state.doc.length !== s.doc.text.length) return docChanged(); // binding hasn't caught up: next frame
-      view.dispatch({ effects: setDecos.of(decorations(s, view.state.doc.length, props.marks(), props.changes(), props.threads(), doc.activeThread)) });
+      view.dispatch({ effects: setDecos.of(decorations(s, view.state.doc.length, props.marks(), props.changes(), props.threads(), doc.activeThread, doc.hoveredThread)) });
     });
     onCleanup(() => {
       setView(undefined);

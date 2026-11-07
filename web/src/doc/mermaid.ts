@@ -104,7 +104,8 @@ export const mermaidField = StateField.define<DecorationSet>({
 });
 
 export const mermaidTheme = EditorView.theme({
-  ".cm-lp-mermaid": { overflowX: "auto", marginTop: "8px", marginBottom: "8px", textAlign: "center" },
+  // padding, not margin: CodeMirror can't see a block widget's margins, and clicks below it would land too low
+  ".cm-lp-mermaid": { overflowX: "auto", paddingTop: "8px", paddingBottom: "8px", textAlign: "center" },
   ".cm-lp-mermaid img": { display: "inline-block", verticalAlign: "top" },
   ".cm-lp-mermaid-err": { color: "var(--faint)", fontSize: "13px", textAlign: "left", cursor: "text" },
   ".cm-lp-mermaid-stale": { opacity: "0.4" },

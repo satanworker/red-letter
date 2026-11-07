@@ -8,18 +8,19 @@
 //   -->
 //
 // Markers wrap the commented text; each thread's block sits at the end of the doc. A message starts a line with
-// "@login date: " (the date is optional); lines indented by two spaces continue it. Resolving deletes the markers
-// and the block, so git history is the record. Nothing inside fenced code counts.
+// "@login date: " (the date is optional); lines indented by two spaces continue it. A resolved thread keeps its
+// markers and messages and says so on its block's first line ("<!--rl:c1 resolved"); deleting one removes its markers
+// and block, so git history is the record. Nothing inside fenced code counts.
 // Pure text in, text edits out: the editor (direct) and the comment PR (commentsPr.ts) both apply them.
 
 export type Message = { author: string; at: string; body: string };
-export type Thread = { id: string; range: { from: number; to: number } | null; quote: string; messages: Message[] };
+export type Thread = { id: string; range: { from: number; to: number } | null; quote: string; messages: Message[]; resolved: boolean };
 export type Edit = { from: number; to: number; insert: string };
 type Span = { from: number; to: number };
-type Block = Span & { id: string; close: number; messages: Message[] }; // close: start of the "-->" line
+type Block = Span & { id: string; resolved: boolean; close: number; messages: Message[] }; // close: start of the "-->" line
 
 const MARKER = /<!--(\/?)rl:([a-z0-9]+)-->/g;
-const BLOCK = /^<!--rl:([a-z0-9]+)\n([\s\S]*?)^-->$\n?/gm;
+const BLOCK = /^<!--rl:([a-z0-9]+)( resolved)?\n([\s\S]*?)^-->$\n?/gm;
 const HEADER = /^@([A-Za-z0-9-]+(?:\[bot\])?)(?: (\d{4}-\d\d-\d\d(?:T[\d:.]+Z?)?))?: ?(.*)$/;
 
 function fences(text: string): Span[] {
@@ -50,12 +51,12 @@ export function parse(text: string): { threads: Thread[]; blocks: Block[]; marke
   for (const m of text.matchAll(BLOCK)) {
     if (within(code, m.index)) continue;
     const messages: Message[] = [];
-    for (const line of m[2]!.split("\n")) {
+    for (const line of m[3]!.split("\n")) {
       const h = HEADER.exec(line);
       if (h) messages.push({ author: h[1]!, at: h[2] ?? "", body: unescape(h[3]!) });
       else if (messages.length && line) messages.at(-1)!.body += "\n" + unescape(line.replace(/^ {1,2}/, ""));
     }
-    blocks.push({ id: m[1]!, from: m.index, to: m.index + m[0].length, close: m.index + m[0].lastIndexOf("-->"), messages });
+    blocks.push({ id: m[1]!, resolved: !!m[2], from: m.index, to: m.index + m[0].length, close: m.index + m[0].lastIndexOf("-->"), messages });
   }
   const markers: (Span & { id: string; open: boolean })[] = [];
   for (const m of text.matchAll(MARKER))
@@ -64,7 +65,7 @@ export function parse(text: string): { threads: Thread[]; blocks: Block[]; marke
     const start = markers.find((k) => k.open && k.id === b.id);
     const end = markers.find((k) => !k.open && k.id === b.id);
     const range = start && end && start.to <= end.from ? { from: start.to, to: end.from } : null;
-    return { id: b.id, range, quote: range ? text.slice(range.from, range.to).replace(MARKER, "") : "", messages: b.messages };
+    return { id: b.id, range, quote: range ? text.slice(range.from, range.to).replace(MARKER, "") : "", messages: b.messages, resolved: b.resolved };
   });
   return { threads, blocks, markers };
 }
@@ -94,7 +95,15 @@ export function reply(text: string, id: string, m: Message): Edit[] {
   return b ? [{ from: b.close, to: b.close, insert: lines(m) }] : [];
 }
 
-export function resolve(text: string, id: string): Edit[] {
+// Resolve or reopen: the " resolved" flag after the block's id; markers and messages stay.
+export function setResolved(text: string, id: string, resolved: boolean): Edit[] {
+  const b = parse(text).blocks.find((x) => x.id === id);
+  if (!b || b.resolved === resolved) return [];
+  const at = b.from + `<!--rl:${id}`.length;
+  return [resolved ? { from: at, to: at, insert: " resolved" } : { from: at, to: at + " resolved".length, insert: "" }];
+}
+
+export function remove(text: string, id: string): Edit[] {
   const { blocks, markers } = parse(text);
   const b = blocks.find((x) => x.id === id);
   if (!b) return [];

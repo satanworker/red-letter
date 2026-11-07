@@ -58,7 +58,8 @@ const theme = EditorView.theme({
   ".cm-lp-fence": { color: "var(--faint)", fontSize: "11px" },
   // Figma 82:749: the image fits the column (block widgets skip the line's 2px padding), 28px under its markdown line
   // and 28px above the next block (13 + a blank line)
-  ".cm-lp-img": { display: "block", maxWidth: "calc(100% - 4px)", margin: "28px 2px 13px" },
+  // Padding, not margin: CodeMirror measures a block widget's box, and a margin it can't see shifts every click below.
+  ".cm-lp-img": { display: "block", maxWidth: "calc(100% - 4px)", margin: "0 2px", padding: "28px 0 13px" },
 });
 
 const muted = Decoration.mark({ class: "cm-lp-mark" });

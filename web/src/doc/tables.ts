@@ -417,7 +417,8 @@ export const tableField = StateField.define<DecorationSet>({
 
 export const tableTheme = EditorView.theme({
   // a wide table wraps its cells, then scrolls
-  ".cm-lp-tablewrap": { overflowX: "auto", marginTop: "6px", marginBottom: "6px" },
+  // padding, not margin: CodeMirror can't see a block widget's margins, and clicks below it would land too low
+  ".cm-lp-tablewrap": { overflowX: "auto", paddingTop: "6px", paddingBottom: "6px" },
   // CodeMirror's wrapping (overflow-wrap: anywhere, word-break: break-word) makes every column's minimum one
   // letter, so a squeezed table broke words mid-way
   ".cm-lp-table": { maxWidth: "100%", borderCollapse: "collapse", fontSize: "12px", lineHeight: "1.5", overflowWrap: "break-word", wordBreak: "normal" },

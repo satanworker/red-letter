@@ -8,7 +8,7 @@ import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResol
 import { HttpError, type User } from "../github.ts";
 import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 import { inCode } from "./commentMarks.ts";
-import { selectIcon } from "./docSelectors.ts";
+import { selectIcon, type Heading } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection } from "./tables.ts";
 
@@ -208,6 +208,29 @@ export const copyContents = () => state.session && navigator.clipboard.writeText
 export function jump(from: number, to: number) {
   view?.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
   view?.focus();
+}
+
+// Table of contents, measured on Linear's. Each heading has a scroll margin (16px at the top level, 6px deeper); a
+// click glides its text to 24px + that margin under the doc's top edge. The reader's section is the last heading
+// whose text is within 32px + its margin of that edge (the first before any): 8px of slack, so a clicked heading
+// is always the one lit. Over the last 120px of scroll the line slides down to 20px above the viewport's foot, so
+// headings too near the end to reach the top still light up one by one, and the last one at the very end.
+const tocTop = (h: Heading, scroller: HTMLElement) =>
+  view!.lineBlockAt(h.at).top + (h.at ? 12 : 0) + view!.documentTop - scroller.getBoundingClientRect().top; // 12: heading lines' top padding
+const tocMargin = (h: Heading) => (h.depth ? 6 : 16);
+export function scrollToHeading(h: Heading, scroller: HTMLElement) {
+  if (!view) return;
+  const off = () => tocTop(h, scroller) - 24 - tocMargin(h);
+  scroller.scrollTo({ top: scroller.scrollTop + off(), behavior: "smooth" });
+  // CodeMirror only estimates the height of lines it hasn't drawn yet: once there, measure again and glide the rest
+  scroller.addEventListener("scrollend", () => Math.abs(off()) > 1 && scroller.scrollTo({ top: scroller.scrollTop + off(), behavior: "smooth" }), { once: true });
+}
+export function headingInView(hs: Heading[], scroller: HTMLElement): number {
+  if (!view) return 0;
+  const left = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+  const line = 32 + Math.max(0, 1 - left / 120) * (scroller.clientHeight - 52);
+  const len = view.state.doc.length;
+  return Math.max(0, hs.findLastIndex((h) => h.at <= len && tocTop(h, scroller) - tocMargin(h) <= line));
 }
 
 // Pasted or dropped image files: uploaded to git as blobs, then linked where they landed (that spot follows edits

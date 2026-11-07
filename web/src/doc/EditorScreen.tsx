@@ -15,6 +15,7 @@ import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
+import { Toc } from "./Toc.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab } from "./docSelectors.ts";
 import { doc, isReading, showFavicon, showTab, toggleChanges, toggleReading, updateDraft } from "./docStore.ts";
 
@@ -226,7 +227,7 @@ export function EditorScreen() {
       <main class="relative flex min-h-0 flex-1">
         <FileSidebar />
         {/* over the header's shadow: the tab strip sits there, so the shadow never lands on the white page */}
-        <div class="relative z-[4] flex min-w-0 flex-1 flex-col">
+        <div class="@container relative z-[4] flex min-w-0 flex-1 flex-col">
           <Tabs />
           <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg">
             <Show
@@ -317,6 +318,9 @@ export function EditorScreen() {
               )}
             </Show>
           </div>
+          <Show when={doc.session} keyed>
+            {(s) => <Toc session={s} />}
+          </Show>
         </div>
         {/* no top edge: the header's bottom line is this frame's top too (Figma's centred strokes overlap) */}
         <aside id="panel" aria-label="Comments and history" hidden={!doc.session || repo.panelHidden} class="w-80 shrink-0 overflow-auto border-[.5px] border-t-0 border-line bg-side px-3 py-4">

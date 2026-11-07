@@ -7,6 +7,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **Tabs** styled to Figma: file names only, the open tab white and running into the page, a grey pill on hover, thin rules between the others, 15 px × and + icons.
 - **"…" menu** in the header: Copy link, Duplicate, Copy page contents (without comment markup), Move to and Delete page. Move and delete are one commit each and take the doc's snapshot with them.
 - **Header path** in Onyx, like the rest of the text (was grey).
+- **Table of contents** that behaves like Linear's: a rail of bars in the doc's left margin, one per heading, shorter for subheadings and darker where you are; hover it and a list of headings springs open in its place, click one and the doc glides there.
 
 ## 2026-11-07: Reading mode, typography
 

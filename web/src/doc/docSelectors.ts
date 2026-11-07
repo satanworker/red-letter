@@ -1,4 +1,5 @@
 import * as A from "@automerge/automerge";
+import { plain } from "../comments/inline.ts";
 import type { Commit } from "../repo/repoService.ts";
 import { editRegions, type Region } from "./regions.ts";
 import type { AgentMark, Session } from "./session.ts";
@@ -56,4 +57,29 @@ export function selectIcon(text: string): { icon: string; at: number; end: numbe
     pos = eol + 1;
   }
   return null;
+}
+
+export type Heading = { depth: number; text: string; at: number };
+// The doc's `#` headings, for its table of contents (code fences and comment markup skipped). A lone leading `#`
+// heading is the doc's title and stays out, as Linear keeps its title out of a document's contents. `at`: where the
+// heading's line starts in the doc's text; `text`: its words, without emphasis or code marks; `depth`: 0-2, levels
+// below the top level of what's left.
+export function selectHeadings(text: string): Heading[] {
+  const p = plain(text);
+  const found: (Heading & { level: number })[] = [];
+  let fenced = false;
+  for (let pos = 0; pos <= p.text.length; ) {
+    let eol = p.text.indexOf("\n", pos);
+    if (eol < 0) eol = p.text.length;
+    const line = p.text.slice(pos, eol);
+    if (/^ {0,3}(```|~~~)/.test(line)) fenced = !fenced;
+    const h = !fenced && /^ {0,3}(#{1,6}) +(.*?)(?: +#+)? *$/.exec(line);
+    const words = h && h[2].replace(/[*_`]/g, "").trim();
+    if (h && words) found.push({ level: h[1].length, depth: 0, text: words, at: p.toText(pos, 1) });
+    pos = eol + 1;
+  }
+  const title = found[0]?.level === 1 && !found.slice(1).some((h) => h.level === 1) ? 1 : 0;
+  const rest = found.slice(title);
+  const top = Math.min(...rest.map((h) => h.level));
+  return rest.map((h) => ({ depth: Math.min(h.level - top, 2), text: h.text, at: h.at }));
 }

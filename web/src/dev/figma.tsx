@@ -1,35 +1,43 @@
-// /__figma (dev only): the editor screen showing exactly what Figma "Red Letter" › Desktop - 1 (node 1:8) shows, with
-// the Figma render laid over it. View at 1440×900. Alt+O overlay on/off · Alt+D difference ↔ 50% fade (or click the bar).
+// /__figma (dev only): the editor screen showing exactly what Figma "Red Letter" › RED LETTER 5 NOV (node 129:1304)
+// shows, with the Figma render laid over it. View at 1440×900. Alt+O overlay on/off · Alt+D difference ↔ 50% fade (or click the bar).
 // The renders live in web/dev/ and are served by dev.ts only, so production builds carry none of it.
 import { Repo } from "@automerge/automerge-repo";
+import { EditorView } from "@codemirror/view";
 import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
-import { fixtureDoc } from "../doc/docStore.ts";
+import { docChanged, fixtureDoc, startComment } from "../doc/docStore.ts";
 import type { AgentMark, RLDoc, Session } from "../doc/session.ts";
 import { fixtureRepo } from "../repo/repoStore.ts";
 
 const sentence = "Git is canonical. The CRDT is the live working copy of one file on one branch.";
-const TEXT = `# Red Letter — design sketch
+const TEXT = `# GitHub integration (2025–2026): auth, commits, webhooks
 
+Observed from GitHub docs (\`X-GitHub-Api-Version: 2026-03-10\`) unless marked \`[INFERENCE]\`.
 
-Share a link to a file in a GitHub repo. Anyone with access signs in with GitHub, reads it, edits it live with others, comments in the margin. Agents keep using plain git. The file stays vanilla markdown.
+## 1. Auth: use a GitHub App (not OAuth App, not PAT)
 
-Red-letter Bibles print the important words in red on top of the plain text: an annotation layer over a canonical text. Same idea.
+GitHub prefers Apps: fine-grained perms, short-lived tokens, one webhook for every installed repo, rate limits that scale. OAuth Apps use broad scopes, always act as the user, and need per-repo webhooks that are not cleaned up on revoke. Fine-grained PATs are for a person/script (max 50/user, one owner, org approval); they die if the user loses access. Classic PATs are worse (\`repo\` = every repo).
 
-## Red Letter — design sketch
+**Two tokens, one App:**
 
-<!--rl:t1-->${sentence}<!--/rl:t1--> Git conflicts become CRDT merges.
-
-## Topology (no stateful server)
+> <!--rl:t1--><!--rl:t2-->${sentence}<!--/rl:t2--><!--/rl:t1-->
 
 ![architecture](diagrams/architecture.svg)
 
-<!--rl:t2-->${sentence}<!--/rl:t2--> Git conflicts become CRDT merges.
+Do **not** use the installation token for user saves: it can write any installed repo even if that user cannot. Check access with \`GET /user/installations\` and \`GET /user/installations/{id}/repositories\`.
+
+**App perms:** Contents R/W, Pull requests W, Metadata R. Account: Email addresses R (for trailers). Events: \`push\`, \`installation\`, \`github_app_authorization\` (cannot unsubscribe; stop using revoked tokens).
+
+Turn on **Request user authorization (OAuth) during installation**. Org install still requires each other member to authorize for user tokens. SAML orgs need an active SAML session before re-auth.
+
+**OAuth App / PAT:** skip for this product.
 `;
 
 const DOCS = [
   "docs/DESIGN.md",
-  ...["crdt-choice", "crdts-in-production", "github-integration", "markdown-editors", "prior-art-patchwork-git-bridges", "prior-products"].map((f) => `docs/research/${f}.md`),
+  ...["comment-anchoring", "crdt-choice", "crdts-in-production", "github-integration", "markdown-editors", "offline-sync", "permissions", "prior-art-patchwork-git-bridges", "prior-products", "agent-protocols"].map(
+    (f) => `docs/research/${f}.md`,
+  ),
   "experiments/RESULTS.md",
   "experiments/github/FINDING.md",
   "demo.md",
@@ -39,12 +47,13 @@ export function showFigmaFixture() {
   const at = new Date(Date.now() - 23 * 60_000).toISOString().slice(0, 16) + "Z";
   const msg = `@Satanworker ${at}: I’m not sure we need to street it. Maybe lets try another way\n`;
   const threads = `\n<!--rl:t1\n${msg}${msg}${msg}-->\n<!--rl:t2\n${msg}-->\n`;
-  // the design's history tab shows 10 (now: commits with conflicts to settle)
+  // the History tab's count: the design shows 10 (commits with conflicts to settle)
   const conflicts = [{ from: "", to: "", human: "", agent: "" }];
   const marks: Record<string, AgentMark> = Object.fromEntries(
     Array.from({ length: 10 }, (_, i) => [`fixture${i}`, { sha: `fixture${i}`, author: "agent", message: "edit", at, conflicts }]),
   );
   const handle = new Repo({ network: [] }).create<RLDoc>({ text: TEXT + threads, marks });
+  handle.on("change", docChanged); // as docStore's open() does: the word count follows typing
   const session = {
     repoName: "satanworker/red-letter",
     branch: "demo",
@@ -58,7 +67,7 @@ export function showFigmaFixture() {
       return handle.documentId;
     },
     resolve: () => null,
-    imageUrl: async (src: string) => (src === "diagrams/architecture.svg" ? "/dev/architecture.png" : null),
+    imageUrl: async () => null, // the design shows the image's markdown line only
     poll: async () => {},
     anchor: () => ({ from: "", to: "" }),
     save: async () => {},
@@ -75,6 +84,7 @@ export function showFigmaFixture() {
     docs: DOCS,
     path: "demo.md",
     filesHidden: false,
+    panelHidden: false,
   });
   fixtureDoc({
     session,
@@ -84,17 +94,18 @@ export function showFigmaFixture() {
     tab: "comments",
   });
 
-  // The design's UI state: docs, experiments and experiments/github open; the first "Git is canonical…" sentence selected.
+  // The design's UI state: docs, experiments and experiments/github open; the comment box open on the quote.
   requestAnimationFrame(() => {
     for (const s of document.querySelectorAll<HTMLElement>("#files summary")) {
       const d = s.parentElement as HTMLDetailsElement;
       d.open = ["docs", "experiments", "github"].includes(s.textContent!.trim());
     }
-    const line = [...document.querySelectorAll(".cm-line")].find((l) => l.textContent!.startsWith(sentence));
-    const text = line && document.createTreeWalker(line, NodeFilter.SHOW_TEXT).nextNode();
-    if (!text) return;
-    document.querySelector<HTMLElement>(".cm-content")!.focus();
-    getSelection()!.setBaseAndExtent(text, 0, text, sentence.length);
+    const view = EditorView.findFromDOM(document.querySelector<HTMLElement>(".cm-editor")!);
+    const from = view?.state.doc.toString().indexOf(sentence) ?? -1;
+    if (!view || from < 0) return;
+    view.focus();
+    view.dispatch({ selection: { anchor: from, head: from + sentence.length } });
+    startComment();
   });
 
   const host = document.body.appendChild(document.createElement("div"));
@@ -124,8 +135,8 @@ function Overlay() {
         style={{ "mix-blend-mode": diff() ? "difference" : "normal", opacity: diff() ? 1 : 0.5 }}
       >
         {layer("/dev/figma-frame-1024.png", 0, 0, 1440, 900)}
-        {layer("/dev/figma-sidebar.png", 0, 35, 327, 866)}
-        {layer("/dev/figma-doc.png", 320, 35, 800, 865)}
+        {layer("/dev/figma-sidebar.png", 0, 35, 327, 867)}
+        {layer("/dev/figma-doc.png", 320, 70, 800, 830)}
         {layer("/dev/figma-panel.png", 1120, 35, 321, 866)}
       </div>
       <div class="fixed bottom-2 left-1/2 z-[101] flex -translate-x-1/2 items-center gap-2 rounded-lg bg-card px-3 py-1.5 text-muted shadow-pop">

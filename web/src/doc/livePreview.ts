@@ -20,9 +20,9 @@ const theme = EditorView.theme({
   "&": { color: "var(--fg)", backgroundColor: "var(--bg)", fontSize: "12px" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "var(--sans)", lineHeight: "1.25" },
-  // a centred column at most 780px wide (30px padding included), 80px down (Figma 8:202); heading marks hang into
-  // the side margin
-  ".cm-content": { boxSizing: "border-box", maxWidth: "780px", margin: "0 auto", padding: "80px 30px 30vh", caretColor: "var(--blue)" },
+  // a centred 620px text column (30px padding each side), 80px down (Figma 142:2967); heading marks hang into the
+  // side margin
+  ".cm-content": { boxSizing: "border-box", maxWidth: "680px", margin: "0 auto", padding: "80px 30px 30vh", caretColor: "var(--blue)" },
   ".cm-line": { padding: "0 2px" },
   // CodeMirror wraps with break-spaces, so a space at the end of a line takes room and pushes the last word down.
   // pre-wrap lets it hang past the edge, as Figma does (Figma 8:198 fits 61 characters in 440px).
@@ -52,7 +52,8 @@ const theme = EditorView.theme({
   // length in ch: wrapped lines hang under the item's text, as do continuation lines indented to it.
   ".cm-lp-li": { paddingLeft: "calc(var(--lp-in) + 2px) !important", textIndent: "calc(-1 * var(--lp-in))" },
   ".cm-lp-taskmark": { cursor: "pointer" },
-  ".cm-lp-quote": { borderLeft: "3px solid var(--fg)", paddingLeft: "14px !important" },
+  // Figma 142:2949: a 2px light bar, 12px gap, muted text
+  ".cm-lp-quote": { borderLeft: "2px solid var(--on)", paddingLeft: "12px !important", color: "var(--muted)" },
   ".cm-lp-codeblock": { background: "var(--bg2)", fontFamily: mono, fontSize: "12px", padding: "0 16px !important" },
   ".cm-lp-fence": { color: "var(--faint)", fontSize: "11px" },
   // Figma 82:749: the image fits the column (block widgets skip the line's 2px padding), 28px under its markdown line

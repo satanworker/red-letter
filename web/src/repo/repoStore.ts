@@ -19,6 +19,7 @@ type RepoState = {
   path: string;
   drafts: string[]; // draft branches of the repo (drafts/<login>/<name>)
   filesHidden: boolean;
+  panelHidden: boolean; // the comments / history panel
   collaborators: User[]; // who can be @mentioned, loaded on first use
 };
 
@@ -34,6 +35,7 @@ const [state, set] = createStore<RepoState>({
   path: "",
   drafts: [],
   filesHidden: localStorage.getItem("rl_files") === "hidden" || innerWidth < 900,
+  panelHidden: localStorage.getItem("rl_panel") === "hidden",
   collaborators: [],
 });
 export const repo = state;
@@ -44,6 +46,13 @@ export function toggleFiles() {
   set("filesHidden", (h) => !h);
   localStorage.setItem("rl_files", state.filesHidden ? "hidden" : "shown");
 }
+
+export function togglePanel() {
+  set("panelHidden", (h) => !h);
+  localStorage.setItem("rl_panel", state.panelHidden ? "hidden" : "shown");
+}
+// opening a thread or a panel tab from elsewhere (the doc, the palette) brings the panel back
+export const showPanel = () => state.panelHidden && togglePanel();
 
 let collaboratorsOf = "";
 // Once per repo, when someone first types "@".

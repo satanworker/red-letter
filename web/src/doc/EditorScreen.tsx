@@ -7,10 +7,10 @@ import { comments } from "../comments/commentsStore.ts";
 import { encPath } from "../github.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
-import { createDraft, mergeDraft, navigateTo, repo, toggleFiles } from "../repo/repoStore.ts";
+import { createDraft, mergeDraft, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CommentIcon, Logo, SidebarIcon, Spinner, badge, fine, ghostBtn } from "../ui.tsx";
+import { Avatar, BranchIcon, CommentIcon, EditIcon, Logo, SidebarIcon, Spinner, badge, count, fine, ghostBtn } from "../ui.tsx";
 import { Editor } from "./Editor.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
@@ -58,6 +58,11 @@ export function EditorScreen() {
   const tab = () => selectTab(doc, openCount(), marks().length);
   // other people on this file; your own other tabs count for saving (Session.close) but aren't shown
   const people = () => [...new Set(doc.status.people)].filter((p) => p !== repo.user?.login);
+  const size = createMemo(() => {
+    doc.version; // the CRDT doc changed: local typing, peers, agents
+    const text = doc.session?.doc.text ?? "";
+    return { words: text.match(/\S+/g)?.length ?? 0, chars: text.length };
+  });
   const [copied, setCopied] = createSignal(false);
   const share = async () => {
     await navigator.clipboard.writeText(location.href);
@@ -89,7 +94,7 @@ export function EditorScreen() {
         <CommentIcon />
         <Show when={tab() === "comments"}>Comments</Show>
         <Show when={openCount()}>
-          <i class={`${badge} px-[3px]`}>{openCount()}</i>
+          <i class={count}>{openCount()}</i>
         </Show>
       </button>
       <button
@@ -105,26 +110,29 @@ export function EditorScreen() {
         <BranchIcon />
         <Show when={tab() === "history"}>History</Show>
         <Show when={marks().length}>
-          <i class={`${badge} px-[3px]`}>{marks().length}</i>
+          <i class={count}>{marks().length}</i>
         </Show>
       </button>
     </div>
   );
 
-  // px values are Figma "Desktop - 1" (1:8) coordinates. Figma strokes don't move content, so frames use outlines.
+  // px values are Figma "RED LETTER 5 NOV" (129:1304) coordinates. Figma strokes don't move content, so frames use outlines.
   return (
     <div class="flex h-screen flex-col">
-      <header class="relative z-[3] flex h-[35px] shrink-0 items-start whitespace-nowrap bg-side pr-2 pl-4 shadow-figma outline-[.5px] -outline-offset-[.5px] outline-line">
-        {/* columns line up with the 320px sidebar, the flexible doc and the 320px panel (less the header's 8px right padding) */}
-        <span class="flex w-[304px] shrink-0 items-center gap-2 pt-[7px]">
-          <Show when={repo.filesHidden}>
-            <button class={ghostBtn} title="Show files" aria-label="Show files" onClick={toggleFiles}>
-              <SidebarIcon />
-            </button>
-          </Show>
+      <header class="relative z-[3] flex h-[35px] shrink-0 items-start whitespace-nowrap bg-side shadow-figma outline-[.5px] -outline-offset-[.5px] outline-line">
+        {/* Figma 129:1583: its own box over the 320px sidebar, the files toggle at its right edge; then the doc and the 320px panel */}
+        <span class="relative w-80 shrink-0 self-stretch border-r-[.5px] border-line pt-[7px] pl-3">
           <Logo />
+          <button
+            class="absolute top-1/2 right-3 -translate-y-1/2 cursor-pointer rounded hover:bg-hover"
+            title={repo.filesHidden ? "Show files" : "Hide files"}
+            aria-label={repo.filesHidden ? "Show files" : "Hide files"}
+            onClick={toggleFiles}
+          >
+            <SidebarIcon closed={repo.filesHidden} />
+          </button>
         </span>
-        <nav aria-label="File path" class="mt-[9px] flex min-w-0 flex-1 items-center overflow-hidden pr-3">
+        <nav aria-label="File path" class="mt-[9px] flex min-w-0 flex-1 items-center overflow-hidden px-3 text-muted">
           <a href={`/${full()}/tree/${encPath(repo.branch)}`} class="truncate hover:underline">
             {full()}
           </a>
@@ -162,8 +170,19 @@ export function EditorScreen() {
             </span>
           </Show>
         </nav>
-        <div class="flex w-[312px] shrink-0 items-start">
+        <div class="flex w-80 shrink-0 items-start px-3">
           <Show when={doc.session}>
+            {/* Figma 140:2607 / 140:2799: the comments panel's toggle, 12px before the status */}
+            <button
+              class="mt-[10px] mr-3 cursor-pointer rounded hover:bg-hover"
+              title={repo.panelHidden ? "Show comments" : "Hide comments"}
+              aria-label={repo.panelHidden ? "Show comments" : "Hide comments"}
+              aria-controls="panel"
+              aria-expanded={!repo.panelHidden}
+              onClick={togglePanel}
+            >
+              <SidebarIcon closed={repo.panelHidden} right />
+            </button>
             <span class="mt-2.5 flex gap-3" role="status">
               <Show when={!doc.status.saving} fallback="Saving…">
                 <Show when={!doc.status.dirty} fallback="Edited">
@@ -188,7 +207,7 @@ export function EditorScreen() {
             </span>
           </Show>
           <span class="flex-1" />
-          <span class="mt-[5.5px] mr-2 inline-flex" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
+          <span class="mt-[5.5px] mr-3 inline-flex" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
             <For each={people()}>
               {(p) => (
                 <span class="-ml-1.5 rounded-full ring-2 ring-side first:ml-0">
@@ -197,20 +216,15 @@ export function EditorScreen() {
               )}
             </For>
           </span>
-          <button
-            class="mt-[5.6px] mr-[9.2px] inline-flex cursor-pointer items-center rounded-lg border-[.4px] border-line px-2 py-1 shadow-figma hover:bg-hover"
-            onClick={() => void share()}
-          >
+          <button class="mt-2.5 cursor-pointer hover:underline" onClick={() => void share()}>
             {copied() ? "Link copied" : "Share"}
           </button>
-          <span class="mt-1 inline-flex">
-            <Avatar login={repo.user!.login} size={28} />
-          </span>
         </div>
       </header>
       <main class="relative flex min-h-0 flex-1">
         <FileSidebar />
-        <div id="doc" class="group/doc min-w-0 flex-1 overflow-auto bg-bg">
+        {/* over the header's shadow: in Figma the tab strip sits there, so the shadow never lands on the white page */}
+        <div id="doc" class="group/doc relative z-[4] min-w-0 flex-1 overflow-auto bg-bg">
           <Show
             when={doc.session}
             keyed
@@ -278,11 +292,20 @@ export function EditorScreen() {
                   <IconPicker icon={icon()} />
                 </Show>
                 <Editor session={s} marks={marks} changes={changes} threads={threads} />
+                {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls */}
+                <div class="sticky bottom-0 z-[5] h-0">
+                  <p class="absolute right-0 bottom-0 flex h-6 items-center gap-2.5 rounded-tl-xl border-t-[.4px] border-l-[.4px] border-rule bg-card px-3 font-light whitespace-nowrap text-muted">
+                    <EditIcon />
+                    <span>{size().words} words</span>
+                    <span>{size().chars} characters</span>
+                  </p>
+                </div>
               </>
             )}
           </Show>
         </div>
-        <aside id="panel" aria-label="Comments and history" hidden={!doc.session} class="w-80 shrink-0 overflow-auto bg-side p-4 outline-[.5px] -outline-offset-[.5px] outline-line">
+        {/* no top edge: the header's bottom line is this frame's top too (Figma's centred strokes overlap) */}
+        <aside id="panel" aria-label="Comments and history" hidden={!doc.session || repo.panelHidden} class="w-80 shrink-0 overflow-auto border-[.5px] border-t-0 border-line bg-side px-3 py-4">
           <div class="mb-4">{tabs()}</div>
           <Show when={doc.session} keyed>
             {(s) => (

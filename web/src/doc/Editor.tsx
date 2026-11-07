@@ -8,9 +8,10 @@ import { render } from "solid-js/web";
 import { comments } from "../comments/commentsStore.ts";
 import type { Thread } from "../comments/inline.ts";
 import { createMentions } from "../comments/Mentions.tsx";
-import { AtIcon, SendIcon, TipArrow } from "../ui.tsx";
+import { AtIcon, TipArrow, btn } from "../ui.tsx";
 import { cancelComment, doc, docChanged, insertImages, openThread, setView, startComment, submitComment } from "./docStore.ts";
 import { commentMarks, inCode } from "./commentMarks.ts";
+import { showPanel } from "../repo/repoStore.ts";
 import { imageUrl } from "./images.ts";
 import { editorExtensions } from "./livePreview.ts";
 import { cellSelection } from "./tables.ts";
@@ -97,15 +98,18 @@ function SelectionTip() {
       <Show
         when={doc.composing}
         fallback={
+          // Figma 129:1318 "Add a comment"; pushed (140:2587) shows a grey pill inset 3px. The press opens the box on
+          // mousedown, so hover carries the pushed look.
           <button
             title="Add a comment (⌘⌥M / Ctrl+Alt+M)"
-            class="cursor-pointer rounded-lg bg-glass px-5 py-2 font-sans text-[12px] text-fg shadow-figma backdrop-blur-[2px] hover:bg-hover"
+            class="group relative cursor-pointer rounded-xl bg-card px-5 py-2 font-sans text-[12px] leading-4 text-fg shadow-figma backdrop-blur-[2px]"
             onMouseDown={(e) => {
               e.preventDefault(); // keep the editor selection
               startComment();
             }}
           >
-            Add a comment
+            <span class="absolute inset-[3px] hidden rounded-lg bg-rule group-hover:block" />
+            <span class="relative">Add a comment</span>
           </button>
         }
       >
@@ -116,7 +120,7 @@ function SelectionTip() {
   );
 }
 
-// Figma 22:567 "Write Comment": Enter sends, Shift+Enter is a new line, Esc cancels, "@" mentions someone.
+// Figma 145:3051 "Write Comment": Enter sends, Shift+Enter is a new line, Esc cancels, "@" mentions someone.
 function CommentBox() {
   let input!: HTMLTextAreaElement;
   const [text, setText] = createSignal("");
@@ -130,14 +134,14 @@ function CommentBox() {
     mentions.update();
   };
   return (
-    <div class="relative flex w-[314px] flex-col gap-3 rounded-lg bg-glass px-5 py-3 font-sans text-[12px] text-fg backdrop-blur-[2px]">
-      <div class="relative flex">
+    <div class="relative flex w-[314px] flex-col rounded-xl border-[.5px] border-rule bg-card font-sans text-[12px] text-fg shadow-[0_4px_17.8px_rgba(0,0,0,.1),var(--shadow)]">
+      <div class="relative flex px-4 pt-4 pb-2.5">
         <textarea
           ref={input}
           aria-label="Comment"
-          placeholder="Add a comment…"
+          placeholder="Write down what you think"
           rows="1"
-          class="max-h-48 min-h-[15px] w-full resize-none bg-transparent outline-none [field-sizing:content] placeholder:text-muted"
+          class="max-h-48 min-h-4 w-full resize-none bg-transparent leading-4 outline-none [field-sizing:content] placeholder:text-muted"
           onInput={(e) => (setText(e.currentTarget.value), mentions.update())}
           onClick={mentions.update}
           onKeyDown={(e) => {
@@ -153,22 +157,20 @@ function CommentBox() {
         />
         <mentions.List />
       </div>
-      <div class="border-t border-line" />
-      <div class="flex items-center gap-2.5 py-0.5">
+      <div class="flex items-center gap-2 border-t-[.5px] border-line/70 px-4 py-2">
         <button class="cursor-pointer rounded" title="Mention someone" aria-label="Mention someone" onMouseDown={(e) => e.preventDefault()} onClick={mention}>
           <AtIcon />
         </button>
+        <button
+          class={`${btn} ml-auto disabled:cursor-default disabled:text-mark disabled:hover:bg-card`}
+          title="Send (Enter)"
+          disabled={!text().trim()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={send}
+        >
+          Send
+        </button>
       </div>
-      <button
-        class="absolute right-5 bottom-3 cursor-pointer rounded-full disabled:cursor-default disabled:opacity-40"
-        title="Send (Enter)"
-        aria-label="Send comment"
-        disabled={!text().trim()}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={send}
-      >
-        <SendIcon />
-      </button>
     </div>
   );
 }
@@ -246,7 +248,9 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
   // clicking a comment highlight opens its thread
   const click = (e: MouseEvent) => {
     const id = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-thread]")?.dataset.thread : undefined;
-    if (id) openThread(id);
+    if (!id) return;
+    openThread(id);
+    showPanel();
   };
   return <div id="editor" class="[&_.cm-editor]:min-h-[calc(100%-20px)]" ref={host} onClick={click} />;
 }

@@ -8,10 +8,10 @@ import createDocSvg from "./icons/create-doc.svg";
 import documentSvg from "./icons/document.svg";
 import folderSvg from "./icons/folder.svg";
 import searchSvg from "./icons/search.svg";
-import sidebarSvg from "./icons/sidebar.svg";
 import tipArrowSvg from "./icons/tip-arrow.svg";
 import atSignSvg from "./icons/at-sign.svg";
-import sendSvg from "./icons/send.svg";
+import editSvg from "./icons/edit.svg";
+import findSvg from "./icons/find.svg";
 
 // Figma "Reply"/"Resolve": 24px tall, width = text + 24 with the .4px stroke inside.
 export const btn =
@@ -19,8 +19,10 @@ export const btn =
 export const ghostBtn = "inline-flex cursor-pointer items-center gap-1 rounded px-1 text-muted hover:bg-hover hover:text-fg";
 export const primaryBtn = "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-blue px-[18px] font-medium text-white hover:bg-[#0077d4]";
 export const linkBtn = "inline-flex cursor-pointer items-center gap-1 text-muted hover:text-fg";
-// padding per use: Figma count badges are 3px, the branch / read-only pills 6px
+// the branch / read-only pills (6px padding per use)
 export const badge = "rounded-xl border-[.4px] border-line font-light not-italic text-muted";
+// Figma 129:1400: a tab's count, unboxed since the Nov 5 design
+export const count = "rounded-xl px-[3px] font-light not-italic text-muted";
 // Figma "Find a file": 28px, .4px Shadows stroke, 4px radius, the button shadow
 export const field = "h-7 rounded border-[.4px] border-line bg-card px-3 shadow-figma";
 export const fine = "my-2.5 text-[12.5px] leading-[1.5] text-faint";
@@ -60,20 +62,29 @@ export function ago(iso: string) {
 const Img = (props: { src: string; w: number; h?: number; class?: string }) => (
   <img class={`shrink-0 dark:invert ${props.class ?? ""}`} src={props.src} width={props.w} height={props.h ?? props.w} alt="" />
 );
-export const SidebarIcon = () => <Img src={sidebarSvg} w={20} />;
+// Figma 140:2621 / 140:2645 "document 5/6": a panel drawn from two shapes, its bar wide while the panel is open and
+// narrow once closed; `right` mirrors it for the comments panel (140:2607 / 140:2799)
+export const SidebarIcon = (props: { closed: boolean; right?: boolean }) => (
+  <span class={`relative grid size-[15px] shrink-0 place-items-center ${props.right ? "-scale-x-100" : ""}`}>
+    <span class="h-[10.77px] w-[14px] rounded-[2px] border-[.8px] border-fg" />
+    <span class={`absolute top-1/2 left-[1.67px] h-[8.97px] -translate-y-1/2 rounded-[1px] bg-fg ${props.closed ? "w-[2.33px]" : "w-[4.67px]"}`} />
+  </span>
+);
 export const NewDocIcon = () => <Img src={createDocSvg} w={20} />;
 // already light grey: no dark-mode inversion
 export const SearchIcon = () => <img class="shrink-0" src={searchSvg} width={12} height={12} alt="" />;
+// Figma 140:2690: the collapsed sidebar's search
+export const FindIcon = () => <Img src={findSvg} w={15} />;
+// Figma 129:1342: folder ("noun_File_7670746") and file ("document 5") icons share a 15px box
 export const FolderIcon = () => <Img src={folderSvg} w={15} />;
-export const FileIcon = () => <Img src={documentSvg} w={10} h={13} />;
+export const FileIcon = () => <Img src={documentSvg} w={15} />;
 // shown by the folder's <details> state: up = open, down = closed
 export const ArrowUpIcon = () => <Img src={arrowUpSvg} w={8} class="hidden [details[open]>summary>&]:block" />;
 export const ArrowDownIcon = () => <Img src={arrowDownSvg} w={8} class="[details[open]>summary>&]:hidden" />;
 export const CommentIcon = () => <Img src={commentSvg} w={16} />;
 export const TipArrow = () => <Img src={tipArrowSvg} w={10} h={8} />;
-export const AtIcon = () => <Img src={atSignSvg} w={12} />;
-// a coloured disc: same in dark mode
-export const SendIcon = () => <img class="shrink-0" src={sendSvg} width={20} height={20} alt="" />;
+export const AtIcon = () => <Img src={atSignSvg} w={14} />;
+export const EditIcon = () => <Img src={editSvg} w={15} />;
 
 const Svg = (props: { size?: number; children: JSX.Element }) => (
   <svg width={props.size ?? 16} height={props.size ?? 16} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">

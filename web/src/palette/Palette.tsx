@@ -3,7 +3,7 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { showTab, startComment } from "../doc/docStore.ts";
 import { blobUrl } from "../repo/repoService.ts";
-import { navigateTo, repo, toggleFiles } from "../repo/repoStore.ts";
+import { navigateTo, repo, showPanel, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { FileIcon, card } from "../ui.tsx";
 import { closePalette } from "./paletteStore.ts";
 
@@ -28,9 +28,10 @@ export function Palette() {
   const [active, setActive] = createSignal(0);
   const actions = (): Item[] => [
     { label: "Comment on selection", hint: "⌘⌥M", run: startComment },
-    { label: "Show comments", run: () => showTab("comments") },
-    { label: "Show history", run: () => showTab("history") },
+    { label: "Show comments", run: () => (showTab("comments"), showPanel()) },
+    { label: "Show history", run: () => (showTab("history"), showPanel()) },
     { label: repo.filesHidden ? "Show files" : "Hide files", run: toggleFiles },
+    { label: repo.panelHidden ? "Show comments panel" : "Hide comments panel", run: togglePanel },
     { label: "Copy link to this file", run: () => void navigator.clipboard.writeText(location.href) },
   ];
   const items = createMemo(() => {

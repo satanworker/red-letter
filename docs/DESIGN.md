@@ -94,4 +94,5 @@ Done 2026-10-12, all passing: `experiments/RESULTS.md` (merge quality, determini
   1. Live sync (GET /sync): a WebSocket relay so open tabs swap Automerge changes instantly and show who else is here. Without it everything still works through git (each tab saves after 30 s idle and polls every ~15 s), so others' edits arrive 15-45 s late and there are no avatars.
   2. Sign-in (/oauth/token, /oauth/refresh): GitHub only swaps the login code for a token with the app's client_secret, which can't ship inside the web page. The hub does the swap and forgets the token.
   So dropping it means giving up live co-editing and finding another sign-in (e.g. pasting a personal token).
+@satanworker 2026-11-07T18:52Z: Ok that's fine
 -->

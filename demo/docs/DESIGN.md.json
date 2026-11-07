@@ -1,0 +1,12 @@
+[
+  {
+    "id": "79e750b0-5e5c-49b0-a4d6-46e54dccd29e",
+    "author": "satanworker",
+    "body": "Let's spend more time here, why is it required to have a server of any sort? Does that server hold the github tokens",
+    "createdAt": "2026-11-07T18:45:12.709Z",
+    "docId": "hzxKHFUs11fqd4YaNfBiDTp1f3V",
+    "from": "1433@431bd240bd67bc05b6b82b4d7dd29196",
+    "to": "1988@431bd240bd67bc05b6b82b4d7dd29196",
+    "quote": "  - sync hub: a dumb room router that doesn't know about CRDTs. Room = repo. Tabs mesh-sync through it, using our own ~80-line automerge-repo `NetworkAdapter` (multi-peer, routes by `targetId`). We can't use the stock websocket adapter: it assumes a single remote peer that is itself an automerge-repo server. The first message carries the GitHub token; the hub admits a tab only with push access to the room's repo (checked via the GitHub API, cached briefly). Read-only viewers get no live sync, because any sync peer can inject ops that a writer later "
+  }
+]

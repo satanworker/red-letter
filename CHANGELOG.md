@@ -2,6 +2,10 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-08: Avatars
+
+- **Avatars no longer go missing at random** (sidebar one load, topbar the next): they load from GitHub's avatar CDN by login instead of `github.com/<login>.png`, a redirect that intermittently answers 504.
+
 ## 2026-11-07: Typography guideline
 
 - **Typography** to the Figma "Typography Guideline" for both modes, checked block by block against Figma's two example pages (same text, measured positions). Editing shows the markdown the way Figma's markdown mode does: `**`, `*` and backticks look like the text they wrap instead of greyed out, `#` marks hang 12 px left of the heading at its size, beside its last line, a link's `[name]` is blue and its `(url)` grey with the url underlined. Reading shows link names blue and underlined.

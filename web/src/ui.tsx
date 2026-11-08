@@ -37,12 +37,13 @@ export const fine = "my-2.5 text-[12.5px] leading-[1.5] text-faint";
 // Figma 7:83: white, 12px radius, 24 / 20 padding, the button shadow (gap per use)
 export const card = "flex flex-col rounded-xl bg-card px-5 py-6 shadow-figma";
 
+// The avatar CDN by login: github.com/<login>.png is a redirect that intermittently 504s (avatars went missing at random)
 export const Avatar = (props: { login: string; size: number }) => (
   <img
     class="shrink-0 rounded-full bg-bg2 align-middle"
     width={props.size}
     height={props.size}
-    src={`https://github.com/${encodeURIComponent(props.login)}.png?size=${props.size * 2}`}
+    src={`https://avatars.githubusercontent.com/${encodeURIComponent(props.login)}?size=${props.size * 2}`}
     alt={props.login}
     title={props.login}
   />

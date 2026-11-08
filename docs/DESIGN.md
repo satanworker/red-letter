@@ -115,7 +115,7 @@ Done:
   - Default "Continue with GitHub": OAuth App "Red Letter", `repo` scope, expiring tokens with refresh, nothing to install. Verified on localhost.
   - "Use the GitHub App instead": [`red-letter-diff`](https://github.com/apps/red-letter-diff), per-repo install. Its user token (8 h, with refresh) commits through `updateRefs`, which closed the last open risk from the spikes. A repo without the App routes the user to its install page.
 - **Live sync and saving:** edits sync through the Go hub, one room per file (repo + branch + path) with presence avatars of the other people there (your own other tabs aren't shown, but still count as "someone here" for saving on close). Saves happen 30–40 s after the last edit or on Save / Ctrl-S.
-- **Agent pushes:**
+-<!--rl:k6kczr--> **Agent pushes:**<!--/rl:k6kczr-->
   - replayed into every open tab without duplicated text;
   - in the History tab: the file's commits on the branch as a timeline (newest first, last 50; merges hollow). Clicking a commit opens what it changed in the file (GitHub's diff of the commit, a merge against its first parent; cached for good) and clicking again closes it; ↗ opens it on GitHub. Nothing waits for approval and nothing stays highlighted in the text;
   - where they interleave with a human edit, flagged in the text and on their History row (red dot, counted on the tab) with "Keep yours / Keep agent's / Keep as merged". Verified on `demo`: an agent push overlapping an unsaved edit flagged only the overlap, its other line went in unmarked, Keep yours settled it and the count went away.
@@ -190,3 +190,7 @@ Done 2026-10-12, all passing: `experiments/RESULTS.md` (merge quality, determini
 ## Research
 
 `docs/research/` — five reports, 2026-10-12: prior art (Patchwork, Jupyter RTC, pushwork), CRDT comparison, markdown editors, existing products, GitHub integration mechanics. Plus `crdts-in-production.md`, 2026-10-13: Notion, Zed, Figma, Linear, Liveblocks and others, agent-editing patterns, and file→CRDT bridges compared with our replay. Plus `drafts.md`, 2026-10-25: Upwelling, Patchwork branching, and how Figma, GitBook, Ellipsus, Lix and Jazz do drafts next to live editing.
+
+<!--rl:k6kczr
+@satanworker 2026-11-08T12:36Z: I don't even remember what was the intent behind agent pushes
+-->

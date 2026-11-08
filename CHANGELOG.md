@@ -2,6 +2,11 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-08: Outline tab
+
+- **Outline in the side panel**: a third tab next to Comments and History lists the doc's headings Ulysses-style (hollow circles, indented by level, your section on a grey pill); click one and the doc glides there. It replaces the Linear-style rail in the doc's left margin. Also in ⌘K as "Show outline".
+- **Links in the outline**: under the headings, every `[text](url)` in the doc (blue circle, url on hover); click one to select it in the text. Kept by the same per-line scan as the headings, so typing costs no more.
+
 ## 2026-11-08: Table of contents lands where it should
 
 - **Clicks land and stay**: a heading glides to its place in 250 ms (one far away is jumped to a screen short of it first), steering to where the heading is as drawn rather than to CodeMirror's first estimate; any wheel, key or press stops it. On the 17k-line stress doc clicks took 1.5–3 s and far ones landed up to 13,000 px off; now they land at 0 px.
@@ -12,12 +17,12 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 
 - **Repo name in the sidebar**: `owner/name` moved from the header to the file sidebar's top row (next to your avatar, linking to the branch); the header drops the file path, which the tab already shows. The branch pill only switches branches; "New draft" moved to the page menu.
 - **"Add icon" lines up with the title**: its label starts where the H1's first letter does, not 48 px to its left.
+- **Full emoji picker for doc icons**: "Add icon" opens `emoji-picker-element` (every emoji with search, categories, skin tones and recents, in the OS emoji font) instead of 32 fixed emoji; loaded on first open, its data served from our own assets.
 - **Drafts hidden** until pull requests and reviews are designed: "New draft", the draft bar and `drafts/*` branches are gone from the UI. The branch picker lists the repo's default branch, so a draft branch opened by URL (e.g. `drafts/satanworker/findings-edits`) still leads back to `main`.
 
 ## 2026-11-08: Comments on protected branches
 
 - **Comments on any path open their PR**: the comment branch is `red-letter/comments/<sha1(branch)>/<sha1(path)>`, so a doc under a dotted folder (`.devcontainer/README.md`) or with a space in its name no longer fails with "not a valid ref name". A PR opened before this keeps its old branch; new comments open a new one.
-- **Full emoji picker for doc icons**: "Add icon" opens `emoji-picker-element` (every emoji with search, categories, skin tones and recents, in the OS emoji font) instead of 32 fixed emoji; loaded on first open, its data served from our own assets.
 
 ## 2026-11-08: Performance on huge docs
 

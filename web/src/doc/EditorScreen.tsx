@@ -1,4 +1,4 @@
-// The workspace: header, file sidebar, the doc, and the comments / history panel.
+// The workspace: header, file sidebar, the doc, and the comments / history / outline panel.
 // Switching files swaps only the doc: the Editor is keyed on the Session.
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { CommentsPanel } from "../comments/CommentsPanel.tsx";
@@ -9,12 +9,12 @@ import { blobUrl } from "../repo/repoService.ts";
 import { closeTab, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
+import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
 import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
-import { Toc } from "./Toc.tsx";
+import { Outline } from "./Outline.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab, selectWords } from "./docSelectors.ts";
 import { commentThreads } from "./commentMarks.ts";
 import { doc, editorState, isReading, showFavicon, showTab, toggleReading } from "./docStore.ts";
@@ -70,14 +70,15 @@ export function EditorScreen() {
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
-  // Arrow keys move between the two tabs (WAI-ARIA tabs pattern); Tab goes into the panel.
+  // Arrow keys move between the tabs (WAI-ARIA tabs pattern); Tab goes into the panel.
   const tabKeys = (e: KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
-    showTab(tab() === "comments" ? "history" : "comments");
+    const order = ["comments", "history", "outline"] as const;
+    showTab(order[(order.indexOf(tab()) + (e.key === "ArrowRight" ? 1 : 2)) % 3]!);
     (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
   };
-  // Figma 22:561: the chosen tab is white with its label; the other one shrinks to a grey icon + count pill.
+  // Figma 22:561: the chosen tab is white with its label; the others shrink to a grey icon + count pill.
   const tabClass = (on: boolean, pad: string) =>
     `inline-flex h-7 cursor-pointer items-center gap-1 rounded-[14px] text-fg shadow-figma ${on ? "bg-card px-4" : `border-[.4px] border-line bg-side ${pad}`}`;
   const tabs = () => (
@@ -113,6 +114,19 @@ export function EditorScreen() {
         <Show when={marks().length}>
           <i class={count}>{marks().length}</i>
         </Show>
+      </button>
+      <button
+        role="tab"
+        id="tab-outline"
+        aria-selected={tab() === "outline"}
+        aria-controls="panel"
+        tabindex={tab() === "outline" ? 0 : -1}
+        title="Outline"
+        class={tabClass(tab() === "outline", "px-3")}
+        onClick={() => showTab("outline")}
+      >
+        <OutlineIcon />
+        <Show when={tab() === "outline"}>Outline</Show>
       </button>
     </div>
   );
@@ -210,7 +224,7 @@ export function EditorScreen() {
       <main class="relative flex min-h-0 flex-1">
         <FileSidebar />
         {/* over the header's shadow: the tab strip sits there, so the shadow never lands on the white page */}
-        <div class="@container relative z-[4] flex min-w-0 flex-1 flex-col">
+        <div class="relative z-[4] flex min-w-0 flex-1 flex-col">
           <Tabs />
           <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg">
             <Show
@@ -266,13 +280,9 @@ export function EditorScreen() {
               )}
             </Show>
           </div>
-          {/* keyed: a fresh table of contents for each file */}
-          <Show when={doc.session} keyed>
-            {(_session) => <Toc />}
-          </Show>
         </div>
         {/* no top edge: the header's bottom line is this frame's top too (Figma's centred strokes overlap) */}
-        <aside id="panel" aria-label="Comments and history" hidden={!doc.session || repo.panelHidden} class="w-80 shrink-0 overflow-auto border-[.5px] border-t-0 border-line bg-side px-3 py-4">
+        <aside id="panel" aria-label="Side panel" hidden={!doc.session || repo.panelHidden} class="w-80 shrink-0 overflow-auto border-[.5px] border-t-0 border-line bg-side px-3 py-4">
           <div class="mb-4">{tabs()}</div>
           <Show when={doc.session} keyed>
             {(s) => (
@@ -283,6 +293,12 @@ export function EditorScreen() {
                 <div id="comments" role="tabpanel" aria-labelledby="tab-comments" class="flex flex-col gap-4" hidden={tab() !== "comments"}>
                   <CommentsPanel canComment={s.canWrite || comments.viaPr} threads={threads} />
                 </div>
+                {/* mounted only while shown: it follows the doc's scroll */}
+                <Show when={tab() === "outline"}>
+                  <div id="outline" role="tabpanel" aria-labelledby="tab-outline">
+                    <Outline />
+                  </div>
+                </Show>
               </>
             )}
           </Show>

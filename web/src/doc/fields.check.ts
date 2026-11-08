@@ -1,5 +1,5 @@
 // bun src/doc/fields.check.ts: the state fields that follow edits instead of rescanning the doc (block widgets,
-// blocks.ts; comment markup, commentMarks.ts; headings, headings.ts), taken through random edits and the parser
+// blocks.ts; comment markup, commentMarks.ts; headings and links, headings.ts), taken through random edits and the parser
 // catching up, hold exactly what a fresh build of the same text holds.
 import { markdownLanguage } from "@codemirror/lang-markdown";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
@@ -26,15 +26,15 @@ const tops = (s: EditorState, upto: number) => {
   if (c.firstChild()) do if (c.from < upto) out.push(`${c.name} ${c.from}-${c.to}`); while (c.nextSibling());
   return out.join();
 };
-const headings = (s: EditorState) => JSON.stringify(s.field(headingField).found);
+const headings = (s: EditorState) => JSON.stringify([s.field(headingField).found, s.field(headingField).links]);
 
 const doc = Array.from({ length: 30 }, (_, i) =>
-  [`## H${i} <!--rl:c${i}-->noted<!--/rl:c${i}-->`, "", `Text ![a](images/f${i}.svg) <!--rl:d${i}-->more<!--/rl:d${i}--> text.`, "", `- item ![b](images/g${i}.svg)`, "  | x | y |", "  | - | - |", "  | 1 | 2 |", "", `| a${i} | b |`, "| --- | --- |", "| 1 | 2 |", "", "```mermaid", `flowchart LR`, `  A${i} --> B`, "```", "", `> ![c](images/q${i}.svg)`, "", "```ts", `# not a heading ${i}`, "```", ""].join("\n"),
+  [`## H${i} <!--rl:c${i}-->noted<!--/rl:c${i}-->`, "", `Text ![a](images/f${i}.svg) <!--rl:d${i}-->more<!--/rl:d${i}--> text, [a *link* ${i}](https://x.dev/${i}) and \`[code](not)\`.`, "", `- item ![b](images/g${i}.svg) [<!--rl:e${i}-->marked<!--/rl:e${i}-->](u${i} "t")`, "  | x | y |", "  | - | - |", "  | 1 | 2 |", "", `| a${i} | b |`, "| --- | --- |", "| 1 | 2 |", "", "```mermaid", `flowchart LR`, `  A${i} --> B`, "```", "", `> ![c](images/q${i}.svg)`, "", "```ts", `# not a heading ${i} [nor](link)`, "```", ""].join("\n"),
 )
   .concat(Array.from({ length: 30 }, (_, i) => [`<!--rl:c${i}${i % 3 ? "" : " resolved"}`, `@a 2026-11-01: one ${i}`, "  # continued", `@b: two`, "-->"].join("\n")))
   .concat(Array.from({ length: 30 }, (_, i) => [`<!--rl:d${i}`, `@a: d ${i}`, "-->"].join("\n")))
   .join("\n");
-const SNIPS = ["\n", "\n\n", "```", "~~~\n", "```mermaid\nflowchart LR\n  A --> B\n```\n", "| a | b |\n| --- | --- |\n| 1 | 2 |\n", "![x](images/y.svg)", "x", " word ", "- ", "> ", "# ", "## Title ", "|", "\n---\n", "", "<!--", "-->", "<!--rl:c3-->", "<!--/rl:c3-->", "<!--rl:new1-->w<!--/rl:new1-->", "\n<!--rl:new1\n@z: hi\n-->\n", "rl:", "-"];
+const SNIPS = ["\n", "\n\n", "```", "~~~\n", "```mermaid\nflowchart LR\n  A --> B\n```\n", "| a | b |\n| --- | --- |\n| 1 | 2 |\n", "![x](images/y.svg)", "x", " word ", "- ", "> ", "# ", "## Title ", "|", "\n---\n", "", "<!--", "-->", "<!--rl:c3-->", "<!--/rl:c3-->", "<!--rl:new1-->w<!--/rl:new1-->", "\n<!--rl:new1\n@z: hi\n-->\n", "rl:", "-", "[l](https://a.b)", "[", "](", ")", "`", "!"];
 let seed = 3;
 const rnd = (n: number) => ((seed = (seed * 48271) % 2147483647), seed % n);
 let state = EditorState.create({ doc, extensions });
@@ -47,7 +47,7 @@ for (let i = 0; i < 1500; i++) {
   const fresh = parsed(EditorState.create({ doc: state.doc, extensions }));
   const edit = `edit ${i} (at ${from}, -${del}, +${JSON.stringify(insert)})`;
   if (comments(state) !== comments(fresh)) throw new Error(`comment markup after ${edit} differs from a fresh parse`);
-  if (headings(state) !== headings(fresh)) throw new Error(`headings after ${edit} differ from a fresh scan`);
+  if (headings(state) !== headings(fresh)) throw new Error(`headings or links after ${edit} differ from a fresh scan`);
   const upto = syntaxTree(state).length; // past the parsed text, a block field keeps what it had, moved along
   // lezer's incremental parse of mangled markdown can differ from a fresh one (a table read as a paragraph): the field
   // follows its own tree, so compare only where the two trees agree

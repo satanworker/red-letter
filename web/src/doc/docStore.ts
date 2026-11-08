@@ -12,7 +12,7 @@ import { selectIcon, type Heading } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection } from "./tables.ts";
 
-type Tab = "comments" | "history";
+type Tab = "comments" | "history" | "outline";
 type DocState = {
   session: Session | null;
   opening: string; // path being opened
@@ -215,7 +215,7 @@ export function jump(from: number, to: number) {
   view?.focus();
 }
 
-// Table of contents, measured on Linear's. Each heading has a scroll margin (16px at the top level, 6px deeper); a
+// Outline jumps, measured on Linear's table of contents. Each heading has a scroll margin (16px at the top level, 6px deeper); a
 // click glides its text to 24px + that margin under the doc's top edge. The reader's section is the last heading
 // whose text is within 32px + its margin of that edge (the first before any): 8px of slack, so a clicked heading
 // is always the one lit. Over the last 120px of scroll the line slides down to 20px above the viewport's foot, so
@@ -223,7 +223,7 @@ export function jump(from: number, to: number) {
 const tocTop = (h: Heading, scroller: HTMLElement) =>
   view!.lineBlockAt(h.at).top + (h.at ? 12 : 0) + view!.documentTop - scroller.getBoundingClientRect().top; // 12: heading lines' top padding
 const tocMargin = (h: Heading) => (h.depth ? 6 : 16);
-let glide = { frame: 0, stop: () => {} }; // the table of contents' glide under way
+let glide = { frame: 0, stop: () => {} }; // the outline's glide under way
 // CodeMirror only estimates the height of lines it hasn't drawn, so the heading's position is read again every frame
 // and the glide steers to where it is now; a browser smooth scroll aimed at the first estimate landed hundreds of px
 // off in long docs and then needed a second glide. A heading more than a screen away is jumped to first, to a screen

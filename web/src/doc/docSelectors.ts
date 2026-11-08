@@ -5,7 +5,7 @@ import type { Commit } from "../repo/repoService.ts";
 import { editRegions, type Region } from "./regions.ts";
 import type { AgentMark, Session } from "./session.ts";
 
-type PanelState = { picked: boolean; tab: "comments" | "history" };
+type PanelState = { picked: boolean; tab: "comments" | "history" | "outline" };
 export type HistoryEntry = { commit: Commit; conflicts?: AgentMark };
 
 // Agent commits with conflicts still to settle, oldest first (marks of older docs may hold none: left out).
@@ -81,7 +81,7 @@ export function selectIcon(text: string | Text): { icon: string; at: number; end
 }
 
 export type Heading = { depth: number; text: string; at: number };
-// The doc's table of contents from its `#` headings (headings.ts finds them: code fences and comment markup skipped).
+// The doc's outline from its `#` headings (headings.ts finds them: code fences and comment markup skipped).
 // A lone leading `#` heading is the doc's title and stays out, as Linear keeps its title out of a document's
 // contents. `at`: where the heading's line starts in the doc's text; `text`: its words, without emphasis or code marks;
 // `depth`: 0-2, levels below the top level of what's left.

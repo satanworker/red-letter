@@ -30,6 +30,7 @@ export function Palette() {
     { label: "Comment on selection", hint: "⌘⌥M", run: startComment },
     { label: "Show comments", run: () => (showTab("comments"), showPanel()) },
     { label: "Show history", run: () => (showTab("history"), showPanel()) },
+    { label: "Show outline", run: () => (showTab("outline"), showPanel()) },
     { label: repo.filesHidden ? "Show files" : "Hide files", run: toggleFiles },
     { label: repo.panelHidden ? "Show comments panel" : "Hide comments panel", run: togglePanel },
     { label: "Copy link to this file", run: () => void navigator.clipboard.writeText(location.href) },

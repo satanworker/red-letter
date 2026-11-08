@@ -7,7 +7,7 @@
 // scrolls by as much.
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 
-function scrollParent(view: EditorView): HTMLElement | null {
+export function scrollParent(view: EditorView): HTMLElement | null {
   for (let el = view.dom.parentElement; el; el = el.parentElement) if (/auto|scroll/.test(getComputedStyle(el).overflowY)) return el;
   return null;
 }

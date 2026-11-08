@@ -14,6 +14,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **Outline is the side panel's first tab**, before Comments and History (Left/Right follow the new order).
 - **The site ships Solid's production build**: Bun picked Solid's development build (devtools graph, dev warnings) for the live site because `NODE_ENV` wasn't set; `build.ts` now sets it.
 - **Typing paints before it's recorded**: the editor's binding to Automerge is our own (`sync.ts`, replacing `@automerge/automerge-codemirror`) and hands each keystroke to Automerge a frame after it's on screen, so keys land 1.5 ms sooner at 1k lines and 3.5 ms at 17k (median). Edits from others that arrive meanwhile merge as concurrent ones; anything that reads the doc (comments, save, copy) gets the held typing first.
+- **Long tables keep their header row** at the top of the view while you scroll down through them, and **wide tables keep their first column** while you scroll sideways.
 
 ## 2026-11-08: Outline tab
 

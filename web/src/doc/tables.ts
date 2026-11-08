@@ -6,9 +6,10 @@
 // rewrite every row of the table.
 import { syntaxTree } from "@codemirror/language";
 import { StateEffect, StateField, type EditorState } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, WidgetType, runScopeHandlers } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType, runScopeHandlers, type ViewUpdate } from "@codemirror/view";
 import { plain } from "../comments/inline.ts";
 import { blockField } from "./blocks.ts";
+import { scrollParent } from "./keepPlace.ts";
 
 type Cell = { from: number; to: number; end: number }; // trimmed text (from === to: empty); end: the next pipe
 type Row = { from: number; to: number; cells: Cell[] };
@@ -296,6 +297,9 @@ function wire(wrap: HTMLElement, view: EditorView) {
   const tableNow = () => tableAt(view.state, view.posAtDOM(wrap));
   const rowsShown = () => (raws.get(wrap) ?? []).map((_, r) => r).filter((r) => r !== 1);
 
+  // the pinned first column turns opaque once the rest slides under it
+  wrap.addEventListener("scroll", () => wrap.classList.toggle("cm-lp-scrolled", wrap.scrollLeft > 0), { passive: true });
+
   // Cmd/Ctrl-click opens the link under the pointer, as in the rest of the doc (a cell being edited shows raw text)
   wrap.addEventListener("mousedown", (e) => {
     const el = cellOf(e.target);
@@ -498,6 +502,46 @@ export const tableField = blockField(
   (tr) => tr.state.readOnly !== tr.startState.readOnly,
 );
 
+// The header row stays at the top of the doc's view while its table scrolls under it. CSS sticky can't: the wrap
+// scrolls sideways, which makes it the header's scroll container on both axes, so `top` would stick inside the wrap
+// (per-axis scroll containers, `overflow: auto clip`, are only in Chrome 154+). So on each scroll the header cells
+// move down by how far the table's top has gone above the view, stopping at its last row, read and written in
+// CodeMirror's measure cycle. The first column sticks with CSS: sideways, the wrap is the right container.
+export const tableHeads = ViewPlugin.fromClass(
+  class {
+    scroller: HTMLElement | null;
+    measure = () =>
+      this.view.requestMeasure({
+        key: this,
+        read: (v) => {
+          const top = this.scroller?.getBoundingClientRect().top ?? 0;
+          return [...v.contentDOM.querySelectorAll<HTMLTableElement>(".cm-lp-table")].map((t) => {
+            const b = t.getBoundingClientRect();
+            return { t, y: Math.round(Math.max(0, Math.min(top - b.top, b.height - (t.tHead?.offsetHeight ?? 0)))) };
+          });
+        },
+        write: (tables) => {
+          for (const { t, y } of tables) {
+            const v = y ? `${y}px` : "";
+            if (t.style.getPropertyValue("--head-y") === v) continue;
+            t.style.setProperty("--head-y", v);
+            t.classList.toggle("cm-lp-stuck", y > 0);
+          }
+        },
+      });
+    constructor(readonly view: EditorView) {
+      this.scroller = scrollParent(view);
+      this.scroller?.addEventListener("scroll", this.measure, { passive: true });
+    }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.viewportChanged || u.geometryChanged) this.measure();
+    }
+    destroy() {
+      this.scroller?.removeEventListener("scroll", this.measure);
+    }
+  },
+);
+
 export const tableTheme = EditorView.theme({
   // a wide table wraps its cells, then scrolls
   // padding, not margin: CodeMirror can't see a block widget's margins, and clicks below it would land too low
@@ -516,6 +560,13 @@ export const tableTheme = EditorView.theme({
     background: "linear-gradient(var(--fg), var(--fg)) top / 100% .5px no-repeat, linear-gradient(var(--fg), var(--fg)) bottom / 100% .5px no-repeat",
   },
   ".cm-lp-table :is(th, td):last-child": { paddingRight: "0" },
+  // pinned while the table scrolls: the first column sideways (CSS), the header row down the doc (tableHeads); opaque
+  // only then, so a selection drawn behind the table still shows through. No :is() here: the theme scopes each
+  // selector inside it too, which outweighed the corner's z-index.
+  ".cm-lp-table th:first-child, .cm-lp-table td:first-child": { position: "sticky", left: "0", zIndex: "1" },
+  ".cm-lp-scrolled th:first-child, .cm-lp-scrolled td:first-child": { backgroundColor: "var(--bg)" },
+  ".cm-lp-stuck th": { position: "relative", zIndex: "2", transform: "translateY(var(--head-y))", backgroundColor: "var(--bg)" },
+  ".cm-lp-stuck th:first-child": { zIndex: "3" },
   ".cm-lp-table th:focus, .cm-lp-table td:focus": { boxShadow: "inset 0 0 0 2px rgba(35,131,226,.6)", whiteSpace: "pre-wrap" },
   ".cm-lp-table code": { font: "inherit", color: "inherit", background: "var(--code-bg)", borderRadius: "4px", padding: "0 2px" },
   ".cm-lp-menu": {

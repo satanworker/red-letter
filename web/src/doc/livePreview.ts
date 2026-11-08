@@ -15,7 +15,7 @@ import { codeHighlight } from "./highlight.ts";
 import { imageField } from "./images.ts";
 import { mermaidField, mermaidTheme } from "./mermaid.ts";
 import { slashCommands } from "./slash.ts";
-import { cellComments, tableField, tableTheme } from "./tables.ts";
+import { cellComments, tableField, tableHeads, tableTheme } from "./tables.ts";
 
 export const readingMode = Facet.define<boolean, boolean>({ combine: (v) => v.some(Boolean) });
 
@@ -415,6 +415,7 @@ export function editorExtensions(): Extension[] {
     preview,
     tableField,
     tableTheme,
+    tableHeads,
     cellComments,
     mermaidField,
     imageField,

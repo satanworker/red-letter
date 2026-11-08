@@ -6,6 +6,7 @@ import { selectIcon } from "../doc/docSelectors.ts";
 import { doc, editorState } from "../doc/docStore.ts";
 import { ArrowDownIcon, ArrowUpIcon, Avatar, FileIcon, FindIcon, FolderIcon, SearchIcon, field, fine } from "../ui.tsx";
 import { togglePalette } from "../palette/paletteStore.ts";
+import { encPath } from "../github.ts";
 import { blobUrl } from "./repoService.ts";
 import { selectMatches, selectTree, type Dir } from "./repoSelectors.ts";
 import { createFile, repo } from "./repoStore.ts";
@@ -82,7 +83,9 @@ export function FileSidebar() {
           {/* Figma 129:1325 */}
           <div class="flex h-9 items-center gap-2 px-3 py-1 shadow-figma">
             <Avatar login={repo.user!.login} size={28} />
-            <span class="truncate">{repo.user!.login}</span>
+            <a href={`/${repo.repo!.full_name}/tree/${encPath(repo.branch)}`} class="truncate hover:underline" title={`Signed in as ${repo.user!.login}`}>
+              {repo.repo!.full_name}
+            </a>
           </div>
           <div class="sticky top-0 z-[1] flex items-center gap-2 bg-side px-3 py-1">
             <label class={`${field} flex min-w-0 flex-1 items-center gap-2`}>

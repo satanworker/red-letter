@@ -4,10 +4,9 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "so
 import { CommentsPanel } from "../comments/CommentsPanel.tsx";
 import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments } from "../comments/commentsStore.ts";
-import { encPath } from "../github.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
-import { closeTab, createDraft, mergeDraft, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
+import { closeTab, mergeDraft, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
 import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, PlusIcon, SidebarIcon, Spinner, badge, count, fine, ghostBtn } from "../ui.tsx";
@@ -22,8 +21,6 @@ import { doc, editorState, isReading, showFavicon, showTab, toggleChanges, toggl
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
-  const file = () => repo.path.split("/").pop() ?? "";
-  const dir = () => repo.path.split("/").slice(0, -1);
   const canWrite = () => repo.repo?.permissions?.push === true;
   const threads = createMemo(() => {
     doc.version;
@@ -55,9 +52,7 @@ export function EditorScreen() {
   const pickBranch = (sel: HTMLSelectElement) => {
     const branch = sel.value;
     sel.value = repo.branch; // the route decides which branch shows
-    if (branch) return navigateTo(blobUrl(full(), branch, repo.path));
-    const name = prompt("Name the draft", `${file().replace(/\.[^.]+$/, "")}-edits`);
-    if (name) void createDraft(name);
+    navigateTo(blobUrl(full(), branch, repo.path));
   };
   const openCount = () => threads().filter((t) => !t.resolved).length;
   const tab = () => selectTab(doc, openCount(), marks().length);
@@ -137,21 +132,8 @@ export function EditorScreen() {
             <SidebarIcon closed={repo.filesHidden} />
           </button>
         </span>
-        <nav aria-label="File path" class="mt-[9px] flex min-w-0 flex-1 items-center overflow-hidden px-3 text-fg">
-          <a href={`/${full()}/tree/${encPath(repo.branch)}`} class="truncate hover:underline">
-            {full()}
-          </a>
-          <span>/</span>
-          <Show when={dir().length}>
-            <span class="truncate" title={dir().join("/")}>
-              {dir().length > 2 ? `…/${dir().slice(-2).join("/")}` : dir().join("/")}
-            </span>
-            <span>/</span>
-          </Show>
-          <a href={`https://github.com/${full()}/blob/${encPath(repo.branch)}/${encPath(repo.path)}`} target="_blank" class="truncate hover:underline" title="Open on GitHub">
-            {file()}
-          </a>
-          <label class={`ml-2 inline-flex items-center gap-1 ${badge} px-1.5`} title="Branch: switch, or start a draft of this file">
+        <nav aria-label="Branch" class="mt-[9px] flex min-w-0 flex-1 items-center overflow-hidden px-3 text-fg">
+          <label class={`inline-flex items-center gap-1 ${badge} px-1.5`} title="Switch branch">
             <BranchIcon />
             <select class="max-w-[260px] cursor-pointer truncate bg-transparent" onChange={(e) => pickBranch(e.currentTarget)}>
               <For each={branches()}>
@@ -161,9 +143,6 @@ export function EditorScreen() {
                   </option>
                 )}
               </For>
-              <Show when={canWrite() && doc.session && !draft()}>
-                <option value="">+ New draft…</option>
-              </Show>
             </select>
           </label>
           <Show when={!canWrite()}>

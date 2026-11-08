@@ -2,6 +2,10 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-08: Slimmer header
+
+- **Repo name in the sidebar**: `owner/name` moved from the header to the file sidebar's top row (next to your avatar, linking to the branch); the header drops the file path, which the tab already shows. The branch pill only switches branches; "New draft" moved to the page menu.
+
 ## 2026-11-08: Performance on huge docs
 
 - **Stress benchmark** (`cd web && bun bench/stress.ts`): `/__stress` generates one doc with every kind of block (headings, lists, tasks, quotes, code in six languages, tables, images, diagrams, comment threads), and the bench types, scrolls and jumps through it in a headless Chromium, against the same machine's native floor (a `<textarea>`, the text as a static page). Exits 1 when a budget is missed.

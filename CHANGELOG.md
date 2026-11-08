@@ -17,6 +17,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 ## 2026-11-08: Comments on protected branches
 
 - **Comments on any path open their PR**: the comment branch is `red-letter/comments/<sha1(branch)>/<sha1(path)>`, so a doc under a dotted folder (`.devcontainer/README.md`) or with a space in its name no longer fails with "not a valid ref name". A PR opened before this keeps its old branch; new comments open a new one.
+- **Full emoji picker for doc icons**: "Add icon" opens `emoji-picker-element` (every emoji with search, categories, skin tones and recents, in the OS emoji font) instead of 32 fixed emoji; loaded on first open, its data served from our own assets.
 
 ## 2026-11-08: Performance on huge docs
 

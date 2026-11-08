@@ -47,6 +47,16 @@
   --font-logo: Grandstander, var(--sans);
 }
 
+/* emoji-picker-element (IconPicker.tsx) has its own variables: ours, so dark mode follows */
+emoji-picker {
+  --background: var(--card); --border-size: 0; --border-color: var(--rule);
+  --button-hover-background: var(--hover); --button-active-background: var(--on);
+  --indicator-color: var(--fg); --outline-color: var(--blue); --category-font-color: var(--fg);
+  --input-border-color: var(--line); --input-font-color: var(--fg); --input-placeholder-color: var(--muted);
+  --input-font-size: 12px; --input-border-radius: 4px;
+  font-family: var(--sans);
+}
+
 @layer base {
   :focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
   /* Figma's 12px text sits on 15px lines: the font's own "normal", not Tailwind's leading-normal (1.5) */

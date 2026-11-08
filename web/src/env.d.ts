@@ -3,6 +3,10 @@ declare module "@automerge/automerge/automerge.wasm" {
   const url: string;
   export default url;
 }
+declare module "emoji-picker-element-data/en/emojibase/data.json" {
+  const url: string;
+  export default url;
+}
 declare module "*.svg" {
   const url: string;
   export default url;

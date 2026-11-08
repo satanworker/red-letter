@@ -8,6 +8,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **Typing in a long table is fast again**: a keystroke rewrote every cell of the table (2–4 s a key in a 2,000-row table; now 0.2–0.6 s, where a plain contenteditable cell in the same table takes 0.1–0.2 s), and each edit made the editor guess the table's height anew, so a 200-row table at the edge of the view was redrawn twice a key. In a 200-row table typing is now within a few ms of the browser's own contenteditable cell.
 - **The first column is pinned only in tables wider than the text column**: thousands of pinned cells doubled a keystroke's cost in a long table.
 - **The last column of a table has no right padding**, as designed: its rule was dropped by a selector the editor's theme couldn't read.
+- **Selections are yellow**, the comment highlight's colour, in the doc and everywhere else, instead of blue.
 
 ## 2026-11-08: Links in tables
 

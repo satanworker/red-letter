@@ -37,7 +37,7 @@ const theme = EditorView.theme({
   ".cm-lineWrapping": { whiteSpace: "pre-wrap" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--blue)", borderLeftWidth: "2px" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, ::selection": {
-    backgroundColor: "var(--sel) !important",
+    backgroundColor: "var(--hl) !important", // the comment highlight's yellow, so a selection looks like the comment it becomes
   },
   // Figma 140:2782: H1 24px / H2 20px / H3 16px Medium on 1.25 lines. Figma 148:3509 / 150:3757 keep 28px between
   // blocks: a blank line next to a heading is 16px and the heading adds 12px of padding; any other blank line that

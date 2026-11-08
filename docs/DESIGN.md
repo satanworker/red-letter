@@ -169,6 +169,8 @@ Done:
 
   Typing reaches Automerge a frame after it paints (`sync.ts`): recording a keystroke there (the change, Automerge's copy of the whole string, automerge-repo's diff and the panels' update behind it) cost 1.7 ms a key at 1k lines and 2.7 ms at 17k before the key could paint. Three alternating runs each, mean over the five typing scenarios, before → after: 1k lines p50 22.6 → 21.1 ms, p95 29.5 → 27.6 ms; 17k lines p50 27.2 → 23.7 ms, p95 34.2 → 31.5 ms (a `<textarea>`: 14 / 20 ms).
 
+  Tables (`--doc tables`, 12 and 48 tables, 2026-11-09): the header row was at the top on every frame of every scroll; wheel scrolling and sideways scrolling drop no more frames than the static page, except the frames where a big table first comes into view (≈250 ms to draw a 2,000-row table, ≈30 ms a 200-row one). Typing in a 200-row table: 35 ms p50 against 33 ms for a contenteditable cell in the same static table. In the 2,000-row one, 0.2–0.6 s p50 against 0.1–0.2 s: the browser lays the whole table out on each keystroke either way, and the editor adds lezer-markdown's reparse of the table (~40 ms) and the pinned first column's 2,000 sticky cells. Past that would need drawing only the rows in view, which a table that sizes its columns from every row can't do without fixing their widths.
+
 Not built yet:
 - automerge-repo's incremental IndexedDB adapter instead of whole-doc saves, if docs get large;
 - BroadcastChannel between tabs: skipped, the hub already syncs tabs on the same file, and adding a second adapter would announce the same peer twice;

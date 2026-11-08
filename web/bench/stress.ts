@@ -2,10 +2,12 @@
 // measures what a writer feels, against the budgets of a native macOS text view (the key shows in the next 60 Hz
 // frame, no dropped frames while scrolling).
 //
-//   cd web && bun bench/stress.ts [--sections 25,400] [--only type-mid,scroll] [--profile type-mid] [--out results.json]
+//   cd web && bun bench/stress.ts [--sections 25,400] [--doc tables] [--only type-mid,scroll] [--profile type-mid] [--out results.json]
 //
 // CHROME=<path> picks the browser (default: chromium on PATH); --url <origin> measures a running app instead of a
-// fresh build. Exits 1 when a budget fails.
+// fresh build. Exits 1 when a budget fails. --doc tables: a doc of N tables instead (tablesDoc), with scenarios of its
+// own (scrolling and flinging through them, the header row's place on every frame, sideways scrolling in a wide one,
+// typing in a 2,000-row one, jumps) against the same tables as a static page.
 // --profile <scenario> (or open) writes <scenario>.json (a trace: DevTools › Performance › Load profile) and
 // <scenario>.cpuprofile, and prints what took the main thread's time; NO_MINIFY=1 keeps function names readable.
 //
@@ -24,6 +26,7 @@ const SIZES = arg("sections", "25,400").split(",").map(Number);
 const PROFILE = arg("profile", "");
 const OUT = arg("out", "");
 const ONLY = arg("only", "").split(",").filter(Boolean);
+const DOC = arg("doc", "");
 const FRAME = 1000 / 60;
 const dir = mkdtempSync(join(tmpdir(), "rl-bench-"));
 
@@ -131,7 +134,7 @@ async function press(keys: string[], every: number) {
 
 // ---- in-page probes ----
 const PROBES = `(() => {
-  window.bench = { lat: [], frames: [], loaf: [], recording: false };
+  window.bench = { lat: [], frames: [], loaf: [], off: [], recording: false, sticky: false };
   addEventListener("keydown", (e) => {
     const t0 = e.timeStamp;
     requestAnimationFrame(() => {
@@ -140,13 +143,23 @@ const PROBES = `(() => {
       c.port2.postMessage(0);
     });
   }, true);
-  const tick = (t) => { if (bench.recording) bench.frames.push(t); requestAnimationFrame(tick); };
+  // sticky: on each frame, how far the header row of a table passing the doc's top edge is from that edge
+  const stuck = () => {
+    const top = document.getElementById("doc").getBoundingClientRect().top;
+    let off = -1;
+    for (const t of document.querySelectorAll("table")) {
+      const b = t.getBoundingClientRect(), th = t.querySelector("th");
+      if (th && b.top < top - 1 && b.bottom - th.offsetHeight > top + 1) off = Math.max(off, Math.abs(th.getBoundingClientRect().top - top));
+    }
+    if (off >= 0) bench.off.push(off);
+  };
+  const tick = (t) => { if (bench.recording) { bench.frames.push(t); if (bench.sticky) stuck(); } requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
   new PerformanceObserver((l) => {
     for (const e of l.getEntries()) bench.loaf.push({ d: e.duration, scripts: e.scripts.map((s) => ({ d: s.duration, where: (s.sourceFunctionName || s.invoker) + " " + (s.sourceURL.split("/").pop() || "") })) });
   }).observe({ type: "long-animation-frame" });
 })()`;
-const reset = () => js(`(bench.lat = [], bench.frames = [], bench.loaf = [], 0)`);
+const reset = () => js(`(bench.lat = [], bench.frames = [], bench.loaf = [], bench.off = [], 0)`);
 
 const pct = (xs: number[], p: number) => {
   if (!xs.length) return NaN;
@@ -155,8 +168,8 @@ const pct = (xs: number[], p: number) => {
 };
 
 // value: what the budget applies to (p95 latency, or the share of frames dropped); budget: set from the native floor
-// measured on the same machine (see the run); ok: value within budget
-type Row = { scenario: string; n: number; p50: number; p95: number; max: number; value: number; unit: string; budget: number; ok: boolean; extra?: string };
+// measured on the same machine (see the run); ok: value within budget; misplaced: frames with a header row off its place
+type Row = { scenario: string; n: number; p50: number; p95: number; max: number; value: number; unit: string; budget: number; ok: boolean; extra?: string; misplaced?: number };
 
 async function latency(scenario: string, setup: string, keys: string[], every: number): Promise<Row> {
   await js(setup);
@@ -179,25 +192,35 @@ async function longFrames(): Promise<string> {
   return `${loaf.length} long frames, worst ${worst.d.toFixed(0)}ms${top.length ? `: ${top.join(", ")}` : ""}`;
 }
 
-async function scroll(scenario: string, dy: number, ms: number): Promise<Row> {
-  await js(`(document.getElementById("doc").scrollTop = 0, 0)`);
+// wheel steps every frame; setup: an expression that places the doc and returns where the pointer goes. dx: sideways.
+// sticky: also checks the header row of a table passing the top edge on every frame.
+type ScrollOpts = { dx?: number; setup?: string; sticky?: boolean };
+async function scroll(scenario: string, dy: number, ms: number, { dx = 0, setup, sticky = false }: ScrollOpts = {}): Promise<Row> {
+  const at = await js<{ x: number; y: number }>(setup ?? `(document.getElementById("doc").scrollTop = 0, { x: 720, y: 450 })`);
   await Bun.sleep(500);
   await reset();
   if (PROFILE === scenario) await startProfile();
-  await js(`(bench.recording = true, 0)`);
+  await js(`(bench.sticky = ${sticky}, bench.recording = true, 0)`);
   const start = performance.now();
   for (let i = 0; performance.now() - start < ms; i++) {
     await Bun.sleep(Math.max(0, start + i * FRAME - performance.now()));
-    await cdp("Input.dispatchMouseEvent", { type: "mouseWheel", x: 720, y: 450, deltaX: 0, deltaY: dy });
+    await cdp("Input.dispatchMouseEvent", { type: "mouseWheel", x: at.x, y: at.y, deltaX: dx, deltaY: dy });
   }
   await Bun.sleep(200);
-  await js(`(bench.recording = false, 0)`);
+  await js(`(bench.recording = false, bench.sticky = false, 0)`);
   if (PROFILE === scenario) await saveProfile(scenario);
   const t = await js<number[]>("bench.frames");
   const gaps = t.slice(1).map((x, i) => x - t[i]!);
   const dropped = gaps.reduce((n, g) => n + Math.max(0, Math.round(g / FRAME) - 1), 0);
   const share = (dropped / (gaps.length + dropped)) * 100;
-  return { scenario, n: gaps.length, p50: pct(gaps, 50), p95: pct(gaps, 95), max: Math.max(...gaps), value: share, unit: "% dropped", budget: NaN, ok: false, extra: await longFrames() };
+  const row: Row = { scenario, n: gaps.length, p50: pct(gaps, 50), p95: pct(gaps, 95), max: Math.max(...gaps), value: share, unit: "% dropped", budget: NaN, ok: false, extra: await longFrames() };
+  if (sticky) {
+    const off = await js<number[]>("bench.off");
+    const bad = off.filter((o) => o > 1).length;
+    row.extra = `header row off its place on ${bad} of ${off.length} frames${bad ? `, worst ${Math.max(...off).toFixed(0)}px` : ""}${row.extra ? `; ${row.extra}` : ""}`;
+    row.misplaced = bad;
+  }
+  return row;
 }
 
 // jumps far into the doc (scrollbar drag, a table of contents click): until the new spot has painted
@@ -286,7 +309,7 @@ const paraAfter = (h: string) => `(() => { const d = stress.view.state.doc, t = 
 const results: { sections: number; lines: number; chars: number; openMs: number; heapMB: number; nodes: number; rows: Row[] }[] = [];
 for (const sections of SIZES) {
   if (PROFILE === "open") await startProfile();
-  await cdp("Page.navigate", { url: `${URL_}/__stress?sections=${sections}` });
+  await cdp("Page.navigate", { url: `${URL_}/__stress?sections=${sections}${DOC ? `&doc=${DOC}` : ""}` });
   let info: { lines: number; chars: number } | null = null;
   for (let i = 0; i < 600 && !info; i++) {
     await Bun.sleep(100);
@@ -301,7 +324,45 @@ for (const sections of SIZES) {
   await Bun.sleep(1500);
   const mid = Math.floor(sections / 2) + 1;
   const n = 60;
-  const scenarios: [string, () => Promise<Row>][] = [
+  // a wide table (it scrolls sideways) with its top in the upper half of the view and its bottom below it; returns a
+  // point over it
+  const wideTable = `(async () => {
+    const d = document.getElementById("doc");
+    for (let y = 0; y < d.scrollHeight; y += 300) {
+      d.scrollTop = y;
+      await new Promise((r) => requestAnimationFrame(r));
+      for (const w of document.querySelectorAll(".cm-lp-tablewrap")) {
+        const b = w.getBoundingClientRect();
+        if (w.scrollWidth > w.clientWidth && b.top > 0 && b.top < innerHeight / 2 && b.bottom > innerHeight) return (w.scrollLeft = 0), { x: b.left + b.width / 2, y: innerHeight * 0.75 };
+      }
+    }
+    throw new Error("no wide table");
+  })()`;
+  // caret at the end of the first cell that starts with `row` ("r1000 ": the 2,000-row table; "r100 ": a 200-row one)
+  const inCell = (row: string) => `(async () => {
+    const v = stress.view;
+    v.dispatch({ selection: { anchor: v.state.doc.toString().indexOf("| ${row}") }, scrollIntoView: true });
+    await new Promise((r) => setTimeout(r, 300));
+    const td = [...document.querySelectorAll(".cm-lp-table td")].find((el) => el.textContent.startsWith("${row}"));
+    if (!td) throw new Error("no ${row} cell");
+    td.scrollIntoView({ block: "center" });
+    td.focus();
+    const r = document.createRange();
+    r.selectNodeContents(td);
+    r.collapse(false);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+  })()`;
+  const scenarios: [string, () => Promise<Row>][] = DOC === "tables" ? [
+    ["scroll", () => scroll("scroll", 100, 3000)],
+    ["fling", () => scroll("fling", 600, 2000)],
+    ["sticky", () => scroll("sticky", 100, 3000, { sticky: true })],
+    ["sticky-fling", () => scroll("sticky-fling", 600, 2000, { sticky: true })],
+    ["hscroll", () => scroll("hscroll", 0, 2000, { dx: 20, setup: wideTable })],
+    ["type-cell-200", () => latency("type-cell-200", inCell("r100 "), typed(40), 80)],
+    ["type-cell-2000", () => latency("type-cell-2000", inCell("r1000 "), typed(40), 80)],
+    ["jump", () => jumps("jump")],
+  ] : [
     ["type-top", () => latency("type-top", at(paraAfter(`t.indexOf("# 🧪")`)), typed(n), 80)],
     ["delete-top", () => latency("delete-top", at(paraAfter(`t.indexOf("# 🧪")`)), Array(n).fill("Backspace"), 80)],
     ["type-mid", () => latency("type-mid", at(paraAfter(heading(mid))), typed(n), 80)],
@@ -332,17 +393,51 @@ for (const sections of SIZES) {
   const m = Object.fromEntries(metrics.map((x) => [x.name, x.value]));
 
   // The floor: what this machine and browser manage with no editor at all, measured the same way after the app's
-  // runs (it replaces the page). The same text as a static page for scrolling and jumping, and the browser's own text
-  // field (a <textarea>, C++ inside the engine) holding a screenful of it for typing: a whole long doc would measure
-  // the textarea laying all of it out, slower than the editor. Budgets: typing within the field's p95 + 4 ms, a
-  // jump within one frame of the static page's, scrolling within 2 points of its dropped frames.
+  // runs (it replaces the page). The same text as a static page for scrolling and jumping (with --doc tables, the
+  // same tables as static HTML tables in sideways scrollers), and the browser's own text field (a <textarea>, C++
+  // inside the engine) holding a screenful of it for typing: a whole long doc would measure the textarea laying all
+  // of it out, slower than the editor. Budgets: typing within the field's p95 + 4 ms, a jump within one frame of the
+  // static page's, scrolling within 2 points of its dropped frames.
   const text = await js<string>("stress.view.state.doc.toString()");
   await js(`(() => {
     document.body.innerHTML = '<div id="doc" style="height:100vh;overflow:auto"><div style="width:620px;margin:auto;white-space:pre-wrap;font:12px/16px sans-serif"></div></div>';
-    document.querySelector("#doc > div").textContent = ${JSON.stringify(text)};
+    const col = document.querySelector("#doc > div"), text = ${JSON.stringify(text)};
+    if (${DOC !== "tables"}) return void (col.textContent = text);
+    col.style.font = "12px/16px monospace"; // the editor's font is monospaced: the same tables as wide as there
+    let table = null;
+    for (const line of text.split("\\n")) {
+      if (!line.startsWith("|")) { table = null; if (line) col.append(Object.assign(document.createElement("p"), { textContent: line })); continue; }
+      if (/^[| :-]+$/.test(line)) continue; // the delimiter row
+      const first = !table;
+      if (first) {
+        const wrap = col.appendChild(Object.assign(document.createElement("div"), { className: "cm-lp-tablewrap" }));
+        wrap.style.cssText = "overflow-x:auto;padding:20px 0;white-space:normal";
+        table = wrap.appendChild(document.createElement("table"));
+        table.style.cssText = "width:100%;border-collapse:collapse";
+      }
+      const tr = table.insertRow();
+      for (const c of line.slice(1, -1).split("|")) Object.assign(tr.appendChild(document.createElement(first ? "th" : "td")), { textContent: c.trim() }).style.cssText = "padding:8px 12px 8px 0;vertical-align:top;min-width:3em";
+    }
   })()`);
   await Bun.sleep(1000);
   const floor: Record<string, Row> = { scroll: await scroll("native scroll", 100, 3000), fling: await scroll("native fling", 600, 2000), jump: await jumps("native jump") };
+  if (DOC === "tables") {
+    floor.hscroll = await scroll("native hscroll", 0, 2000, { dx: 20, setup: wideTable });
+    // typing in a table cell, natively: a contenteditable cell of the same static table (its layout is the browser's
+    // cost: a keystroke can change every column's width)
+    for (const [key, row] of [["type-cell-200", "r100 "], ["type-cell-2000", "r1000 "]] as const)
+      floor[key] = await latency(`native ${key}`, `(() => {
+        const td = [...document.querySelectorAll("td")].find((el) => el.textContent.startsWith("${row}"));
+        td.contentEditable = "true";
+        td.scrollIntoView({ block: "center" });
+        td.focus();
+        const r = document.createRange();
+        r.selectNodeContents(td);
+        r.collapse(false);
+        getSelection().removeAllRanges();
+        getSelection().addRange(r);
+      })()`, typed(40), 80);
+  }
   floor.type = await latency("native type", `(() => {
     const text = ${JSON.stringify(text.slice((text.length >> 1) - 2000, (text.length >> 1) + 2000))};
     document.body.innerHTML = '<textarea style="width:620px;height:860px;font:12px/16px monospace"></textarea>';
@@ -351,13 +446,15 @@ for (const sections of SIZES) {
     t.focus();
     t.setSelectionRange(2000, 2000);
   })()`, typed(n), 80);
-  const slack: Record<string, number> = { scroll: 2, fling: 2, jump: FRAME, type: 4 };
+  const slack: Record<string, number> = { scroll: 2, fling: 2, hscroll: 2, jump: FRAME };
+  const kindOf: Record<string, string> = { sticky: "scroll", "sticky-fling": "fling" };
   for (const r of rows) {
-    const kind = r.scenario in floor ? r.scenario : "type";
-    r.budget = floor[kind]!.value + slack[kind]!;
-    r.ok = r.value <= r.budget;
+    const kind = kindOf[r.scenario] ?? (r.scenario in floor ? r.scenario : "type");
+    r.budget = floor[kind]!.value + (slack[kind] ?? 4); // typing: within 4 ms of the floor's p95
+    r.ok = r.value <= r.budget && !r.misplaced;
   }
-  for (const [kind, r] of Object.entries(floor)) rows.push({ ...r, ok: true, extra: kind === "type" ? "a <textarea>" : "the text as a static page" });
+  const floorIs = (kind: string) => (kind === "type" ? "a <textarea>" : kind.startsWith("type-cell") ? "a contenteditable cell in the same static table" : DOC === "tables" ? "the same tables as a static page" : "the text as a static page");
+  for (const [kind, r] of Object.entries(floor)) rows.push({ ...r, ok: true, extra: floorIs(kind) });
   results.push({ sections, ...info, openMs, heapMB: m.JSHeapUsedSize / 2 ** 20, nodes: m.Nodes, rows });
 }
 

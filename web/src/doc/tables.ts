@@ -85,13 +85,40 @@ const raws = new WeakMap<HTMLElement, string[][]>(); // the table element -> cur
 // The cell being edited and its table's start. When a redraw removes that cell, Chrome drops the focus to
 // nowhere (lostAt); the redrawn table takes it back if that happened just now. Focus moved by the user clears it.
 let editing: { from: number; r: number; c: number; lostAt: number } | null = null;
-// How far each table's header row travels down it while the table scrolls by (tableTheme's scroll timeline). Set when
-// a table resizes, never on scroll. Made with the first table: the check scripts load this module without a DOM.
-let travel: ResizeObserver | undefined;
-const measureTravel = (entries: ResizeObserverEntry[]) => {
-  for (const { target: t } of entries)
-    if (t instanceof HTMLTableElement) t.parentElement?.style.setProperty("--travel", `${t.offsetHeight - (t.tHead?.offsetHeight ?? 0)}px`);
+// Per drawn table, when it resizes (never on scroll): how far its header row travels down it while it scrolls by
+// (tableTheme's scroll timeline), whether it's wider than its column (only then is the first column pinned: thousands
+// of sticky cells doubled a keystroke's cost in a 2,000-row table), and its height for estimatedHeight. --travel goes
+// on the <thead>: on the wrap, every cell inherited it, and each change (a keystroke that rewraps a long table)
+// restyled the whole table. All reads before the writes, so no read forces a layout. Made with the first table: the
+// check scripts load this module without a DOM.
+let resized: ResizeObserver | undefined;
+const shape = (cells: string[][]) => `${cells.length}\n${cells[0]?.join("|")}`;
+const drawnHeights = new Map<string, number>(); // by shape: row count and header row
+const measure = (entries: ResizeObserverEntry[]) => {
+  const read = entries.flatMap(({ target: t }) => {
+    const wrap = t.parentElement, cells = wrap && raws.get(wrap);
+    if (!(t instanceof HTMLTableElement) || !t.tHead || !wrap || !cells) return [];
+    return [{ wrap, head: t.tHead, cells, travel: t.offsetHeight - t.tHead.offsetHeight, height: wrap.offsetHeight, wide: t.offsetWidth > wrap.clientWidth }];
+  });
+  for (const { wrap, head, cells, travel, height, wide } of read) {
+    head.style.setProperty("--travel", `${travel}px`);
+    wrap.classList.toggle("cm-lp-wide", wide);
+    drawnHeights.set(shape(cells), height);
+  }
 };
+
+// Raw cell texts by row text. Every edit makes a new widget for the whole table; parsing each row again (pipes,
+// comment markup) took ~15 ms a keystroke in a 2,000-row table. Never mutated.
+// ponytail: emptied whole past 50k rows, an LRU if docs with that many table rows get edited often
+const parsedRows = new Map<string, string[]>();
+function parseRow(line: string): string[] {
+  let row = parsedRows.get(line);
+  if (row) return row;
+  if (parsedRows.size > 50_000) parsedRows.clear();
+  row = splitRow(line, 0).map((c) => unescape(plain(line.slice(c.from, c.to)).text));
+  parsedRows.set(line, row);
+  return row;
+}
 
 class TableWidget extends WidgetType {
   readonly cells: string[][]; // raw text per source row (delimiter row included), without comment markers
@@ -99,12 +126,7 @@ class TableWidget extends WidgetType {
   // readOnly: switching between reading and editing patches the cells' contentEditable (updateDOM)
   constructor(readonly src: string, readonly readOnly: boolean) {
     super();
-    let at = 0;
-    this.cells = src.split("\n").map((line) => {
-      const row = splitRow(line, at).map((c) => unescape(plain(src.slice(c.from, c.to)).text));
-      at += line.length + 1;
-      return row;
-    });
+    this.cells = src.split("\n").map(parseRow);
     this.align = (this.cells[1] ?? []).map((d) => (d.endsWith(":") ? (d.startsWith(":") ? "center" : "right") : "left"));
   }
   get width() {
@@ -112,16 +134,21 @@ class TableWidget extends WidgetType {
   }
   // Until drawn, CodeMirror counts a widget as one line (16px) unless told: a table replacing ten lines then shrank the
   // doc's estimated height, and the text under the reader moved when a far table was parsed. One-line rows are 32px.
+  // A table drawn before with the same rows and header is as tall as then: each edit makes a new widget, and with
+  // the row estimate the viewport moved on every keystroke in a long table, redrawing a 200-row table at its edge
+  // twice a key (half a second).
   get estimatedHeight() {
-    return (this.cells.length - 1) * 32;
+    return drawnHeights.get(shape(this.cells)) ?? (this.cells.length - 1) * 32;
   }
   eq(o: TableWidget) {
     return o.src === this.src && o.readOnly === this.readOnly;
   }
   destroy(dom: HTMLElement) {
-    if (dom.firstElementChild) travel?.unobserve(dom.firstElementChild);
+    if (dom.firstElementChild) resized?.unobserve(dom.firstElementChild);
   }
-  // Same rows and columns: patch the cells in place, so the cell being typed in keeps its caret.
+  // Same rows and columns: patch the cells in place, so the cell being typed in keeps its caret. Only cells whose text
+  // changed are touched: rewriting every cell's HTML on each keystroke took 2-4 s a key in a 2,000-row table
+  // (`bun bench/stress.ts --doc tables`), mostly relaying out the whole table.
   updateDOM(dom: HTMLElement, view: EditorView) {
     const old = raws.get(dom);
     if (!old || old.length !== this.cells.length || old[0]?.length !== this.width || refocus) {
@@ -130,15 +157,23 @@ class TableWidget extends WidgetType {
       if (!refocus && at && dom.contains(at)) refocus = { r: Number(at.dataset.r), c: Number(at.dataset.c), end: true };
       return false;
     }
-    for (const el of dom.querySelectorAll<HTMLElement>("[data-r]")) {
+    const mode = String(this.readOnly), redraw = dom.dataset.readOnly !== mode; // reading ⇄ editing: every cell
+    dom.dataset.readOnly = mode;
+    // the delimiter row (r 1) has no cells: querySelector finds none
+    const changed = redraw
+      ? [...dom.querySelectorAll<HTMLElement>("[data-r]")]
+      : this.cells.flatMap((row, r) => row.flatMap((raw, c) => (old[r]?.[c] === raw ? [] : (dom.querySelector<HTMLElement>(`[data-r="${r}"][data-c="${c}"]`) ?? []))));
+    const active = cellOf(document.activeElement);
+    if (active && dom.contains(active) && !changed.includes(active)) changed.push(active);
+    for (const el of changed) {
       const raw = this.raw(Number(el.dataset.r), Number(el.dataset.c));
-      if (el !== document.activeElement) el.innerHTML = cellHtml(raw, !this.readOnly);
+      if (el !== active) el.innerHTML = cellHtml(raw, !this.readOnly);
       // The file trims cells, so a space just typed at an end isn't stored yet: compare what would be stored.
       else if (unescape(toCell(el.textContent ?? "")).trim() !== raw) {
         el.textContent = raw; // undo or a remote edit changed the cell being edited
         caretEnd(el);
       }
-      el.contentEditable = view.state.readOnly ? "false" : "true";
+      if (redraw) el.contentEditable = view.state.readOnly ? "false" : "true";
     }
     raws.set(dom, this.cells);
     return true;
@@ -149,6 +184,7 @@ class TableWidget extends WidgetType {
   toDOM(view: EditorView) {
     const wrap = document.createElement("div");
     wrap.className = "cm-lp-tablewrap";
+    wrap.dataset.readOnly = String(this.readOnly);
     const table = wrap.appendChild(document.createElement("table"));
     table.className = "cm-lp-table";
     const head = table.createTHead();
@@ -168,7 +204,7 @@ class TableWidget extends WidgetType {
     });
     raws.set(wrap, this.cells);
     wire(wrap, view);
-    (travel ??= new ResizeObserver(measureTravel)).observe(table);
+    (resized ??= new ResizeObserver(measure)).observe(table);
     const f = refocus;
     refocus = null;
     requestAnimationFrame(() => {
@@ -346,11 +382,12 @@ function wire(wrap: HTMLElement, view: EditorView) {
   });
   wrap.addEventListener("input", (e) => {
     const el = cellOf(e.target);
-    const t = tableNow();
-    if (!el || !t) return;
+    if (!el) return;
     const r = Number(el.dataset.r), c = Number(el.dataset.c);
-    const row = t.rows[r];
-    if (!row) return;
+    // only this row's line: parsing the whole table per keystroke was ~15 ms in a 2,000-row one
+    const doc = view.state.doc, n = doc.lineAt(view.posAtDOM(wrap)).number + r;
+    if (n > doc.lines) return;
+    const line = doc.line(n), row: Row = { from: line.from, to: line.to, cells: splitRow(line.text, line.from) };
     const text = toCell(el.textContent ?? "");
     const cell = row.cells[c];
     if (cell) {
@@ -530,11 +567,13 @@ export const tableTheme = EditorView.theme({
     background: "linear-gradient(var(--fg), var(--fg)) top / 100% .5px no-repeat, linear-gradient(var(--fg), var(--fg)) bottom / 100% .5px no-repeat",
     backgroundColor: "var(--bg)", position: "relative", zIndex: "2",
   },
-  ".cm-lp-table :is(th, td):last-child": { paddingRight: "0" },
-  // Pinned while the table scrolls: the first column sideways, the header row down the doc. No :is() here: the theme
-  // splits selectors at commas, inside :is() too.
-  ".cm-lp-table th:first-child, .cm-lp-table td:first-child": { position: "sticky", left: "0", zIndex: "1" },
-  ".cm-lp-table th:first-child": { zIndex: "3" },
+  // No :is() in these selectors: the theme splits selectors at commas, inside :is() too (the last column's padding
+  // rule was dropped that way).
+  ".cm-lp-table th:last-child, .cm-lp-table td:last-child": { paddingRight: "0" },
+  // Pinned while the table scrolls: the first column sideways (only in a table wider than its column), the header row
+  // down the doc.
+  ".cm-lp-wide th:first-child, .cm-lp-wide td:first-child": { position: "sticky", left: "0", zIndex: "1" },
+  ".cm-lp-wide th:first-child": { zIndex: "3" },
   ".cm-lp-scrolled td:first-child": { backgroundColor: "var(--bg)" }, // opaque only then: a selection behind shows
   // The header row can't be CSS sticky: the wrap scrolls sideways, which makes it the header's scroll container on
   // both axes, so `top` sticks inside the wrap (per-axis scroll containers, `overflow: auto clip`, are Chrome 154+). A

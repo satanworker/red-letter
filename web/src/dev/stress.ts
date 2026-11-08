@@ -1,6 +1,7 @@
 // /__stress?sections=N (dev only; its own chunk): the editor on one huge generated doc with every kind of block the
 // editor draws (headings, emphasis, links, lists, tasks, quotes, code in six languages, tables, images, mermaid,
-// rules, comment threads), the same text for the same N. web/bench/stress.ts drives it and measures.
+// rules, comment threads), the same text for the same N. &doc=tables: N tables instead (tablesDoc). web/bench/stress.ts
+// drives it and measures.
 import { EditorView } from "@codemirror/view";
 import { showFixture } from "./fixture.ts";
 
@@ -83,6 +84,25 @@ export function stressDoc(sections: number): string {
   return [...out, ...threads, ""].join("\n");
 }
 
+// N tables of 10, 60 or 200 rows and 3, 6, 9 or 12 columns (9 and 12 scroll sideways in the 620px column), cells with
+// inline markdown, between short sections; the middle one has 2,000 rows (its first cells say r0, r1, …).
+export function tablesDoc(n: number): string {
+  let seed = 2;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648), seed / 2147483648);
+  const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)]!;
+  const words = (k: number) => Array.from({ length: k }, () => pick(WORDS)).join(" ");
+  const cell = () => pick([() => `**${words(2)}**`, () => `\`${pick(WORDS)}()\``, () => `[${words(2)}](https://example.com/${pick(WORDS)})`, () => String(Math.floor(rnd() * 1e5)), () => words(1 + Math.floor(rnd() * 6))])();
+  const out = [`# 🧪 Tables: ${n}`, ""];
+  for (let i = 0; i < n; i++) {
+    const rows = i === n >> 1 ? 2000 : [10, 60, 200][i % 3]!, cols = 3 + (i % 4) * 3;
+    out.push(`## ${i + 1}. ${words(3)}`, "", `${words(20)}.`, "");
+    out.push(`| ${Array.from({ length: cols }, () => words(1 + Math.floor(rnd() * 3))).join(" | ")} |`, `|${" --- |".repeat(cols)}`);
+    for (let r = 0; r < rows; r++) out.push(`| ${Array.from({ length: cols }, (_, c) => (c === 0 ? `r${r} ${words(2)}` : cell())).join(" | ")} |`);
+    out.push("");
+  }
+  return out.join("\n");
+}
+
 // A picture per src, of its own height, so images load late and move the text under them as real ones do.
 const image = async (src: string) => {
   const h = 80 + ((src.length * 37) % 160);
@@ -90,8 +110,9 @@ const image = async (src: string) => {
 };
 
 export function showStress() {
-  const sections = Number(new URLSearchParams(location.search).get("sections")) || 200;
-  const text = stressDoc(sections);
+  const q = new URLSearchParams(location.search);
+  const sections = Number(q.get("sections")) || 200;
+  const text = q.get("doc") === "tables" ? tablesDoc(sections) : stressDoc(sections);
   showFixture({ text, docs: ["stress.md"], path: "stress.md", imageUrl: image });
   // ready once the editor has painted: the frame after mount, then the task after that frame (opening is measured
   // from the fixture's "fixture:doc" mark to "stress:ready")

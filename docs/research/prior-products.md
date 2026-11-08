@@ -6,8 +6,8 @@
 
 | Product | Git as truth? | Realtime? | Comments anchored to text? | Commit attribution | Draft model |
 |---|---|---|---|---|---|
-| **GitBook Git Sync** | Bidirectional MD ↔ GitHub/GitLab. Visual editor is canonical in-app; export may *create new files* rather than overwrite existing MD. CRs ≠ GitHub PRs. | Yes, inside a change request | Yes, inline on CRs via GitBook API — **not in git / not GitHub review comments** | `gitbook-com` GitHub App pushes; message `GITBOOK-{n}: {subject}` | Change requests (in-app branches). Merge → one git commit |
-| **HackMD GitHub sync** | Optional push/pull of named versions → commits. Note in HackMD DB is live truth | Yes (OT-style collab) | Yes, select-text comments. **Dropped on GitHub sync** | Push as GitHub App; version name/desc = commit msg. Free = 20 push/pulls/mo | Named versions; can create branch/file on first link |
+| <!--rl:xfdqla-->**GitBook Git Sync**<!--/rl:xfdqla--> | Bidirectional MD ↔ GitHub/GitLab. Visual editor is canonical in-app; export may *create new files* rather than overwrite existing MD. CRs ≠ GitHub PRs. | Yes, inside a change request | Yes, inline on CRs via GitBook API — **not in git / not GitHub review comments** | `gitbook-com` GitHub App pushes; message `GITBOOK-{n}: {subject}` | Change requests (in-app branches). Merge → one git commit |
+| <!--rl:jhmhla-->**HackMD GitHub sync**<!--/rl:jhmhla--> | Optional push/pull of named versions → commits. Note in HackMD DB is live truth | Yes (OT-style collab) | Yes, select-text comments. **Dropped on GitHub sync** | Push as GitHub App; version name/desc = commit msg. Free = 20 push/pulls/mo | Named versions; can create branch/file on first link |
 | **HedgeDoc / CodiMD** | No. Postgres. GitHub = OAuth + gist export. CLI import/export only | Yes | Limited vs HackMD | n/a | Notes, not branches |
 | **Outline** | No native git. Community sync is lossy (rich doc ↔ MD) | Yes (Yjs + Hocuspocus) | Yes, inline `anchorText` marks in Yjs/PM | n/a | Docs in DB |
 | **Docmost** | No. Third-party CLI/MCP only | Yes (Yjs + Hocuspocus) | Page comments | n/a | Spaces/pages |
@@ -41,3 +41,10 @@ X search (`GitBook git sync`, Tina/Decap, HackMD, github.dev): mostly vendor pos
 ## Recommendation
 
 Nobody ships the full design. **GitBook** is the closest productized “web edit + comments + git” but fails the spec: visual blocks (not raw-MD CRDT), CRs ≠ git branches/PRs, comments off-git, bot commits, duplicate-file export. **HackMD** has the collab/comment UX and optional git push, then drops comments. **Decap/Tina** get git-as-truth and branch-per-draft right and get realtime/comments wrong. **Graft** is the closest OSS *shape* (GitHub login, Tiptap WYSIWYG over MD, Yjs, comments off the content branch). **MDArena** is the closest *architecture* (Yjs working copy, idle flush to git) but polls HEAD and reloads instead of webhook-diff → CRDT ops. Build that missing piece: `Y.Text` of **raw markdown**, WYSIWYG bound to MD (Milkdown/CodeMirror-MD, not ProseMirror-as-source), GitHub App commits **as the user**, drafts = real branches, comments in your DB keyed by CRDT relative positions. Skip Dolt/Irmin/Noms. Skip putting comments in git unless you want Graft’s orphan-branch trick as a backup.
+
+<!--rl:jhmhla
+@satanworker 2026-11-08T23:10Z: @hatevodka вот эти лидеры
+-->
+<!--rl:xfdqla
+@satanworker 2026-11-08T23:10Z: @hatevodka и вот эти тоже
+-->

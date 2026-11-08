@@ -223,12 +223,36 @@ export function jump(from: number, to: number) {
 const tocTop = (h: Heading, scroller: HTMLElement) =>
   view!.lineBlockAt(h.at).top + (h.at ? 12 : 0) + view!.documentTop - scroller.getBoundingClientRect().top; // 12: heading lines' top padding
 const tocMargin = (h: Heading) => (h.depth ? 6 : 16);
+let glide = { frame: 0, stop: () => {} }; // the table of contents' glide under way
+// CodeMirror only estimates the height of lines it hasn't drawn, so the heading's position is read again every frame
+// and the glide steers to where it is now; a browser smooth scroll aimed at the first estimate landed hundreds of px
+// off in long docs and then needed a second glide. A heading more than a screen away is jumped to first, to a screen
+// short of it: gliding the whole way drew every screen in between, a frame or two late each. Any wheel, key or
+// pointer press hands the scroll back to the reader.
 export function scrollToHeading(h: Heading, scroller: HTMLElement) {
   if (!view) return;
+  glide.stop();
   const off = () => tocTop(h, scroller) - 24 - tocMargin(h);
-  scroller.scrollTo({ top: scroller.scrollTop + off(), behavior: "smooth" });
-  // CodeMirror only estimates the height of lines it hasn't drawn yet: once there, measure again and glide the rest
-  scroller.addEventListener("scrollend", () => Math.abs(off()) > 1 && scroller.scrollTo({ top: scroller.scrollTop + off(), behavior: "smooth" }), { once: true });
+  const screen = scroller.clientHeight, far = off();
+  if (Math.abs(far) > screen) scroller.scrollTop += far - Math.sign(far) * screen;
+  const from = scroller.scrollTop, start = performance.now();
+  let settled = 0;
+  const stop = () => {
+    cancelAnimationFrame(glide.frame);
+    for (const e of ["wheel", "keydown", "pointerdown", "touchstart"]) removeEventListener(e, stop, true);
+  };
+  for (const e of ["wheel", "keydown", "pointerdown", "touchstart"]) addEventListener(e, stop, true);
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / 250), ease = 1 - (1 - t) ** 3;
+    const target = scroller.scrollTop + off(); // where the heading is now, as drawn so far
+    const before = scroller.scrollTop;
+    scroller.scrollTop = t < 1 ? from + (target - from) * ease : target;
+    // done once at the target (or the doc's end, for headings too near it) for a few frames, its lines drawn
+    if (t === 1 && (Math.abs(target - before) < 1 || scroller.scrollTop === before)) settled++;
+    if (settled < 3 && now - start < 2000) glide.frame = requestAnimationFrame(step);
+    else stop();
+  };
+  glide = { frame: requestAnimationFrame(step), stop };
 }
 // The reader's section, read in the editor's measure phase, when layout is fresh: read in the scroll event, it made the
 // browser lay the page out an extra time per frame. done gets its index.

@@ -4,10 +4,23 @@ import { watch } from "node:fs";
 import { build } from "./build.ts";
 
 await build();
+// One build at a time: a build empties dist/ first, so a second one started meanwhile (edits to several files) pulled
+// files out from under the first and took the server down. Changes during a build get one more build after it.
 let timer: Timer | undefined;
+let building: Promise<void> | null = null;
+let again = false;
+function rebuild() {
+  if (building) return void (again = true);
+  building = build()
+    .then(() => console.log("rebuilt"), (e) => console.error(e))
+    .finally(() => {
+      building = null;
+      if (again) (again = false), rebuild();
+    });
+}
 watch(`${import.meta.dir}/src`, { recursive: true }, () => {
   clearTimeout(timer);
-  timer = setTimeout(() => build().then(() => console.log("rebuilt"), (e) => console.error(e)), 100);
+  timer = setTimeout(rebuild, 100);
 });
 
 const dist = `${import.meta.dir}/dist`;

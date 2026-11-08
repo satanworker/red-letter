@@ -2,6 +2,12 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-08: Table of contents lands where it should
+
+- **Clicks land and stay**: a heading glides to its place in 250 ms (one far away is jumped to a screen short of it first), steering to where the heading is as drawn rather than to CodeMirror's first estimate; any wheel, key or press stops it. On the 17k-line stress doc clicks took 1.5–3 s and far ones landed up to 13,000 px off; now they land at 0 px.
+- **Text no longer slides away under the reader**: when the parser or a late image changes heights above the view while the editor isn't focused (reading, after a click in the contents or the panel), the view keeps its place, as CodeMirror only does with focus (`keepPlace.ts`). Line height estimates for undrawn text no longer flip between 16 and 44 px (a padded line was being sampled), and tables, images and diagrams tell CodeMirror their size before they're drawn.
+- **`bun dev.ts` no longer dies** when several files change at once: rebuilds run one at a time.
+
 ## 2026-11-08: Slimmer header
 
 - **Repo name in the sidebar**: `owner/name` moved from the header to the file sidebar's top row (next to your avatar, linking to the branch); the header drops the file path, which the tab already shows. The branch pill only switches branches; "New draft" moved to the page menu.

@@ -11,6 +11,11 @@ export const imageUrl = Facet.define<Resolve, Resolve>({
   combine: (v) => v[0] ?? (async (src) => (/^https?:\/\//.test(src) ? src : null)),
 });
 
+// Drawn heights by src: CodeMirror counts an undrawn widget as one line unless told, so a far image remembered at its
+// size keeps the doc's estimated height (and the text under the reader) from jumping when it's drawn again. An image
+// never drawn is hidden until it loads, 0px.
+const heights = new Map<string, number>();
+
 class ImageWidget extends WidgetType {
   constructor(
     readonly src: string,
@@ -22,12 +27,18 @@ class ImageWidget extends WidgetType {
   eq(o: ImageWidget) {
     return o.src === this.src && o.alt === this.alt;
   }
+  get estimatedHeight() {
+    return heights.get(this.src) ?? 0;
+  }
   toDOM() {
     const img = document.createElement("img");
     img.className = "cm-lp-img";
     img.alt = this.alt;
     img.hidden = true; // until it loads: a missing file shows nothing rather than a broken-image box
-    img.onload = () => (img.hidden = false);
+    img.onload = () => {
+      img.hidden = false;
+      heights.set(this.src, img.offsetHeight);
+    };
     void this.resolve(this.src).then((url) => url && (img.src = url));
     return img;
   }

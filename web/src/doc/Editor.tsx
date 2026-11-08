@@ -12,6 +12,7 @@ import { AtIcon, TipArrow, btn } from "../ui.tsx";
 import { cancelComment, closeThread, doc, docChanged, insertImages, isReading, openThread, setView, startComment, submitComment } from "./docStore.ts";
 import { commentMarks, commentParses, inCode } from "./commentMarks.ts";
 import { headingField } from "./headings.ts";
+import { keepPlace } from "./keepPlace.ts";
 import { showPanel } from "../repo/repoStore.ts";
 import { imageUrl } from "./images.ts";
 import { editorExtensions, readingMode } from "./livePreview.ts";
@@ -226,6 +227,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
         decoField,
         commentMarks,
         headingField,
+        keepPlace,
         remoteNotUndoable,
         mode.of(modeOf(isReading())),
         s.canWrite || comments.viaPr ? commentTooltip() : [],

@@ -138,6 +138,12 @@ const hmark = Decoration.mark({ class: "cm-lp-hmark" });
 const gap = line("cm-lp-gap");
 // a heading or rule line (a Setext underline counts): the blank lines beside it stay 16px
 const headingOrRule = /^ {0,3}(?:#{1,6}(?:\s|$)|[-=]+ *$|(?:[-*_] *){3,}$)/;
+// CodeMirror estimates the height of every line it hasn't drawn from one short line of plain text it finds on screen,
+// taking that line's box as the line height. A heading, list item, quote edge or code fence line is taller than the
+// 16px text line (padding, 18px list lines), and sampling one made the estimate flip between 16 and 44px: a long
+// doc's height swung by half a million px, jumps and table-of-contents clicks landed on the wrong text and it moved
+// under the reader. Wrapping those lines' text in a mark (which draws nothing) keeps them out of the sample.
+const boxed = Decoration.mark({ class: "cm-lp-boxed" });
 
 function build(view: EditorView): DecorationSet {
   const { state } = view;
@@ -158,6 +164,11 @@ function build(view: EditorView): DecorationSet {
     const first = doc.lineAt(from).number, last = doc.lineAt(to).number;
     for (let l = doc.lineAt(Math.max(from, vfrom)).number; l <= doc.lineAt(Math.min(to, vto)).number; l++)
       out.push(deco(l, first, last).range(doc.line(l).from));
+  };
+  // the line at `pos`, not 16px tall: kept out of CodeMirror's line height sample (see `boxed`)
+  const tall = (pos: number) => {
+    const l = doc.lineAt(pos);
+    if (l.to > l.from) out.push(boxed.range(l.from, l.to));
   };
   const listed = new Set<number>(); // line starts already indented (items can span visible ranges)
   const code: { from: number; to: number }[] = []; // code blocks: their blank lines are code
@@ -190,6 +201,7 @@ function build(view: EditorView): DecorationSet {
       if (from < vfrom || from > vto || listed.has(from)) return;
       listed.add(from);
       out.push(indent.range(from));
+      tall(from);
     };
     indentLine(first.from);
     for (let c = item.firstChild; c; c = c.nextSibling) {
@@ -208,6 +220,7 @@ function build(view: EditorView): DecorationSet {
         const heading = /^(?:ATX|Setext)Heading(\d)$/.exec(name);
         if (heading) {
           out.push(line(`cm-lp-h${heading[1]}`).range(doc.lineAt(n.from).from));
+          tall(n.from);
           return;
         }
         switch (name) {
@@ -260,6 +273,8 @@ function build(view: EditorView): DecorationSet {
           case "Blockquote":
             lines(n.from, n.to, vfrom, vto, (l, first, last) =>
               line(`cm-lp-quote${l === first ? " cm-lp-quote-first" : ""}${l === last ? " cm-lp-quote-last" : ""}`));
+            tall(n.from);
+            tall(n.to);
             return;
           case "QuoteMark":
             marker(n.from, reading && doc.sliceString(n.to, n.to + 1) === " " ? n.to + 1 : n.to);
@@ -280,6 +295,8 @@ function build(view: EditorView): DecorationSet {
               return line(cls);
             });
             if (reading) for (let c = n.firstChild; c; c = c.nextSibling) if (c.name === "CodeMark" || c.name === "CodeInfo") marker(c.from, c.to);
+            tall(n.from);
+            tall(n.to);
             return false;
           }
         }

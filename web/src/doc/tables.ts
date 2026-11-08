@@ -95,6 +95,11 @@ class TableWidget extends WidgetType {
   get width() {
     return this.cells[0]?.length ?? 0;
   }
+  // Until drawn, CodeMirror counts a widget as one line (16px) unless told: a table replacing ten lines then shrank the
+  // doc's estimated height, and the text under the reader moved when a far table was parsed. One-line rows are 32px.
+  get estimatedHeight() {
+    return (this.cells.length - 1) * 32;
+  }
   eq(o: TableWidget) {
     return o.src === this.src && o.readOnly === this.readOnly;
   }

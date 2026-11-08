@@ -45,9 +45,13 @@ function svgOf(src: string) {
   return svg;
 }
 
+// Drawn heights by source: CodeMirror counts an undrawn widget as one line unless told (see images.ts)
+const heights = new Map<string, number>();
+
 class MermaidWidget extends WidgetType {
   constructor(readonly src: string) { super(); }
   eq(o: MermaidWidget) { return o.src === this.src; }
+  get estimatedHeight() { return heights.get(this.src) ?? -1; }
   toDOM(view: EditorView) {
     const box = document.createElement("div");
     box.className = "cm-lp-mermaid";
@@ -72,6 +76,8 @@ class MermaidWidget extends WidgetType {
           box.className = "cm-lp-mermaid";
           box.title = "";
           box.replaceChildren(img);
+          heights.set(src, box.offsetHeight);
+          if (heights.size > 200) heights.delete(heights.keys().next().value!); // typing in a diagram makes a source a key
           view.requestMeasure();
         };
         img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;

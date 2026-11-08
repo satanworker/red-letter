@@ -44,7 +44,6 @@
   --shadow-figma: var(--shadow);
   --shadow-pop: var(--pop);
   --font-sans: var(--sans);
-  --font-logo: Grandstander, var(--sans);
 }
 
 /* Thin macOS-style scrollbars: a rounded grey thumb on a clear track, no arrows. Chrome, Edge and Safari take the

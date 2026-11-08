@@ -20,6 +20,7 @@ import duplicateSvg from "./icons/duplicate.svg";
 import copyPageSvg from "./icons/copy-page.svg";
 import moveSvg from "./icons/move.svg";
 import deleteSvg from "./icons/delete.svg";
+import logoSvg from "./icons/logo.svg";
 
 // Figma "Reply"/"Resolve": 24px tall, width = text + 24 with the .4px stroke inside.
 export const btn =
@@ -49,9 +50,10 @@ export const Avatar = (props: { login: string; size: number }) => (
   />
 );
 
+// the Grandstander wordmark, outlined (Figma export): no web font for two words
 export const Logo = () => (
-  <a href="/" class="font-logo text-[18px] leading-7 text-brand">
-    Red Letter
+  <a href="/" class="flex h-7 w-fit items-center">
+    <img src={logoSvg} width={88} height={14} alt="Red Letter" />
   </a>
 );
 

@@ -29,7 +29,7 @@ export function selectHistory(history: Commit[], marks: AgentMark[]): HistoryEnt
 // A draft's edits against its base branch (as last merged in): ranges in the current text, deleted text in `before`.
 export const selectDraftChanges = (s: Session): Region[] => (s.doc.base ? editRegions(s.doc, s.doc.base.heads, A.getHeads(s.doc)) : []);
 
-// The chosen tab; until one is chosen, History when conflicts wait to be settled and no comments are open.
+// The chosen tab (kept across files); until one is chosen, History when conflicts wait to be settled and no comments are open.
 export const selectTab = (s: PanelState, openThreads: number, marks: number) => (!s.picked && !openThreads && marks ? "history" : s.tab);
 
 // Words in the editor's text, as /\S+/g counts them. CodeMirror's Text is a tree of leaves holding whole lines (so no

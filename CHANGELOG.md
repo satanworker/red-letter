@@ -5,7 +5,9 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 ## 2026-11-08: Outline tab
 
 - **Outline in the side panel**: a third tab next to Comments and History lists the doc's headings Ulysses-style (hollow circles, indented by level, your section on a grey pill); click one and the doc glides there. It replaces the Linear-style rail in the doc's left margin. Also in ⌘K as "Show outline".
-- **Links in the outline**: under the headings, every `[text](url)` in the doc (blue circle, url on hover); click one to select it in the text. Kept by the same per-line scan as the headings, so typing costs no more.
+- **Links in the outline**: under the headings, every `[text](url)` in the doc (blue circle, url on hover); click one to bring it into view. Kept by the same per-line scan as the headings, so typing costs no more.
+- **Outline clicks flash their target**: the heading or link lights up blue in the text for a moment and fades out.
+- **The side panel keeps its tab** as you move between files: pick Outline (or History) and the next page opens on it too, instead of going back to Comments.
 
 ## 2026-11-08: Table of contents lands where it should
 

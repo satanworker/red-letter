@@ -1,6 +1,6 @@
 // The open file: its Session, status, history, and the editor's UI intent (panel tab, active thread, draft comment).
 // The CRDT doc isn't copied into the store: `version` ticks (once per frame) when it changes, selectors re-read it.
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { batch } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { clearComments, commentViaPr, comments, loadComments, refreshComments } from "../comments/commentsStore.ts";
@@ -8,6 +8,7 @@ import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResol
 import { HttpError, type User } from "../github.ts";
 import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 import { inCode } from "./commentMarks.ts";
+import { flash } from "./flash.ts";
 import { selectIcon, type Heading } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection } from "./tables.ts";
@@ -21,7 +22,7 @@ type DocState = {
   version: number;
   history: Commit[]; // the commits that touched the file, newest first
   shown: { sha: string; patch?: string | null; error?: string } | null; // the History commit opened to its changes (patch: loading while undefined)
-  picked: boolean; // the panel tab was chosen; until then it follows what there is to look at
+  picked: boolean; // the panel tab was chosen (kept across files); until then it follows what there is to look at
   tab: Tab;
   activeThread: string;
   hoveredThread: string; // the panel card under the pointer: a resolved thread's text lights up only then
@@ -116,7 +117,8 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
   batch(() => {
     release();
     loadComments(repo.full_name, branch, path, viaPr); // before the editor mounts: it reads comments.viaPr
-    set({ session, opening: "", history: [], shown: null, picked: false, tab: "comments", activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "" });
+    // the panel tab stays as it was: a tab picked on one page is still open on the next
+    set({ session, opening: "", history: [], shown: null, activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "" });
     pushStatus();
   });
   ticker = window.setInterval(tick, 15_000);
@@ -215,6 +217,14 @@ export function jump(from: number, to: number) {
   view?.focus();
 }
 
+// An outline link: brought to the middle of the view and flashed, without moving the caret or selecting it (a
+// selection would bring up the "Add a comment" pill).
+export function showLink(from: number, to: number) {
+  if (!view) return;
+  view.dispatch({ effects: EditorView.scrollIntoView(from, { y: "center" }) });
+  flash(view, from, to);
+}
+
 // Outline jumps, measured on Linear's table of contents. Each heading has a scroll margin (16px at the top level, 6px deeper); a
 // click glides its text to 24px + that margin under the doc's top edge. The reader's section is the last heading
 // whose text is within 32px + its margin of that edge (the first before any): 8px of slack, so a clicked heading
@@ -232,6 +242,7 @@ let glide = { frame: 0, stop: () => {} }; // the outline's glide under way
 export function scrollToHeading(h: Heading, scroller: HTMLElement) {
   if (!view) return;
   glide.stop();
+  flash(view, h.at, view.state.doc.lineAt(h.at).to);
   const off = () => tocTop(h, scroller) - 24 - tocMargin(h);
   const screen = scroller.clientHeight, far = off();
   if (Math.abs(far) > screen) scroller.scrollTop += far - Math.sign(far) * screen;

@@ -1,10 +1,10 @@
 // The doc's outline in the side panel, laid out as Ulysses' sidebar. Outline: a muted label, then one row per heading,
 // a hollow circle before its words, indented by level; the reader's section sits on a grey pill; a click glides the
 // doc to that heading. Links (when there are any), under a rule: one row per `[text](url)` with a blue circle, its
-// url on hover; a click selects it in the doc.
+// url on hover; a click brings it to the middle of the view. Either way the target flashes (flash.ts).
 import { For, Show, createEffect, createMemo, createSelector, createSignal, onCleanup, onMount } from "solid-js";
 import { selectHeadings } from "./docSelectors.ts";
-import { doc, editorState, headingInView, jump, scrollToHeading } from "./docStore.ts";
+import { doc, editorState, headingInView, scrollToHeading, showLink } from "./docStore.ts";
 import { headingField } from "./headings.ts";
 
 export function Outline() {
@@ -65,7 +65,7 @@ export function Outline() {
               title={l.url}
               onClick={() => {
                 const at = found()?.links[i()];
-                if (at) jump(at.from, at.to);
+                if (at) showLink(at.from, at.to);
               }}
             >
               <span class="size-[7px] shrink-0 rounded-full border border-blue" />

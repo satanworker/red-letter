@@ -71,6 +71,12 @@ emoji-picker {
 .rl-draft { background: rgba(35, 131, 226, .12); box-shadow: 0 2px 0 rgba(35, 131, 226, .45); border-radius: 2px; }
 .rl-comment { background: var(--hl); border-radius: 4px; cursor: pointer; }
 .rl-comment.active { background: var(--hl-on); }
+/* an outline click's target (flash.ts): held a moment, then faded out */
+.rl-flash { border-radius: 4px; animation: rl-flash 1.6s ease-out forwards; }
+@keyframes rl-flash {
+  0%, 35% { background: rgba(35, 131, 226, .25); }
+  100% { background: transparent; }
+}
 .cm-editor .cm-tooltip.sel-tip { border: 0; background: none; }
 /* CodeMirror aligns its zero-width widget buffers to the baseline, which makes a heading line 1px taller than its
    line-height when a hidden "#" sits in it (Figma: H1 is exactly 35px, H2 25px). */

@@ -2,6 +2,12 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-08: Links in tables
+
+- **⌘/Ctrl+click opens links in table cells**, as in the rest of the doc (it did nothing there).
+- **Outline links inside a table work**: the link is brought to the middle of the view and flashes in its cell, instead of the click doing nothing visible.
+- **A comment's quote in a table cell** now selects the commented text in the cell when clicked in the panel.
+
 ## 2026-11-08: Outline tab
 
 - **Outline in the side panel**: a third tab next to Comments and History lists the doc's headings Ulysses-style (hollow circles, indented by level, your section on a grey pill); click one and the doc glides there. It replaces the Linear-style rail in the doc's left margin. Also in ⌘K as "Show outline".

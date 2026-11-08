@@ -53,7 +53,8 @@ const rowText = (cells: string[]) => `| ${cells.join(" | ")} |`;
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 // Cell text -> HTML: code spans, bold, italic, links. Reading: rendered (a link shows its name). Editing (markdown):
-// the markers stay, in their content's style; a link's (url) is grey. Everything from the doc is escaped first.
+// the markers stay, in their content's style; a link's (url) is grey. Everything from the doc is escaped first. A
+// link's parts carry its url (data-href) for Cmd/Ctrl-click.
 const cellHtml = (s: string, markdown: boolean) =>
   s
     .split(/(`[^`]+`)/)
@@ -65,11 +66,18 @@ const cellHtml = (s: string, markdown: boolean) =>
             .replace(/(^|[^*])\*([^*]+)\*/g, markdown ? "$1<em>*$2*</em>" : "$1<em>$2</em>")
             .replace(/\[([^\]]+)\]\(([^)]*)\)/g, (_, name: string, href: string) =>
               markdown
-                ? `<span class="cm-lp-link">[${name}]</span><span class="cm-lp-url">(<span class="cm-lp-u">${href.replace(/(\/(?!\/)|\.)(?=.)/g, "$1<wbr>")}</span>)</span>`
-                : `<span class="cm-lp-link cm-lp-u">${name}</span>`,
+                ? `<span class="cm-lp-link" data-href="${href}">[${name}]</span><span class="cm-lp-url" data-href="${href}">(<span class="cm-lp-u">${href.replace(/(\/(?!\/)|\.)(?=.)/g, "$1<wbr>")}</span>)</span>`
+                : `<span class="cm-lp-link cm-lp-u" data-href="${href}">${name}</span>`,
             ),
     )
     .join("");
+
+// The url of the link at `offset` in a cell's raw text: a `[name](url)` or a bare http(s) url.
+function linkAt(text: string, offset: number): string | null {
+  for (const m of text.matchAll(/\[[^\]]*\]\(([^)\s]+)[^)]*\)|https?:\/\/[^\s)|]+/g))
+    if (m.index <= offset && offset <= m.index + m[0].length) return m[1] ?? m[0];
+  return null;
+}
 
 // After a change that redraws the table (new row, new column), the cell to put the caret back in.
 let refocus: { r: number; c: number; end: boolean } | null = null;
@@ -229,10 +237,81 @@ const cellSelectionSync = ViewPlugin.define((view) => {
 });
 export const cellComments = [cellSelection, cellSelectionSync];
 
+// The cell holding doc text [from, to], once the editor has scrolled its table into view and drawn it: the editor's
+// own selection and decorations can't reach inside the table widget. false: the range isn't inside one cell.
+function inCell(view: EditorView, from: number, to: number, then: (el: HTMLElement, cell: Cell) => void): boolean {
+  const t = tableAt(view.state, from);
+  const r = t?.rows.findIndex((row) => row.from <= from && to <= row.to) ?? -1;
+  const c = r < 0 ? -1 : t!.rows[r]!.cells.findIndex((x) => x.from <= from && to <= x.to);
+  if (!t || c < 0) return false;
+  const cell = t.rows[r]!.cells[c]!;
+  view.dispatch({ effects: EditorView.scrollIntoView(t.from, { y: "center" }) });
+  let tries = 0;
+  const find = () => {
+    const wrap = [...view.contentDOM.querySelectorAll<HTMLElement>(".cm-lp-tablewrap")].find((w) => view.posAtDOM(w) === t.from);
+    const el = wrap?.querySelector<HTMLElement>(`[data-r="${r}"][data-c="${c}"]`);
+    if (el) then(el, cell);
+    else if (tries++ < 10) requestAnimationFrame(find);
+  };
+  requestAnimationFrame(find);
+  return true;
+}
+
+// Selects doc text [from, to] inside a table cell, as the editor does elsewhere (a comment's quote in a cell). Reading
+// mode, where cells take no caret, only brings the cell into view.
+export function selectInTable(view: EditorView, from: number, to: number): boolean {
+  return inCell(view, from, to, (el, cell) => {
+    if (!el.isContentEditable) return el.scrollIntoView({ block: "nearest" });
+    // the focused cell shows its raw text in one text node: "\|" as "|", no comment markers
+    const src = plain(view.state.doc.sliceString(cell.from, cell.to));
+    const shown = (pos: number) => {
+      const p = src.toPlain(pos - cell.from);
+      return p - (src.text.slice(0, p).match(/\\\|/g)?.length ?? 0);
+    };
+    el.focus();
+    const node = el.firstChild ?? el, len = el.textContent?.length ?? 0;
+    getSelection()?.setBaseAndExtent(node, Math.min(shown(from), len), node, Math.min(shown(to), len));
+  });
+}
+
+// Brings the link at doc range [from, to] in a table cell to the middle of the view and flashes it (`.rl-flash`), as
+// an outline link click does elsewhere: no caret, no focus. A cell being edited shows raw text, so it flashes whole.
+export function flashInTable(view: EditorView, from: number, to: number): boolean {
+  return inCell(view, from, to, (el, cell) => {
+    const nth = [...plain(view.state.doc.sliceString(cell.from, from)).text.matchAll(/\[[^\]]+\]\([^)]*\)/g)].length;
+    const parts = [...el.querySelectorAll<HTMLElement>("[data-href]")];
+    const per = view.state.readOnly ? 1 : 2; // reading draws a link as its name; editing as [name] and (url)
+    const marks = el === document.activeElement || !parts.length ? [el] : parts.slice(nth * per, nth * per + per);
+    (marks[0] ?? el).scrollIntoView({ block: "center" });
+    for (const m of marks) {
+      m.classList.remove("rl-flash");
+      void m.offsetWidth; // restart the animation on a second click
+      m.classList.add("rl-flash");
+      setTimeout(() => m.classList.remove("rl-flash"), 1600); // the animation's length
+    }
+  });
+}
+
 function wire(wrap: HTMLElement, view: EditorView) {
   const tableNow = () => tableAt(view.state, view.posAtDOM(wrap));
   const rowsShown = () => (raws.get(wrap) ?? []).map((_, r) => r).filter((r) => r !== 1);
 
+  // Cmd/Ctrl-click opens the link under the pointer, as in the rest of the doc (a cell being edited shows raw text)
+  wrap.addEventListener("mousedown", (e) => {
+    const el = cellOf(e.target);
+    if (!el || e.button !== 0 || !(e.metaKey || e.ctrlKey)) return;
+    let href = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-href]")?.dataset.href : undefined;
+    if (!href && el === document.activeElement) {
+      // caretRangeFromPoint: Safari before 18.4
+      const p = document.caretPositionFromPoint?.(e.clientX, e.clientY);
+      const r = p ? null : document.caretRangeFromPoint?.(e.clientX, e.clientY);
+      const node = p?.offsetNode ?? r?.startContainer, offset = p?.offset ?? r?.startOffset ?? 0;
+      if (node && el.contains(node)) href = linkAt(el.textContent ?? "", offset) ?? undefined;
+    }
+    if (!href || !/^(https?:|mailto:)/i.test(href)) return;
+    e.preventDefault(); // no caret, no focus change
+    window.open(href, "_blank", "noopener");
+  });
   wrap.addEventListener("focusin", (e) => {
     const el = cellOf(e.target);
     if (!el) return;

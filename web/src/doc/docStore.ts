@@ -11,7 +11,7 @@ import { inCode } from "./commentMarks.ts";
 import { flash } from "./flash.ts";
 import { selectIcon, type Heading } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
-import { cellSelection } from "./tables.ts";
+import { cellSelection, flashInTable, selectInTable } from "./tables.ts";
 
 type Tab = "comments" | "history" | "outline";
 type DocState = {
@@ -212,15 +212,19 @@ export function toggleReading() {
 // The doc's markdown without the comment markup, as a copy from the editor gives it.
 export const copyContents = () => state.session && navigator.clipboard.writeText(plain(state.session.doc.text).text);
 
+// Select [from, to] and bring it into view. Text inside a table is selected in its cell: the editor's own selection
+// can't point into the table widget (it landed beside the table, and nothing showed).
 export function jump(from: number, to: number) {
-  view?.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
-  view?.focus();
+  if (!view || selectInTable(view, from, to)) return;
+  view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
+  view.focus();
 }
 
 // An outline link: brought to the middle of the view and flashed, without moving the caret or selecting it (a
-// selection would bring up the "Add a comment" pill).
+// selection would bring up the "Add a comment" pill). A link in a table is shown in its cell: the editor can neither
+// scroll into nor decorate inside the table widget.
 export function showLink(from: number, to: number) {
-  if (!view) return;
+  if (!view || flashInTable(view, from, to)) return;
   view.dispatch({ effects: EditorView.scrollIntoView(from, { y: "center" }) });
   flash(view, from, to);
 }

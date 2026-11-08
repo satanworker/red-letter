@@ -15,11 +15,12 @@ export function IconPicker(props: { icon: string }) {
     setOpen(false);
   };
   return (
-    // h-0: floats in the editor's top padding, over the title, without moving the text
-    <div class="relative z-[4] mx-auto h-0 max-w-[780px] px-8">
+    // h-0: floats in the editor's top padding, over the title, without moving the text. Width and padding are
+    // .cm-content's (684px, 30px + the line's 2px), so the label starts where the title's first letter does.
+    <div class="relative z-[4] mx-auto h-0 max-w-[684px] px-8">
       <div class="relative inline-block pt-12" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
         <button
-          class={`${ghostBtn} h-6 ${open() ? "" : "opacity-0 group-hover/doc:opacity-100 focus-visible:opacity-100"}`}
+          class={`${ghostBtn} -ml-1 h-6 ${open() ? "" : "opacity-0 group-hover/doc:opacity-100 focus-visible:opacity-100"}`}
           aria-expanded={open()}
           onClick={() => setOpen((v) => !v)}
         >

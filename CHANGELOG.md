@@ -5,6 +5,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 ## 2026-11-08: Slimmer header
 
 - **Repo name in the sidebar**: `owner/name` moved from the header to the file sidebar's top row (next to your avatar, linking to the branch); the header drops the file path, which the tab already shows. The branch pill only switches branches; "New draft" moved to the page menu.
+- **"Add icon" lines up with the title**: its label starts where the H1's first letter does, not 48 px to its left.
 
 ## 2026-11-08: Comments on protected branches
 

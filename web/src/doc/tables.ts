@@ -6,10 +6,9 @@
 // rewrite every row of the table.
 import { syntaxTree } from "@codemirror/language";
 import { StateEffect, StateField, type EditorState } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, WidgetType, runScopeHandlers, type ViewUpdate } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType, runScopeHandlers } from "@codemirror/view";
 import { plain } from "../comments/inline.ts";
 import { blockField } from "./blocks.ts";
-import { scrollParent } from "./keepPlace.ts";
 
 type Cell = { from: number; to: number; end: number }; // trimmed text (from === to: empty); end: the next pipe
 type Row = { from: number; to: number; cells: Cell[] };
@@ -86,6 +85,13 @@ const raws = new WeakMap<HTMLElement, string[][]>(); // the table element -> cur
 // The cell being edited and its table's start. When a redraw removes that cell, Chrome drops the focus to
 // nowhere (lostAt); the redrawn table takes it back if that happened just now. Focus moved by the user clears it.
 let editing: { from: number; r: number; c: number; lostAt: number } | null = null;
+// How far each table's header row travels down it while the table scrolls by (tableTheme's scroll timeline). Set when
+// a table resizes, never on scroll. Made with the first table: the check scripts load this module without a DOM.
+let travel: ResizeObserver | undefined;
+const measureTravel = (entries: ResizeObserverEntry[]) => {
+  for (const { target: t } of entries)
+    if (t instanceof HTMLTableElement) t.parentElement?.style.setProperty("--travel", `${t.offsetHeight - (t.tHead?.offsetHeight ?? 0)}px`);
+};
 
 class TableWidget extends WidgetType {
   readonly cells: string[][]; // raw text per source row (delimiter row included), without comment markers
@@ -111,6 +117,9 @@ class TableWidget extends WidgetType {
   }
   eq(o: TableWidget) {
     return o.src === this.src && o.readOnly === this.readOnly;
+  }
+  destroy(dom: HTMLElement) {
+    if (dom.firstElementChild) travel?.unobserve(dom.firstElementChild);
   }
   // Same rows and columns: patch the cells in place, so the cell being typed in keeps its caret.
   updateDOM(dom: HTMLElement, view: EditorView) {
@@ -159,6 +168,7 @@ class TableWidget extends WidgetType {
     });
     raws.set(wrap, this.cells);
     wire(wrap, view);
+    (travel ??= new ResizeObserver(measureTravel)).observe(table);
     const f = refocus;
     refocus = null;
     requestAnimationFrame(() => {
@@ -502,46 +512,6 @@ export const tableField = blockField(
   (tr) => tr.state.readOnly !== tr.startState.readOnly,
 );
 
-// The header row stays at the top of the doc's view while its table scrolls under it. CSS sticky can't: the wrap
-// scrolls sideways, which makes it the header's scroll container on both axes, so `top` would stick inside the wrap
-// (per-axis scroll containers, `overflow: auto clip`, are only in Chrome 154+). So on each scroll the header cells
-// move down by how far the table's top has gone above the view, stopping at its last row, read and written in
-// CodeMirror's measure cycle. The first column sticks with CSS: sideways, the wrap is the right container.
-export const tableHeads = ViewPlugin.fromClass(
-  class {
-    scroller: HTMLElement | null;
-    measure = () =>
-      this.view.requestMeasure({
-        key: this,
-        read: (v) => {
-          const top = this.scroller?.getBoundingClientRect().top ?? 0;
-          return [...v.contentDOM.querySelectorAll<HTMLTableElement>(".cm-lp-table")].map((t) => {
-            const b = t.getBoundingClientRect();
-            return { t, y: Math.round(Math.max(0, Math.min(top - b.top, b.height - (t.tHead?.offsetHeight ?? 0)))) };
-          });
-        },
-        write: (tables) => {
-          for (const { t, y } of tables) {
-            const v = y ? `${y}px` : "";
-            if (t.style.getPropertyValue("--head-y") === v) continue;
-            t.style.setProperty("--head-y", v);
-            t.classList.toggle("cm-lp-stuck", y > 0);
-          }
-        },
-      });
-    constructor(readonly view: EditorView) {
-      this.scroller = scrollParent(view);
-      this.scroller?.addEventListener("scroll", this.measure, { passive: true });
-    }
-    update(u: ViewUpdate) {
-      if (u.docChanged || u.viewportChanged || u.geometryChanged) this.measure();
-    }
-    destroy() {
-      this.scroller?.removeEventListener("scroll", this.measure);
-    }
-  },
-);
-
 export const tableTheme = EditorView.theme({
   // a wide table wraps its cells, then scrolls
   // padding, not margin: CodeMirror can't see a block widget's margins, and clicks below it would land too low
@@ -558,15 +528,30 @@ export const tableTheme = EditorView.theme({
   },
   ".cm-lp-table th": {
     background: "linear-gradient(var(--fg), var(--fg)) top / 100% .5px no-repeat, linear-gradient(var(--fg), var(--fg)) bottom / 100% .5px no-repeat",
+    backgroundColor: "var(--bg)", position: "relative", zIndex: "2",
   },
   ".cm-lp-table :is(th, td):last-child": { paddingRight: "0" },
-  // pinned while the table scrolls: the first column sideways (CSS), the header row down the doc (tableHeads); opaque
-  // only then, so a selection drawn behind the table still shows through. No :is() here: the theme scopes each
-  // selector inside it too, which outweighed the corner's z-index.
+  // Pinned while the table scrolls: the first column sideways, the header row down the doc. No :is() here: the theme
+  // splits selectors at commas, inside :is() too.
   ".cm-lp-table th:first-child, .cm-lp-table td:first-child": { position: "sticky", left: "0", zIndex: "1" },
-  ".cm-lp-scrolled th:first-child, .cm-lp-scrolled td:first-child": { backgroundColor: "var(--bg)" },
-  ".cm-lp-stuck th": { position: "relative", zIndex: "2", transform: "translateY(var(--head-y))", backgroundColor: "var(--bg)" },
-  ".cm-lp-stuck th:first-child": { zIndex: "3" },
+  ".cm-lp-table th:first-child": { zIndex: "3" },
+  ".cm-lp-scrolled td:first-child": { backgroundColor: "var(--bg)" }, // opaque only then: a selection behind shows
+  // The header row can't be CSS sticky: the wrap scrolls sideways, which makes it the header's scroll container on
+  // both axes, so `top` sticks inside the wrap (per-axis scroll containers, `overflow: auto clip`, are Chrome 154+). A
+  // script moving it on each scroll trailed the scroll by a frame or more. Instead the header rides a scroll timeline:
+  // the wrap's view timeline in the doc's scroller, over the stretch where the table's top has passed the view's top
+  // and its last row hasn't (exit-crossing, offset by the wrap's 20px padding), slides it down by that stretch
+  // (--travel: the table's height less the header's, set when the table resizes). The browser runs it with the
+  // scroll, off the main thread. Firefox (no scroll timelines yet) keeps a header that scrolls away.
+  "@keyframes rl-table-head": { from: { transform: "none" }, to: { transform: "translateY(var(--travel))" } },
+  "@supports (animation-timeline: view())": {
+    ".cm-lp-tablewrap": { viewTimeline: "--rl-table block" },
+    ".cm-lp-table th": {
+      animation: "rl-table-head linear both",
+      animationTimeline: "--rl-table",
+      animationRange: "exit-crossing 20px exit-crossing calc(20px + var(--travel, 0px))",
+    },
+  },
   ".cm-lp-table th:focus, .cm-lp-table td:focus": { boxShadow: "inset 0 0 0 2px rgba(35,131,226,.6)", whiteSpace: "pre-wrap" },
   ".cm-lp-table code": { font: "inherit", color: "inherit", background: "var(--code-bg)", borderRadius: "4px", padding: "0 2px" },
   ".cm-lp-menu": {

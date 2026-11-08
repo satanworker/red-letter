@@ -15,7 +15,7 @@ import { codeHighlight } from "./highlight.ts";
 import { imageField } from "./images.ts";
 import { mermaidField, mermaidTheme } from "./mermaid.ts";
 import { slashCommands } from "./slash.ts";
-import { cellComments, tableField, tableHeads, tableTheme } from "./tables.ts";
+import { cellComments, tableField, tableTheme } from "./tables.ts";
 
 export const readingMode = Facet.define<boolean, boolean>({ combine: (v) => v.some(Boolean) });
 
@@ -23,7 +23,11 @@ const theme = EditorView.theme({
   "&": { color: "var(--fg)", backgroundColor: "var(--bg)", fontSize: "12px" },
   "&.cm-focused": { outline: "none" },
   // Figma 140:2782 "Basic Text": 12px on 16px lines
-  ".cm-scroller": { fontFamily: "var(--sans)", lineHeight: "16px" },
+  // Not a scroll container (CodeMirror's default is overflow-x: auto; lines wrap, so it never needed to scroll): one
+  // would capture the tables' scroll timelines (tableTheme), which must see the doc's scroller. min-width 0 lets the
+  // content shrink to a column narrower than 684px; it kept 684px and the old scroller scrolled it sideways.
+  ".cm-scroller": { fontFamily: "var(--sans)", lineHeight: "16px", overflowX: "visible" },
+  ".cm-scroller > .cm-content": { minWidth: "0" },
   // a centred 620px text column (30px padding each side, plus the lines' 2px for the caret), 80px down (Figma
   // 142:2967); heading marks hang into the side margin
   ".cm-content": { boxSizing: "border-box", maxWidth: "684px", margin: "0 auto", padding: "80px 30px 30vh", caretColor: "var(--blue)" },
@@ -415,7 +419,6 @@ export function editorExtensions(): Extension[] {
     preview,
     tableField,
     tableTheme,
-    tableHeads,
     cellComments,
     mermaidField,
     imageField,

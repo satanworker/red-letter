@@ -10,6 +10,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **Thin grey scrollbars** everywhere: a rounded Shadows-grey thumb on a clear track, like macOS, in Chrome, Edge, Safari and Firefox.
 - **The outline shows the doc's `#` title** as its first row, with the other headings indented under it, as in Ulysses (it was left out).
 - **Outline rows show their full words on hover**, for headings and links cut short with "…" (a link's url under its text).
+- **Outline is the side panel's first tab**, before Comments and History (Left/Right follow the new order).
 
 ## 2026-11-08: Outline tab
 

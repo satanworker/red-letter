@@ -74,7 +74,7 @@ export function EditorScreen() {
   const tabKeys = (e: KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
-    const order = ["comments", "history", "outline"] as const;
+    const order = ["outline", "comments", "history"] as const;
     showTab(order[(order.indexOf(tab()) + (e.key === "ArrowRight" ? 1 : 2)) % 3]!);
     (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
   };
@@ -83,6 +83,19 @@ export function EditorScreen() {
     `inline-flex h-7 cursor-pointer items-center gap-1 rounded-[14px] text-fg shadow-figma ${on ? "bg-card px-4" : `border-[.4px] border-line bg-side ${pad}`}`;
   const tabs = () => (
     <div role="tablist" aria-label="Side panel" class="flex gap-2" onKeyDown={tabKeys}>
+      <button
+        role="tab"
+        id="tab-outline"
+        aria-selected={tab() === "outline"}
+        aria-controls="panel"
+        tabindex={tab() === "outline" ? 0 : -1}
+        title="Outline"
+        class={tabClass(tab() === "outline", "px-3")}
+        onClick={() => showTab("outline")}
+      >
+        <OutlineIcon />
+        <Show when={tab() === "outline"}>Outline</Show>
+      </button>
       <button
         role="tab"
         id="tab-comments"
@@ -114,19 +127,6 @@ export function EditorScreen() {
         <Show when={marks().length}>
           <i class={count}>{marks().length}</i>
         </Show>
-      </button>
-      <button
-        role="tab"
-        id="tab-outline"
-        aria-selected={tab() === "outline"}
-        aria-controls="panel"
-        tabindex={tab() === "outline" ? 0 : -1}
-        title="Outline"
-        class={tabClass(tab() === "outline", "px-3")}
-        onClick={() => showTab("outline")}
-      >
-        <OutlineIcon />
-        <Show when={tab() === "outline"}>Outline</Show>
       </button>
     </div>
   );

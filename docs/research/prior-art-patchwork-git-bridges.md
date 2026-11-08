@@ -16,9 +16,9 @@
 
 ## 2. automerge-repo and “git bridges”
 
-**automerge-repo** ([github.com/automerge/automerge-repo](https://github.com/automerge/automerge-repo), [blog](https://automerge.org/blog/automerge-repo/)): multi-doc wrapper with pluggable `IndexedDB` / `NodeFSStorageAdapter` and WebSocket/BroadcastChannel adapters. Stable npm around **2.5.x**; GitHub also has **2.6.0-alpha** and **3.0.0-experimental** (version listings conflict — treat as observed-with-noise). **CRDT-as-truth.** Not a git remote.
-
-**No git-remote-automerge / git remote helper** turned up in web or X search. X: I&S talk is Keyhive/Beelay/Patchwork, not git remotes.
+**automerge-repo** ([github.com/automerge/automerge-repo](https://github.com/automerge/automerge-repo), [blog](https://automerge.org/blog/automerge-repo/)): multi-doc wrapper with pluggable `IndexedDB` / `NodeFSStorageAdapter` and WebSocket/BroadcastChannel adapters. Stable npm around **2.5.x**; GitHub also has **2.6.0-alpha** and **3.0.0-experimental** (version listings conflict — treat as observed-with-no<!--rl:mtelfx-->ise). **CRDT-as-truth.** Not a git remote.
+<!--rl:2dx9xm--><!--/rl:mtelfx-->
+**No git-remote-automerge / git remote helper** turned up in web or X search. X: I&S talk is Keyhive/Beelay/Patchwork, not git remotes.<!--/rl:2dx9xm-->
 
 **pushwork** ([inkandswitch/pushwork](https://github.com/inkandswitch/pushwork)) — closest I&S FS bridge. **CRDT-as-truth; disk is a materialization.** Per-file Automerge docs under a root folder doc (`automerge:` URL); `sync` diffs working tree → file docs, Automerge-merges peers, writes back to disk. Ignores `.git`. Shapes: `vfs` and `patchwork-folder`. Text = character CRDT; binary = LWW. `yeet`/`yoink` push/pull one file doc. Artifacts skip char-diff (contentHash + new doc). **Gotcha:** large splices are expensive; don’t clear a deleted file with a giant splice.
 
@@ -48,3 +48,10 @@ This is the product’s webhook path (old blob vs new blob → CRDT ops).
 ## Recommendation
 
 Do not copy Patchwork’s data model: Automerge *is* history there, git is not in the loop, and their “branches” are Automerge clones with a deliberately non-git topology. Use git branches as git branches. Closest production lesson is Jupyter: **plain files on git are canonical; CRDT is an ephemeral working copy per (path, branch); OOB git pushes are applied as a text/cell diff into the live Y/Automerge doc, never as a document replace.** Implement that with `Automerge.updateText` (or `fast-diff` → Y.Text delta) on the webhook, keep comments in a side store keyed by CRDT positions, and treat pushwork only as evidence that I&S already diff disk→CRDT (but with inverted truth). Skip Keyhive/Beelay until you need E2EE.
+
+<!--rl:2dx9xm
+@satanworker 2026-11-08T09:45Z: Comment 1
+-->
+<!--rl:mtelfx
+@satanworker 2026-11-08T09:46Z: jfhgkfhgkjfhg
+-->

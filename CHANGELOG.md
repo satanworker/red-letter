@@ -12,6 +12,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **Outline rows show their full words on hover**, for headings and links cut short with "…" (a link's url under its text).
 - **The logo is an SVG**: the Grandstander font no longer loads just to draw "Red Letter".
 - **Outline is the side panel's first tab**, before Comments and History (Left/Right follow the new order).
+- **The site ships Solid's production build**: Bun picked Solid's development build (devtools graph, dev warnings) for the live site because `NODE_ENV` wasn't set; `build.ts` now sets it.
 
 ## 2026-11-08: Outline tab
 

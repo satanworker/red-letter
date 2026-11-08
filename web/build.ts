@@ -30,7 +30,13 @@ export async function build(out = `${import.meta.dir}/dist`) {
     sourcemap: "none",
     naming,
     publicPath: "/assets/",
-    define: { MERMAID_WORKER: JSON.stringify(`/assets/${worker.outputs[0]!.path.split("/").pop()}`) },
+    define: {
+      MERMAID_WORKER: JSON.stringify(`/assets/${worker.outputs[0]!.path.split("/").pop()}`),
+      // Bun resolves the "development" export condition unless NODE_ENV is production, so the site shipped Solid's dev
+      // build (devtools graph, dev warnings, extra checks on every signal write). This picks solid.js and strips other
+      // packages' dev branches.
+      "process.env.NODE_ENV": JSON.stringify("production"),
+    },
     plugins: [
       { name: "automerge-slim", setup: (b) => b.onResolve({ filter: /^@automerge\/automerge(-repo)?$/ }, (a) => ({ path: slim[a.path] })) },
       SolidPlugin({ generate: "dom", hydratable: false, sourceMaps: false }),

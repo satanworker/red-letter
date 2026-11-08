@@ -6,9 +6,9 @@
 // and lists and tasks are drawn. Rules are drawn in both. Images and mermaid diagrams render under their source
 // (images.ts, mermaid.ts); tables are the one exception, a widget in place of the source (tables.ts).
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { syntaxTree } from "@codemirror/language";
-import { EditorSelection, Facet, type Extension, type Range } from "@codemirror/state";
+import { markdownKeymap, markdownLanguage, pasteURLAsLink } from "@codemirror/lang-markdown";
+import { LanguageSupport, syntaxTree } from "@codemirror/language";
+import { EditorSelection, Facet, Prec, type Extension, type Range } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, dropCursor, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
 import { codeHighlight } from "./highlight.ts";
@@ -389,7 +389,10 @@ export function editorExtensions(): Extension[] {
     dropCursor(),
     keymap.of([{ key: "Shift-Enter", run: lineInItem }, { key: "Mod-b", run: emphasis(2) }, { key: "Mod-i", run: emphasis(1) }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
     slashCommands,
-    markdown({ base: markdownLanguage }),
+    // lang-markdown's markdown() minus what this editor never uses: it wraps the parser to parse HTML inside the doc
+    // (comment markup included) as HTML, which walked the whole tree again on every keystroke, and adds HTML tag
+    // completion and heading folding. Kept: list-continuing Enter / Backspace and pasting a URL over a selection.
+    new LanguageSupport(markdownLanguage, [Prec.high(keymap.of(markdownKeymap)), pasteURLAsLink]),
     EditorView.lineWrapping,
     theme,
     preview,

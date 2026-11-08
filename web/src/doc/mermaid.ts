@@ -1,28 +1,46 @@
-// ```mermaid blocks render as diagrams. Renderer: beautiful-mermaid (ELK layout, no DOM), loaded on first use:
-// 470 KB gzipped, 20-70 ms a diagram, against mermaid.js's ~1.5 MB and a DOM render. (@vercel/beautiful-mermaid,
-// 45 KB and ~5 ms, was tried first: it kept the quotes of `A["label"]`, ignored `<br/>` and drew back edges
-// outside the picture.) The source always shows, like any code block; the diagram renders under it and follows
-// edits live.
-import { syntaxTree } from "@codemirror/language";
-import { StateField, type EditorState, type Range } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
-import type * as Mermaid from "beautiful-mermaid";
+// ```mermaid blocks render as diagrams. Renderer: beautiful-mermaid (ELK layout, no DOM), in a worker loaded on first
+// use (mermaid.worker.ts): 470 KB gzipped, 20-70 ms a diagram, against mermaid.js's ~1.5 MB and a DOM render.
+// (@vercel/beautiful-mermaid, 45 KB and ~5 ms, was tried first: it kept the quotes of `A["label"]`, ignored `<br/>`
+// and drew back edges outside the picture.) The source always shows, like any code block; the diagram renders under
+// it and follows edits live.
+import { Decoration, EditorView, WidgetType } from "@codemirror/view";
+import { blockField } from "./blocks.ts";
+import type { Reply, Request } from "./mermaid.worker.ts";
 
-let lib: Promise<typeof Mermaid> | undefined;
+declare const MERMAID_WORKER: string; // the worker's URL, injected by build.ts
+let worker: Worker | undefined;
+let nextId = 0;
+const waiting = new Map<number, PromiseWithResolvers<string>>();
 // Every colour in the SVG derives from --bg/--fg. As an <img> it can't see the page's variables, but it does
 // follow the system colour scheme in its own media query.
 const light = { bg: "#ffffff", fg: "#37352f" };
 const dark = `<style>@media (prefers-color-scheme: dark) { svg { --bg: #191919 !important; --fg: #d4d4d4 !important } }</style>`;
-const cache = new Map<string, Promise<string>>(); // source -> SVG, so redrawing the editor doesn't re-render
+// source -> SVG, so redrawing the editor doesn't re-render (a diagram scrolled back to shows at its size at once)
+// ponytail: 200 SVGs of ~20 KB at most; key by doc if docs ever hold more diagrams than that
+const cache = new Map<string, Promise<string>>();
+
+function render(src: string): Promise<string> {
+  if (!worker) {
+    worker = new Worker(MERMAID_WORKER, { type: "module" });
+    worker.onmessage = (e: MessageEvent<Reply>) => {
+      const r = e.data, w = waiting.get(r.id)!;
+      waiting.delete(r.id);
+      if ("svg" in r) w.resolve(r.svg);
+      else w.reject(new Error(r.error));
+    };
+  }
+  const id = nextId++, w = Promise.withResolvers<string>();
+  waiting.set(id, w);
+  worker.postMessage({ id, src, options: { ...light, transparent: true, padding: 16 } } satisfies Request);
+  return w.promise;
+}
 
 function svgOf(src: string) {
   let svg = cache.get(src);
   if (!svg) {
-    svg = (lib ??= import("beautiful-mermaid"))
-      .then((m) => m.renderMermaidSVG(src, { ...light, transparent: true, padding: 16 }))
-      .then((s) => s.replace(/(<svg[^>]*>)/, `$1${dark}`));
+    svg = render(src).then((s) => s.replace(/(<svg[^>]*>)/, `$1${dark}`));
     cache.set(src, svg);
-    if (cache.size > 50) cache.delete(cache.keys().next().value!);
+    if (cache.size > 200) cache.delete(cache.keys().next().value!);
   }
   return svg;
 }
@@ -76,31 +94,18 @@ class MermaidWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-function diagrams(state: EditorState): DecorationSet {
+// Block widgets can't come from a view plugin, so diagrams live in a state field (blocks.ts: a change rescans only
+// the blocks it touched). Only top-level fences: ones inside lists/quotes stay code.
+export const mermaidField = blockField((state, n, out) => {
   const doc = state.doc;
-  const out: Range<Decoration>[] = [];
-  syntaxTree(state).iterate({
-    enter: (n) => {
-      if (n.name === "Document") return;
-      if (n.name !== "FencedCode") return false;
-      const info = n.node.getChild("CodeInfo");
-      const close = n.node.lastChild;
-      if (!info || doc.sliceString(info.from, info.to).trim().toLowerCase() !== "mermaid") return false;
-      const first = doc.lineAt(n.from), last = doc.lineAt(n.to);
-      if (close?.name !== "CodeMark" || doc.lineAt(close.from).number === first.number) return false; // still being typed
-      const src = doc.sliceString(first.to + 1, last.from - 1);
-      out.push(Decoration.widget({ widget: new MermaidWidget(src), block: true, side: 1 }).range(last.to));
-      return false;
-    },
-  });
-  return Decoration.set(out);
-}
-
-// Block widgets can't come from a view plugin. Walks only top-level blocks: fences inside lists/quotes stay code.
-export const mermaidField = StateField.define<DecorationSet>({
-  create: diagrams,
-  update: (deco, tr) => (tr.docChanged || syntaxTree(tr.state) !== syntaxTree(tr.startState) ? diagrams(tr.state) : deco),
-  provide: (f) => EditorView.decorations.from(f),
+  if (n.name !== "FencedCode") return;
+  const info = n.getChild("CodeInfo");
+  const close = n.lastChild;
+  if (!info || doc.sliceString(info.from, info.to).trim().toLowerCase() !== "mermaid") return;
+  const first = doc.lineAt(n.from), last = doc.lineAt(n.to);
+  if (close?.name !== "CodeMark" || doc.lineAt(close.from).number === first.number) return; // still being typed
+  const src = doc.sliceString(first.to + 1, last.from - 1);
+  out.push(Decoration.widget({ widget: new MermaidWidget(src), block: true, side: 1 }).range(last.to));
 });
 
 export const mermaidTheme = EditorView.theme({

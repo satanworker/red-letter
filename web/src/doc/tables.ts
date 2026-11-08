@@ -5,9 +5,10 @@
 // Editing a cell rewrites only that cell's text in the file (agents' diffs stay one cell wide); column changes
 // rewrite every row of the table.
 import { syntaxTree } from "@codemirror/language";
-import { StateEffect, StateField, type EditorState, type Range } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, WidgetType, runScopeHandlers, type DecorationSet } from "@codemirror/view";
+import { StateEffect, StateField, type EditorState } from "@codemirror/state";
+import { Decoration, EditorView, ViewPlugin, WidgetType, runScopeHandlers } from "@codemirror/view";
 import { plain } from "../comments/inline.ts";
+import { blockField } from "./blocks.ts";
 
 type Cell = { from: number; to: number; end: number }; // trimmed text (from === to: empty); end: the next pipe
 type Row = { from: number; to: number; cells: Cell[] };
@@ -399,29 +400,19 @@ function menu(view: EditorView, t: Table, r: number, c: number, x: number, y: nu
   addEventListener("keydown", onKey, true);
 }
 
-function tables(state: EditorState): DecorationSet {
-  const doc = state.doc;
-  const out: Range<Decoration>[] = [];
-  syntaxTree(state).iterate({
-    enter: (n) => {
+// Block widgets can't come from a view plugin, so tables live in a state field (blocks.ts: a change rescans only the
+// blocks it touched). Tables sit at the top level or inside lists and quotes.
+export const tableField = blockField(
+  (state, block, out) =>
+    block.cursor().iterate((n) => {
       if (n.name === "Paragraph" || n.name === "FencedCode" || n.name.includes("Heading")) return false; // no tables inside
       if (n.name !== "Table") return;
-      const first = doc.lineAt(n.from), last = doc.lineAt(n.to);
-      out.push(Decoration.replace({ widget: new TableWidget(doc.sliceString(first.from, last.to), state.readOnly), block: true }).range(first.from, last.to));
+      const first = state.doc.lineAt(n.from), last = state.doc.lineAt(n.to);
+      out.push(Decoration.replace({ widget: new TableWidget(state.doc.sliceString(first.from, last.to), state.readOnly), block: true }).range(first.from, last.to));
       return false;
-    },
-  });
-  return Decoration.set(out, true);
-}
-
-// Block widgets can't come from a view plugin, so tables live in a state field.
-// ponytail: rebuilt on every doc change by walking the block tree; fine for docs of a few thousand lines.
-export const tableField = StateField.define<DecorationSet>({
-  create: tables,
-  update: (deco, tr) =>
-    tr.docChanged || syntaxTree(tr.state) !== syntaxTree(tr.startState) || tr.state.readOnly !== tr.startState.readOnly ? tables(tr.state) : deco,
-  provide: (f) => EditorView.decorations.from(f),
-});
+    }),
+  (tr) => tr.state.readOnly !== tr.startState.readOnly,
+);
 
 export const tableTheme = EditorView.theme({
   // a wide table wraps its cells, then scrolls

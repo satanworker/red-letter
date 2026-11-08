@@ -2,6 +2,13 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-08: Performance on huge docs
+
+- **Stress benchmark** (`cd web && bun bench/stress.ts`): `/__stress` generates one doc with every kind of block (headings, lists, tasks, quotes, code in six languages, tables, images, diagrams, comment threads), and the bench types, scrolls and jumps through it in a headless Chromium, against the same machine's native floor (a `<textarea>`, the text as a static page). Exits 1 when a budget is missed.
+- **Typing no longer slows down with the doc**: on a 17k-line doc a keystroke went from ~300 ms of work (keys queued up for seconds) to ~31 ms p95 next to the textarea's ~21 ms; on a 1k-line doc from 48 to 26 ms. Tables, images and diagrams rescan only the blocks an edit touched, comment markup and headings follow edits instead of re-reading the whole text, the word count is kept per chunk of text, and the panel, table of contents and sidebar stop redrawing rows whose content didn't change.
+- **Diagrams render in a worker**: a screen of new mermaid diagrams no longer stalls scrolling and typing for a quarter of a second.
+- **Scrolling and jumps**: the table of contents reads the section in view in the editor's layout pass and draws only the rail's visible bars; comment cards outside the panel's view skip layout and paint.
+
 ## 2026-11-08: Avatars
 
 - **Avatars no longer go missing at random** (sidebar one load, topbar the next): they load from GitHub's avatar CDN by login instead of `github.com/<login>.png`, a redirect that intermittently answers 504.

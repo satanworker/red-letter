@@ -16,11 +16,25 @@ type Submit = SubmitEvent & { currentTarget: HTMLFormElement };
 const quote = "line-clamp-3 border-l-2 border-on pl-2 text-left whitespace-pre-wrap text-muted";
 
 export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Thread[]> }) {
-  const byId = createMemo(() => new Map(props.threads().map((t) => [t.id, t])));
+  // Each keystroke above a thread moves its range, so every Thread is new; a card only needs the rest. Keeping the
+  // last frame's object for a thread whose card would look the same leaves its card untouched.
+  const byId = createMemo<Map<string, Thread>>((prev) => {
+    const next = new Map<string, Thread>();
+    for (const t of props.threads()) {
+      const p = prev.get(t.id);
+      const same = p && p.quote === t.quote && p.messages === t.messages && p.resolved === t.resolved && !p.range === !t.range && (p.range?.from === p.range?.to) === (t.range?.from === t.range?.to);
+      next.set(t.id, same ? p : t);
+    }
+    return next;
+  }, new Map());
   const ids = (resolved: boolean) => props.threads().filter((t) => t.resolved === resolved).map((t) => t.id);
   const open = createMemo(() => ids(false));
   const resolved = createMemo(() => ids(true));
-  const cards = (list: Accessor<string[]>) => <For each={list()}>{(id) => <Show when={byId().get(id)}>{(t) => <ThreadCard thread={t} canComment={props.canComment} />}</Show>}</For>;
+  // selecting goes to the thread's range now, which a kept card object may hold an older copy of
+  const select = (id: string) => selectThread(props.threads().find((t) => t.id === id)!);
+  const cards = (list: Accessor<string[]>) => (
+    <For each={list()}>{(id) => <Show when={byId().get(id)}>{(t) => <ThreadCard thread={t} canComment={props.canComment} select={() => select(id)} />}</Show>}</For>
+  );
   return (
     <>
       <Show when={!open().length}>
@@ -83,7 +97,7 @@ const Message = (props: { m: Msg }) => (
   </div>
 );
 
-function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean }) {
+function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; select: () => void }) {
   const t = props.thread;
   const removed = () => !t().range || t().range!.from === t().range!.to;
   const [replying, setReplying] = createSignal(false);
@@ -99,15 +113,17 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean }) {
   };
   return (
     <div
-      class={`${card} cursor-pointer gap-6 ${t().id === doc.activeThread ? "shadow-[0_0_0_2px_rgba(223,171,1,.55),var(--shadow)]" : ""}`}
+      // content-visibility: a card outside the panel's view skips layout and paint (a long doc has hundreds; drawing
+      // them all cost the doc's scrolling 25 ms of paint bookkeeping a jump)
+      class={`${card} cursor-pointer gap-6 [contain-intrinsic-size:auto_160px] [content-visibility:auto] ${t().id === doc.activeThread ? "shadow-[0_0_0_2px_rgba(223,171,1,.55),var(--shadow)]" : ""}`}
       onClick={(e) => {
-        if (!(e.target instanceof Element && e.target.closest("form, button"))) selectThread(t());
+        if (!(e.target instanceof Element && e.target.closest("form, button"))) props.select();
       }}
       onMouseEnter={() => t().resolved && hoverThread(t().id)}
       onMouseLeave={() => hoverThread("")}
     >
       <div>
-        <button type="button" class={`${quote} cursor-pointer`} title="Go to the text" onClick={() => selectThread(t())}>
+        <button type="button" class={`${quote} cursor-pointer`} title="Go to the text" onClick={() => props.select()}>
           {t().quote.slice(0, 120)}
         </button>
         <Show when={removed()}>

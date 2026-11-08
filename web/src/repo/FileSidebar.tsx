@@ -3,7 +3,7 @@
 // Keyboard: Tab reaches the rows, Up/Down move between visible rows, Enter opens a file or toggles a folder.
 import { For, Show, createEffect, createMemo, createSignal, onMount, untrack } from "solid-js";
 import { selectIcon } from "../doc/docSelectors.ts";
-import { doc } from "../doc/docStore.ts";
+import { doc, editorState } from "../doc/docStore.ts";
 import { ArrowDownIcon, ArrowUpIcon, Avatar, FileIcon, FindIcon, FolderIcon, SearchIcon, field, fine } from "../ui.tsx";
 import { togglePalette } from "../palette/paletteStore.ts";
 import { blobUrl } from "./repoService.ts";
@@ -33,7 +33,8 @@ function DocIcon(props: { path: string }) {
   const icon = createMemo(() => {
     if (doc.session?.path !== props.path) return doc.icons[props.path] ?? "";
     doc.version;
-    return selectIcon(doc.session.doc.text)?.icon ?? "";
+    const text = editorState()?.doc;
+    return text ? (selectIcon(text)?.icon ?? "") : "";
   });
   return (
     <Show when={icon()} fallback={<FileIcon />}>

@@ -3,14 +3,15 @@
 import { automergeSyncPlugin, type DocHandle as PluginHandle } from "@automerge/automerge-codemirror";
 import { Compartment, EditorState, StateEffect, StateField, Transaction, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip, type TooltipView } from "@codemirror/view";
-import { Show, createEffect, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js";
 import { render } from "solid-js/web";
 import { comments } from "../comments/commentsStore.ts";
 import type { Thread } from "../comments/inline.ts";
 import { createMentions } from "../comments/Mentions.tsx";
 import { AtIcon, TipArrow, btn } from "../ui.tsx";
 import { cancelComment, closeThread, doc, docChanged, insertImages, isReading, openThread, setView, startComment, submitComment } from "./docStore.ts";
-import { commentMarks, inCode } from "./commentMarks.ts";
+import { commentMarks, commentParses, inCode } from "./commentMarks.ts";
+import { headingField } from "./headings.ts";
 import { showPanel } from "../repo/repoStore.ts";
 import { imageUrl } from "./images.ts";
 import { editorExtensions, readingMode } from "./livePreview.ts";
@@ -224,6 +225,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
         ...editorExtensions(),
         decoField,
         commentMarks,
+        headingField,
         remoteNotUndoable,
         mode.of(modeOf(isReading())),
         s.canWrite || comments.viaPr ? commentTooltip() : [],
@@ -245,11 +247,23 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
     });
     setView(view);
     createEffect(on(isReading, (r) => view.dispatch({ effects: mode.reconfigure(modeOf(r)) }), { defer: true }));
-    createEffect(() => {
-      doc.version; // the CRDT doc changed
-      if (view.state.doc.length !== s.doc.text.length) return docChanged(); // binding hasn't caught up: next frame
-      view.dispatch({ effects: setDecos.of(decorations(s, view.state.doc.length, props.marks(), props.changes(), props.threads(), doc.activeThread, doc.hoveredThread)) });
+    // What the highlights show, apart from where: as text is typed, decoField maps them along (and the comment markup
+    // they sit between is re-parsed whenever an edit could move it otherwise: commentParses), so a keystroke doesn't
+    // rebuild and diff them all. A draft's changes and a read-only doc (only others' edits reach it) rebuild each time.
+    const shape = createMemo(() => {
+      doc.version; // the CRDT doc changed: re-read the editor's state
+      const synced = view.state.doc.length === s.doc.text.length; // the binding catches up a frame later at times
+      const every = (doc.showChanges || !s.canWrite) && doc.version;
+      const threads = props.threads().map((t) => `${t.id}${t.resolved ? "r" : ""}${t.range ? "" : "-"}`).join();
+      const marks = props.marks().map((m) => `${m.sha}:${m.conflicts.length}`).join();
+      return [synced, commentParses(view.state), threads, marks, every, doc.activeThread, doc.hoveredThread].join("|");
     });
+    createEffect(
+      on([shape, () => comments.text], () => {
+        if (view.state.doc.length !== s.doc.text.length) return docChanged(); // a frame later, `synced` flips
+        view.dispatch({ effects: setDecos.of(decorations(s, view.state.doc.length, props.marks(), props.changes(), props.threads(), doc.activeThread, doc.hoveredThread)) });
+      }),
+    );
     onCleanup(() => {
       setView(undefined);
       view.destroy();

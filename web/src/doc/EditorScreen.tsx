@@ -16,8 +16,9 @@ import { PageMenu } from "./PageMenu.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
 import { Toc } from "./Toc.tsx";
-import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab } from "./docSelectors.ts";
-import { doc, isReading, showFavicon, showTab, toggleChanges, toggleReading, updateDraft } from "./docStore.ts";
+import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab, selectWords } from "./docSelectors.ts";
+import { commentThreads } from "./commentMarks.ts";
+import { doc, editorState, isReading, showFavicon, showTab, toggleChanges, toggleReading, updateDraft } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -26,7 +27,8 @@ export function EditorScreen() {
   const canWrite = () => repo.repo?.permissions?.push === true;
   const threads = createMemo(() => {
     doc.version;
-    return doc.session ? selectThreads(doc.session.doc.text, comments.text) : [];
+    const state = editorState();
+    return doc.session && state ? selectThreads(commentThreads(state), doc.session.doc.text, comments.text) : [];
   });
   const marks = createMemo(() => {
     doc.version;
@@ -43,7 +45,8 @@ export function EditorScreen() {
   });
   const icon = createMemo(() => {
     doc.version;
-    return doc.session ? (selectIcon(doc.session.doc.text)?.icon ?? "") : "";
+    const text = editorState()?.doc;
+    return text ? (selectIcon(text)?.icon ?? "") : "";
   });
   createEffect(() => showFavicon(icon()));
   onCleanup(() => showFavicon(""));
@@ -62,8 +65,8 @@ export function EditorScreen() {
   const people = () => [...new Set(doc.status.people)].filter((p) => p !== repo.user?.login);
   const size = createMemo(() => {
     doc.version; // the CRDT doc changed: local typing, peers, agents
-    const text = doc.session?.doc.text ?? "";
-    return { words: text.match(/\S+/g)?.length ?? 0, chars: text.length };
+    const text = editorState()?.doc;
+    return { words: text ? selectWords(text) : 0, chars: text?.length ?? 0 };
   });
   const [copied, setCopied] = createSignal(false);
   const share = async () => {
@@ -318,8 +321,9 @@ export function EditorScreen() {
               )}
             </Show>
           </div>
+          {/* keyed: a fresh table of contents for each file */}
           <Show when={doc.session} keyed>
-            {(s) => <Toc session={s} />}
+            {(_session) => <Toc />}
           </Show>
         </div>
         {/* no top edge: the header's bottom line is this frame's top too (Figma's centred strokes overlap) */}

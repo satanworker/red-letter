@@ -16,8 +16,8 @@
 export type Message = { author: string; at: string; body: string };
 export type Thread = { id: string; range: { from: number; to: number } | null; quote: string; messages: Message[]; resolved: boolean };
 export type Edit = { from: number; to: number; insert: string };
-type Span = { from: number; to: number };
-type Block = Span & { id: string; resolved: boolean; close: number; messages: Message[] }; // close: start of the "-->" line
+export type Span = { from: number; to: number };
+export type Block = Span & { id: string; resolved: boolean; close: number; messages: Message[] }; // close: start of the "-->" line
 
 const MARKER = /<!--(\/?)rl:([a-z0-9]+)-->/g;
 const BLOCK = /^<!--rl:([a-z0-9]+)( resolved)?\n([\s\S]*?)^-->$\n?/gm;
@@ -42,32 +42,59 @@ function fences(text: string): Span[] {
   return out;
 }
 
-const within = (spans: Span[], i: number) => spans.some((s) => i >= s.from && i < s.to);
+// A test for "inside one of these spans" (sorted, disjoint), asked at positions in increasing order.
+function inside(spans: Span[]): (i: number) => boolean {
+  let at = 0;
+  return (i) => {
+    while (at < spans.length && spans[at]!.to <= i) at++;
+    return at < spans.length && spans[at]!.from <= i;
+  };
+}
 const unescape = (s: string) => s.replaceAll("--&gt;", "-->");
 
-export function parse(text: string): { threads: Thread[]; blocks: Block[]; markers: (Span & { id: string; open: boolean })[] } {
+// Messages by block text, most recently parsed last: a parse hands out the same arrays for unchanged blocks, so a list
+// drawn from them (the comments panel) sees nothing new when typing elsewhere in the doc.
+const seen = new Map<string, Message[]>();
+
+export type Marker = Span & { id: string; open: boolean };
+export type Parsed = { blocks: Block[]; markers: Marker[] };
+
+export function parse(text: string): Parsed & { threads: Thread[] } {
   const code = fences(text);
+  const inCode = inside(code);
   const blocks: Block[] = [];
   for (const m of text.matchAll(BLOCK)) {
-    if (within(code, m.index)) continue;
-    const messages: Message[] = [];
-    for (const line of m[3]!.split("\n")) {
-      const h = HEADER.exec(line);
-      if (h) messages.push({ author: h[1]!, at: h[2] ?? "", body: unescape(h[3]!) });
-      else if (messages.length && line) messages.at(-1)!.body += "\n" + unescape(line.replace(/^ {1,2}/, ""));
+    if (inCode(m.index)) continue;
+    let messages = seen.get(m[3]!);
+    if (messages) seen.delete(m[3]!);
+    else {
+      messages = [];
+      for (const line of m[3]!.split("\n")) {
+        const h = HEADER.exec(line);
+        if (h) messages.push({ author: h[1]!, at: h[2] ?? "", body: unescape(h[3]!) });
+        else if (messages.length && line) messages.at(-1)!.body += "\n" + unescape(line.replace(/^ {1,2}/, ""));
+      }
     }
+    seen.set(m[3]!, messages);
     blocks.push({ id: m[1]!, resolved: !!m[2], from: m.index, to: m.index + m[0].length, close: m.index + m[0].lastIndexOf("-->"), messages });
   }
-  const markers: (Span & { id: string; open: boolean })[] = [];
+  while (seen.size > 5000) seen.delete(seen.keys().next().value!);
+  const markers: Marker[] = [];
+  const inMarkerCode = inside(code), inBlock = inside(blocks);
   for (const m of text.matchAll(MARKER))
-    if (!within(code, m.index) && !within(blocks, m.index)) markers.push({ id: m[2]!, open: !m[1], from: m.index, to: m.index + m[0].length });
-  const threads = blocks.map((b): Thread => {
-    const start = markers.find((k) => k.open && k.id === b.id);
-    const end = markers.find((k) => !k.open && k.id === b.id);
+    if (!inMarkerCode(m.index) && !inBlock(m.index)) markers.push({ id: m[2]!, open: !m[1], from: m.index, to: m.index + m[0].length });
+  return { threads: threadsOf({ blocks, markers }, (from, to) => text.slice(from, to)), blocks, markers };
+}
+
+// Each block's thread, its range between the first opening and closing markers of its id. slice: the doc's text.
+export function threadsOf({ blocks, markers }: Parsed, slice: (from: number, to: number) => string): Thread[] {
+  const opens = new Map<string, Marker>(), closes = new Map<string, Marker>();
+  for (const k of markers) if (!(k.open ? opens : closes).has(k.id)) (k.open ? opens : closes).set(k.id, k);
+  return blocks.map((b): Thread => {
+    const start = opens.get(b.id), end = closes.get(b.id);
     const range = start && end && start.to <= end.from ? { from: start.to, to: end.from } : null;
-    return { id: b.id, range, quote: range ? text.slice(range.from, range.to).replace(MARKER, "") : "", messages: b.messages, resolved: b.resolved };
+    return { id: b.id, range, quote: range ? slice(range.from, range.to).replace(MARKER, "") : "", messages: b.messages, resolved: b.resolved };
   });
-  return { threads, blocks, markers };
 }
 
 // What the editor hides: every marker and block.

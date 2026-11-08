@@ -1,13 +1,12 @@
 // /__figma (dev only): the editor screen showing exactly what Figma "Red Letter" › RED LETTER 5 NOV (node 129:1304)
 // shows, with the Figma render laid over it. View at 1440×900. Alt+O overlay on/off · Alt+D difference ↔ 50% fade (or click the bar).
 // The renders live in web/dev/ and are served by dev.ts only, so production builds carry none of it.
-import { Repo } from "@automerge/automerge-repo";
 import { EditorView } from "@codemirror/view";
 import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
-import { docChanged, fixtureDoc, startComment } from "../doc/docStore.ts";
-import type { AgentMark, RLDoc, Session } from "../doc/session.ts";
-import { fixtureRepo } from "../repo/repoStore.ts";
+import { startComment } from "../doc/docStore.ts";
+import type { AgentMark } from "../doc/session.ts";
+import { showFixture } from "./fixture.ts";
 
 const sentence = "Git is canonical. The CRDT is the live working copy of one file on one branch.";
 const TEXT = `# GitHub integration (2025–2026): auth, commits, webhooks
@@ -52,48 +51,7 @@ export function showFigmaFixture() {
   const marks: Record<string, AgentMark> = Object.fromEntries(
     Array.from({ length: 10 }, (_, i) => [`fixture${i}`, { sha: `fixture${i}`, author: "agent", message: "edit", at, conflicts }]),
   );
-  const handle = new Repo({ network: [] }).create<RLDoc>({ text: TEXT + threads, marks });
-  handle.on("change", docChanged); // as docStore's open() does: the word count follows typing
-  const session = {
-    repoName: "satanworker/red-letter",
-    branch: "demo",
-    path: "demo.md",
-    canWrite: true,
-    handle,
-    get doc() {
-      return handle.doc()!;
-    },
-    get docId() {
-      return handle.documentId;
-    },
-    resolve: () => null,
-    imageUrl: async () => null, // the design shows the image's markdown line only
-    poll: async () => {},
-    anchor: () => ({ from: "", to: "" }),
-    save: async () => {},
-    close: () => {},
-  } as unknown as Session;
-
-  fixtureRepo({
-    screen: "workspace",
-    user: { login: "satanworker", avatar_url: "" },
-    owner: "satanworker",
-    name: "red-letter",
-    repo: { node_id: "", full_name: "Satanworker/red-letter", default_branch: "main", permissions: { push: true } },
-    branch: "demo",
-    docs: DOCS,
-    path: "demo.md",
-    tabs: ["demo.md"],
-    filesHidden: false,
-    panelHidden: false,
-  });
-  fixtureDoc({
-    session,
-    login: "satanworker",
-    status: { saving: false, dirty: false, commit: "9d164de52712fd3d5373d4f8ae31e3de0b80ad35", people: [], online: true, baseHead: "" },
-    picked: true,
-    tab: "comments",
-  });
+  showFixture({ text: TEXT + threads, marks, docs: DOCS, path: "demo.md" });
 
   // The design's UI state: docs, experiments and experiments/github open; the comment box open on the quote.
   requestAnimationFrame(() => {

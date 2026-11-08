@@ -29,8 +29,10 @@ addEventListener("click", (e) => {
   e.preventDefault();
   openInBackground(a.pathname);
 });
-// /__figma: dev page comparing the editor with the Figma design (src/dev/figma.tsx)
+// /__figma: dev page comparing the editor with the Figma design (src/dev/figma.tsx); /__stress: a huge doc for
+// web/bench/stress.ts (src/dev/stress.ts, its own chunk)
 if (location.pathname === "/__figma") showFigmaFixture();
+else if (location.pathname === "/__stress") void import("./dev/stress.ts").then((m) => m.showStress());
 else void openRoute(new URL(location.href));
 
 addEventListener("focus", tick);

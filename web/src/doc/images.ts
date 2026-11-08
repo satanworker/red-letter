@@ -1,9 +1,9 @@
 // Images show under their markdown line, which stays visible (muted) and editable, as in the Figma design:
 // `![architecture](diagrams/architecture.svg)` with the picture below it. `imageUrl` turns a src into something an
 // <img> can load: the Editor wires it to Session.imageUrl, which reads repo-relative files from GitHub.
-import { syntaxTree } from "@codemirror/language";
-import { Facet, StateField, type EditorState, type Range } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
+import { Facet } from "@codemirror/state";
+import { Decoration, WidgetType } from "@codemirror/view";
+import { blockField } from "./blocks.ts";
 
 type Resolve = (src: string) => Promise<string | null>;
 
@@ -33,28 +33,18 @@ class ImageWidget extends WidgetType {
   }
 }
 
-function images(state: EditorState): DecorationSet {
-  const out: Range<Decoration>[] = [];
-  const resolve = state.facet(imageUrl);
-  syntaxTree(state).iterate({
-    enter: (n) => {
-      if (n.name === "Table") return false; // tableField renders tables
-      if (n.name !== "Image") return;
-      const url = n.node.getChild("URL");
-      if (!url) return false;
-      const marks = n.node.getChildren("LinkMark");
-      const alt = marks.length > 1 ? state.doc.sliceString(marks[0]!.to, marks[1]!.from) : "";
-      const widget = new ImageWidget(state.doc.sliceString(url.from, url.to), alt, resolve);
-      out.push(Decoration.widget({ widget, block: true, side: 1 }).range(state.doc.lineAt(n.to).to));
-      return false;
-    },
-  });
-  return Decoration.set(out, true);
-}
-
-// Block widgets can't come from a view plugin.
-export const imageField = StateField.define<DecorationSet>({
-  create: images,
-  update: (deco, tr) => (tr.docChanged || syntaxTree(tr.state) !== syntaxTree(tr.startState) ? images(tr.state) : deco),
-  provide: (f) => EditorView.decorations.from(f),
-});
+// Block widgets can't come from a view plugin, so images live in a state field (blocks.ts: a change rescans only the
+// blocks it touched).
+export const imageField = blockField((state, block, out) =>
+  block.cursor().iterate((n) => {
+    if (n.name === "Table" || n.name === "FencedCode" || n.name === "CodeBlock") return false; // tableField renders tables
+    if (n.name !== "Image") return;
+    const url = n.node.getChild("URL");
+    if (!url) return false;
+    const marks = n.node.getChildren("LinkMark");
+    const alt = marks.length > 1 ? state.doc.sliceString(marks[0]!.to, marks[1]!.from) : "";
+    const widget = new ImageWidget(state.doc.sliceString(url.from, url.to), alt, state.facet(imageUrl));
+    out.push(Decoration.widget({ widget, block: true, side: 1 }).range(state.doc.lineAt(n.to).to));
+    return false;
+  }),
+);

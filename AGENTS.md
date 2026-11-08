@@ -24,8 +24,10 @@ Data flow: `external event -> store action -> service call -> store update -> se
 ## Verify
 
 ```sh
-cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json && bun build.ts && bun src/comments/inline.check.ts
+cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json && bun build.ts && bun src/comments/inline.check.ts && bun src/doc/fields.check.ts
 cd server && CGO_ENABLED=0 go test ./...
 ```
 
 Smoke in a browser with `cd web && bun dev.ts` (localhost:5173, hub on localhost:8787). `window.rl` exposes `{ doc, repo, comments }`; `rl.doc.session` is the open Session. Test edits go to the `demo` branch (`/satanworker/red-letter/blob/demo/demo.md`); leave `demo.md` as you found it.
+
+**Performance:** a keystroke's work must not grow with the doc. Anything read from the whole text (block widgets, comment markup and threads, headings, word count) is kept by the editor and updated from the change (`doc/blocks.ts`, `commentMarks.ts`, `headings.ts`, `selectWords`), never re-derived from `session.doc.text` on each `version` tick; lists of derived rows keep their objects when nothing they show changed. After touching the editor, typing or the panels, run `cd web && bun bench/stress.ts` (README) and compare with the numbers in `docs/DESIGN.md`.

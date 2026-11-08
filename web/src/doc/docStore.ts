@@ -59,7 +59,12 @@ export const doc = state;
 export const fixtureDoc = (s: Partial<DocState>) => set(s);
 
 let view: EditorView | undefined;
-export const setView = (v: EditorView | undefined) => (view = v);
+// The editor's state (its text is the CRDT's): read after `version` ticks, which a new editor also does.
+export const editorState = () => view?.state;
+export function setView(v: EditorView | undefined) {
+  view = v;
+  docChanged();
+}
 
 let frame = 0;
 export function docChanged() {
@@ -225,12 +230,29 @@ export function scrollToHeading(h: Heading, scroller: HTMLElement) {
   // CodeMirror only estimates the height of lines it hasn't drawn yet: once there, measure again and glide the rest
   scroller.addEventListener("scrollend", () => Math.abs(off()) > 1 && scroller.scrollTo({ top: scroller.scrollTop + off(), behavior: "smooth" }), { once: true });
 }
-export function headingInView(hs: Heading[], scroller: HTMLElement): number {
-  if (!view) return 0;
-  const left = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-  const line = 32 + Math.max(0, 1 - left / 120) * (scroller.clientHeight - 52);
-  const len = view.state.doc.length;
-  return Math.max(0, hs.findLastIndex((h) => h.at <= len && tocTop(h, scroller) - tocMargin(h) <= line));
+// The reader's section, read in the editor's measure phase, when layout is fresh: read in the scroll event, it made the
+// browser lay the page out an extra time per frame. done gets its index.
+export function headingInView(hs: Heading[], scroller: HTMLElement, done: (i: number) => void) {
+  view?.requestMeasure({
+    key: headingInView, // one read per frame however many scroll events
+    read: (v) => {
+      const left = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      const line = 32 + Math.max(0, 1 - left / 120) * (scroller.clientHeight - 52);
+      const len = v.state.doc.length;
+      const base = v.documentTop - scroller.getBoundingClientRect().top; // as tocTop, read once
+      const above = (h: Heading) => h.at <= len && v.lineBlockAt(h.at).top + (h.at ? 12 : 0) + base - tocMargin(h) <= line;
+      // headings are in document order, so the ones above the line come first: binary search for the last of them (a
+      // long doc has hundreds)
+      let lo = 0, hi = hs.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (above(hs[mid]!)) lo = mid + 1;
+        else hi = mid;
+      }
+      return Math.max(0, lo - 1);
+    },
+    write: done,
+  });
 }
 
 // Pasted or dropped image files: uploaded to git as blobs, then linked where they landed (that spot follows edits
@@ -253,7 +275,7 @@ export async function insertImages(files: File[], pos: number) {
 // that heading gets one, titled after the file.
 export function setIcon(icon: string) {
   if (!view || !state.session) return;
-  const h = selectIcon(view.state.doc.toString());
+  const h = selectIcon(view.state.doc);
   if (!h && !icon) return;
   const title = state.session.path.split("/").pop()!.replace(/\.[^.]+$/, "");
   const changes = h ? { from: h.at, to: h.end, insert: icon && `${icon} ` } : { from: 0, insert: `# ${icon} ${title}\n\n` };

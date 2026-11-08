@@ -1,5 +1,6 @@
 import * as A from "@automerge/automerge";
-import { plain } from "../comments/inline.ts";
+import type { Text } from "@codemirror/state";
+import type { Found } from "./headings.ts";
 import type { Commit } from "../repo/repoService.ts";
 import { editRegions, type Region } from "./regions.ts";
 import type { AgentMark, Session } from "./session.ts";
@@ -31,6 +32,19 @@ export const selectDraftChanges = (s: Session): Region[] => (s.doc.base ? editRe
 // The chosen tab; until one is chosen, History when conflicts wait to be settled and no comments are open.
 export const selectTab = (s: PanelState, openThreads: number, marks: number) => (!s.picked && !openThreads && marks ? "history" : s.tab);
 
+// Words in the editor's text, as /\S+/g counts them. CodeMirror's Text is a tree of leaves holding whole lines (so no
+// word spans two), and a change shares every untouched subtree with the old text: counts kept per subtree make an
+// edit recount one leaf and its parents, not the doc.
+const wordsIn = new WeakMap<Text, number>();
+export function selectWords(text: Text): number {
+  let n = wordsIn.get(text);
+  if (n === undefined) {
+    n = text.children ? text.children.reduce((sum, c) => sum + selectWords(c), 0) : (text.toString().match(/\S+/g)?.length ?? 0);
+    wordsIn.set(text, n);
+  }
+  return n;
+}
+
 const graphemes = new Intl.Segmenter();
 // The first character of `s` (a whole grapheme: flags, skin tones, ZWJ sequences) if it's an emoji, else "".
 export function firstEmoji(s: string): string {
@@ -38,14 +52,21 @@ export function firstEmoji(s: string): string {
   return /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(g) ? g : "";
 }
 
+function* linesOf(s: string) {
+  for (let pos = 0; ; ) {
+    const eol = s.indexOf("\n", pos);
+    yield s.slice(pos, eol < 0 ? s.length : eol);
+    if (eol < 0) return;
+    pos = eol + 1;
+  }
+}
+
 // The doc's icon: an emoji at the start of its first `# ` heading (code fences skipped). `at`: where the heading's
 // text starts; `end`: where the icon and the space after it end (= at without an icon). null: no `# ` heading.
-export function selectIcon(text: string): { icon: string; at: number; end: number } | null {
-  let fenced = false;
-  for (let pos = 0; pos <= text.length; ) {
-    let eol = text.indexOf("\n", pos);
-    if (eol < 0) eol = text.length;
-    const line = text.slice(pos, eol);
+// text: the editor's while one is open (the CRDT's string would be copied whole, once per change, to read a line).
+export function selectIcon(text: string | Text): { icon: string; at: number; end: number } | null {
+  let fenced = false, pos = 0;
+  for (const line of typeof text === "string" ? linesOf(text) : text.iterLines()) {
     if (/^ {0,3}(```|~~~)/.test(line)) fenced = !fenced;
     const h = !fenced && /^ {0,3}# +/.exec(line);
     if (h) {
@@ -54,30 +75,17 @@ export function selectIcon(text: string): { icon: string; at: number; end: numbe
       const space = icon ? /^ */.exec(line.slice(h[0].length + icon.length))![0].length : 0;
       return { icon, at, end: at + icon.length + space };
     }
-    pos = eol + 1;
+    pos += line.length + 1;
   }
   return null;
 }
 
 export type Heading = { depth: number; text: string; at: number };
-// The doc's `#` headings, for its table of contents (code fences and comment markup skipped). A lone leading `#`
-// heading is the doc's title and stays out, as Linear keeps its title out of a document's contents. `at`: where the
-// heading's line starts in the doc's text; `text`: its words, without emphasis or code marks; `depth`: 0-2, levels
-// below the top level of what's left.
-export function selectHeadings(text: string): Heading[] {
-  const p = plain(text);
-  const found: (Heading & { level: number })[] = [];
-  let fenced = false;
-  for (let pos = 0; pos <= p.text.length; ) {
-    let eol = p.text.indexOf("\n", pos);
-    if (eol < 0) eol = p.text.length;
-    const line = p.text.slice(pos, eol);
-    if (/^ {0,3}(```|~~~)/.test(line)) fenced = !fenced;
-    const h = !fenced && /^ {0,3}(#{1,6}) +(.*?)(?: +#+)? *$/.exec(line);
-    const words = h && h[2].replace(/[*_`]/g, "").trim();
-    if (h && words) found.push({ level: h[1].length, depth: 0, text: words, at: p.toText(pos, 1) });
-    pos = eol + 1;
-  }
+// The doc's table of contents from its `#` headings (headings.ts finds them: code fences and comment markup skipped).
+// A lone leading `#` heading is the doc's title and stays out, as Linear keeps its title out of a document's
+// contents. `at`: where the heading's line starts in the doc's text; `text`: its words, without emphasis or code marks;
+// `depth`: 0-2, levels below the top level of what's left.
+export function selectHeadings(found: Found[]): Heading[] {
   const title = found[0]?.level === 1 && !found.slice(1).some((h) => h.level === 1) ? 1 : 0;
   const rest = found.slice(title);
   const top = Math.min(...rest.map((h) => h.level));

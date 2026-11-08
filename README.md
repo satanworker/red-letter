@@ -29,6 +29,8 @@ Styling is Tailwind v4: utility classes in the components, design tokens in `web
 
 **Figma check:** `/__figma` (dev server only) shows the editor with the exact content of the Figma frame "Red Letter" › Desktop - 1 (node `1:8`) and lays the Figma render over it. Size the browser window to 1440 px wide; Alt+O toggles the overlay, Alt+D switches difference blend / 50% fade. The renders are in `web/dev/` (frame at 1024 px wide scaled up, doc column, sidebar and panel at 1×), exported with the Figma MCP server's `get_screenshot`.
 
+**Performance:** `cd web && bun bench/stress.ts` builds the app into a temp directory, opens `/__stress?sections=N` in a headless Chromium of its own and measures what a writer feels: typing, Enter, Backspace, typing in code and in a table cell, arrow keys (input to next paint), wheel scrolling (dropped frames), jumps far into the doc, opening. `/__stress` is one generated doc with every block the editor draws (25 sections ≈ 1k lines; the default 25 and 400, ≈ 17k lines / 1.1 MB with 200 comment threads and 1,200 headings). Budgets are relative to a native floor measured in the same run on the same machine: a `<textarea>` for typing (p95 + 4 ms), the same text as a static page for scrolling (+2 points of dropped frames) and jumps (+1 frame); opening ≤ 500 ms. Exits 1 on a miss. `--sections 25,400`, `--only type-mid,scroll`, `--out results.json`, `--profile <scenario>` (a DevTools trace + CPU profile, and the top costs printed; `NO_MINIFY=1` keeps names), `CHROME=<path>`.
+
 ## Deploy
 
 Pushes to `main` that touch `web/` deploy the site automatically (`.github/workflows/deploy-web.yml`; needs the repo secret `CLOUDFLARE_API_TOKEN`, a token with the "Edit Cloudflare Workers" template). Manual equivalents:

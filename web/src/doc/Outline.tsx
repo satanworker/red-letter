@@ -1,7 +1,7 @@
 // The doc's outline in the side panel, laid out as Ulysses' sidebar. Outline: a muted label, then one row per heading,
-// a hollow circle before its words, indented by level; the reader's section sits on a grey pill; a click glides the
-// doc to that heading. Links (when there are any), under a rule: one row per `[text](url)` with a blue circle, its
-// url on hover; a click brings it to the middle of the view. Either way the target flashes (flash.ts).
+// a hollow circle before its words (in full on hover), indented by level; the reader's section sits on a grey pill; a
+// click glides the doc to that heading. Links (when there are any), under a rule: one row per `[text](url)` with a blue
+// circle, its text and url on hover; a click brings it to the middle of the view. Either way the target flashes (flash.ts).
 import { For, Show, createEffect, createMemo, createSelector, createSignal, onCleanup, onMount } from "solid-js";
 import { selectHeadings } from "./docSelectors.ts";
 import { doc, editorState, headingInView, scrollToHeading, showLink } from "./docStore.ts";
@@ -47,6 +47,7 @@ export function Outline() {
             <button
               class={`flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md pr-1.5 text-left text-fg hover:bg-hover ${isActive(i()) ? "bg-on" : ""}`}
               style={{ "padding-left": `${6 + h.depth * 16}px` }}
+              title={h.text}
               aria-current={isActive(i()) ? "location" : undefined}
               onClick={() => scrollToHeading(headings()[i()]!, scroller)}
             >
@@ -62,7 +63,7 @@ export function Outline() {
           {(l, i) => (
             <button
               class="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-fg hover:bg-hover"
-              title={l.url}
+              title={`${l.text}\n${l.url}`}
               onClick={() => {
                 const at = found()?.links[i()];
                 if (at) showLink(at.from, at.to);

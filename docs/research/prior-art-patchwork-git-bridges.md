@@ -49,6 +49,6 @@ This is the product’s webhook path (old blob vs new blob → CRDT ops).
 
 Do not copy Patchwork’s data model: Automerge *is* history there, git is not in the loop, and their “branches” are Automerge clones with a deliberately non-git topology. Use git branches as git branches. Closest production lesson is Jupyter: **plain files on git are canonical; CRDT is an ephemeral working copy per (path, branch); OOB git pushes are applied as a text/cell diff into the live Y/Automerge doc, never as a document replace.** Implement that with `Automerge.updateText` (or `fast-diff` → Y.Text delta) on the webhook, keep comments in a side store keyed by CRDT positions, and treat pushwork only as evidence that I&S already diff disk→CRDT (but with inverted truth). Skip Keyhive/Beelay until you need E2EE.
 
-<!--rl:pmglkp
+<!--rl:pmglkp resolved
 @hatevodka 2026-11-07T19:30Z: Privet chmo
 -->

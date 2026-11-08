@@ -1,13 +1,13 @@
 // A protected branch takes no direct commits, so its docs get comments through one pull request per doc, from the
-// branch red-letter/comments/<branch>/<path>: the doc plus the comment markup (inline.ts). Merging the PR lands the
-// comments; they are HTML comments, so the rendered page doesn't change.
-import { HttpError, b64, cachedGet, encPath, gh, ghJson, post, unb64 } from "../github.ts";
+// branch red-letter/comments/<sha1(branch)>/<sha1(path)>: the doc plus the comment markup (inline.ts). Merging the PR
+// lands the comments; they are HTML comments, so the rendered page doesn't change.
+import { HttpError, b64, cachedGet, encPath, gh, ghJson, post, sha1, unb64 } from "../github.ts";
 
 export type Pr = { number: number; url: string };
 type PrJson = { number: number; html_url: string };
 
-// ponytail: branch "a" + path "b/c.md" and branch "a/b" + path "c.md" share a comment branch; hash it if it ever matters
-const commentBranch = (branch: string, path: string) => `red-letter/comments/${branch}/${path}`;
+// Hashed: a path isn't always a valid ref name (".devcontainer/x", "a b.md"), and "<branch>/<path>" collides.
+const commentBranch = async (branch: string, path: string) => `red-letter/comments/${await sha1(branch)}/${await sha1(path)}`;
 
 // Always asked of GitHub (an unchanged answer is a free 304): a shared in-flight request or a recent answer can
 // predate a comment just written, and would take it off the panel.
@@ -19,7 +19,7 @@ async function openPrOf(repo: string, branch: string, head: string): Promise<Pr 
 
 // The doc's open comment PR and the doc's text on its branch; null when none is open.
 export async function readPr(repo: string, branch: string, path: string): Promise<{ pr: Pr; text: string } | null> {
-  const head = commentBranch(branch, path);
+  const head = await commentBranch(branch, path);
   const pr = await openPrOf(repo, branch, head);
   if (!pr) return null;
   const text = await cachedGet(`/repos/${repo}/contents/${encPath(path)}?ref=${encodeURIComponent(head)}`, { raw: true, fresh: true });
@@ -29,7 +29,7 @@ export async function readPr(repo: string, branch: string, path: string): Promis
 // Commits edit(the doc on the comment branch) to it, opening the PR if none is open. With no open PR the branch
 // starts over from the doc's branch; otherwise the doc's branch is merged into it first, so the PR's copy is current.
 export async function commitToPr(repo: string, branch: string, path: string, message: string, edit: (text: string) => string): Promise<{ pr: Pr; text: string }> {
-  const head = commentBranch(branch, path);
+  const head = await commentBranch(branch, path);
   const ref = `/repos/${repo}/git/refs/heads/${encPath(head)}`;
   let pr = await openPrOf(repo, branch, head);
   if (!pr) {

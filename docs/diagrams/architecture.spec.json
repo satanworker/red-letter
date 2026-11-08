@@ -16,7 +16,7 @@
     { "id": "docref", "kind": "ref", "name": "refs/red-letter/v1/<sha1 branch>/<sha1 path>", "fields": [
       { "name": "doc.automerge", "type": "blob" },
       { "name": "meta.json", "type": "docId, commit, heads" } ] },
-    { "id": "comments", "kind": "branch", "name": "red-letter/comments/<branch>/<path>", "fields": [
+    { "id": "comments", "kind": "branch", "name": "red-letter/comments/<sha1 branch>/<sha1 path>", "fields": [
       { "name": "<path>", "type": "doc + new comments" },
       { "name": "open PR", "type": "into a protected <branch>" } ] }
   ],

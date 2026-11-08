@@ -31,7 +31,7 @@ GitHub holds all state:
 
 - `refs/heads/<branch>` — the file, comments included. Truth.
 - `refs/red-letter/v1/<sha1(branch)>/<sha1(path)>` — parentless commit holding `doc.automerge` + `meta.json {docId, branch, path, commit, heads}`. Doc identity and history. Hashed names: `<branch>/<path>` collides and hits ref directory/file conflicts.
-- `red-letter/comments/<branch>/<path>` — only for a protected branch: the doc plus new comments, with one open pull request into `<branch>`.
+- `red-letter/comments/<sha1(branch)>/<sha1(path)>` — only for a protected branch: the doc plus new comments, with one open pull request into `<branch>`. Hashed for the same reasons, and because a path isn't always a valid ref name (`.devcontainer/…`).
 
 ## Comments
 
@@ -49,7 +49,7 @@ The hub <!--rl:c1-->relays live sync<!--/rl:c1--> and nothing else.
 Markers wrap the commented text; each thread's block sits at the end of the doc. A message starts a line with `@login date: ` (the date is optional); lines indented two spaces continue it; `-->` in a body is written `--&gt;`. A resolved thread keeps its markers and messages and says so on its block's first line (`<!--rl:c1 resolved`); reopening drops the word. Deleting a thread removes its markers and block: git history is the record. Nothing inside fenced code counts. Because comments are text, they sync live, save with the doc, survive offline and follow every edit (the CRDT carries them), and a draft's merge carries them along.
 
 - **Branch you can push to:** a comment is an edit to the doc, made outside the undo history. The editor hides the markup and keeps it intact (`web/src/doc/commentMarks.ts`): markers and blocks are atomic, typing at a range's edge stays outside it (and at the end of the doc, above the blocks), Backspace / Delete next to hidden markup delete the visible character, and a copy leaves the markup out.
-- **Protected branch** (GitHub's `protected` flag; the doc opens read-only, "protected" badge): comments go to the doc on `red-letter/comments/<branch>/<path>` through the contents API, and the first opens a pull request. With no open PR the branch starts over from `<branch>`; otherwise `<branch>` is merged into it first (`POST /merges`). New comments map from the doc to the PR's copy through the text without markup, so the two must differ only in comments: before each write the doc catches up with the branch (its first sync, then a fresh poll). Merging the PR changes nothing in the rendered page. The panel shows the PR's threads on the doc.
+- **Protected branch** (GitHub's `protected` flag; the doc opens read-only, "protected" badge): comments go to the doc on `red-letter/comments/<sha1(branch)>/<sha1(path)>` through the contents API, and the first opens a pull request. With no open PR the branch starts over from `<branch>`; otherwise `<branch>` is merged into it first (`POST /merges`). New comments map from the doc to the PR's copy through the text without markup, so the two must differ only in comments: before each write the doc catches up with the branch (its first sync, then a fresh poll). Merging the PR changes nothing in the rendered page. The panel shows the PR's threads on the doc.
 - **No push access:** no comments.
 
 ## Browser, per open file

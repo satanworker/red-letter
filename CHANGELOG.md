@@ -7,6 +7,8 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **⌘/Ctrl+click opens links in table cells**, as in the rest of the doc (it did nothing there).
 - **Outline links inside a table work**: the link is brought to the middle of the view and flashes in its cell, instead of the click doing nothing visible.
 - **A comment's quote in a table cell** now selects the commented text in the cell when clicked in the panel.
+- **Thin grey scrollbars** everywhere: a rounded Shadows-grey thumb on a clear track, like macOS, in Chrome, Edge, Safari and Firefox.
+- **The outline shows the doc's `#` title** as its first row, with the other headings indented under it, as in Ulysses (it was left out).
 
 ## 2026-11-08: Outline tab
 

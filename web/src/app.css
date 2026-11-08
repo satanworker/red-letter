@@ -47,6 +47,17 @@
   --font-logo: Grandstander, var(--sans);
 }
 
+/* Thin macOS-style scrollbars: a rounded grey thumb on a clear track, no arrows. Chrome, Edge and Safari take the
+   ::-webkit-scrollbar rules (setting the standard properties there would switch them off); Firefox has only these. */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--muted) transparent; }
+}
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--muted) padding-box; border: 2px solid transparent; border-radius: 10px; min-height: 24px;
+}
+
 /* emoji-picker-element (IconPicker.tsx) has its own variables: ours, so dark mode follows */
 emoji-picker {
   --background: var(--card); --border-size: 0; --border-color: var(--rule);

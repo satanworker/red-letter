@@ -81,13 +81,10 @@ export function selectIcon(text: string | Text): { icon: string; at: number; end
 }
 
 export type Heading = { depth: number; text: string; at: number };
-// The doc's outline from its `#` headings (headings.ts finds them: code fences and comment markup skipped).
-// A lone leading `#` heading is the doc's title and stays out, as Linear keeps its title out of a document's
-// contents. `at`: where the heading's line starts in the doc's text; `text`: its words, without emphasis or code marks;
-// `depth`: 0-2, levels below the top level of what's left.
+// The doc's outline from its `#` headings (headings.ts finds them: code fences and comment markup skipped), the
+// leading `#` title included, as in Ulysses. `at`: where the heading's line starts in the doc's text; `text`: its
+// words, without emphasis or code marks; `depth`: 0-2, levels below the doc's top heading level.
 export function selectHeadings(found: Found[]): Heading[] {
-  const title = found[0]?.level === 1 && !found.slice(1).some((h) => h.level === 1) ? 1 : 0;
-  const rest = found.slice(title);
-  const top = Math.min(...rest.map((h) => h.level));
-  return rest.map((h) => ({ depth: Math.min(h.level - top, 2), text: h.text, at: h.at }));
+  const top = Math.min(...found.map((h) => h.level));
+  return found.map((h) => ({ depth: Math.min(h.level - top, 2), text: h.text, at: h.at }));
 }

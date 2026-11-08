@@ -6,10 +6,10 @@ import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments } from "../comments/commentsStore.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
-import { closeTab, mergeDraft, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
+import { closeTab, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, PlusIcon, SidebarIcon, Spinner, badge, count, fine, ghostBtn } from "../ui.tsx";
+import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
 import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
 import { History } from "./History.tsx";
@@ -17,7 +17,7 @@ import { IconPicker } from "./IconPicker.tsx";
 import { Toc } from "./Toc.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab, selectWords } from "./docSelectors.ts";
 import { commentThreads } from "./commentMarks.ts";
-import { doc, editorState, isReading, showFavicon, showTab, toggleChanges, toggleReading, updateDraft } from "./docStore.ts";
+import { doc, editorState, isReading, showFavicon, showTab, toggleReading } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -47,8 +47,9 @@ export function EditorScreen() {
   });
   createEffect(() => showFavicon(icon()));
   onCleanup(() => showFavicon(""));
-  // the branch this file came from, this branch and every draft: one picker, like Patchwork's
-  const branches = () => [...new Set([draft()?.branch ?? repo.branch, repo.branch, ...repo.drafts])];
+  // the branch this file came from, the default branch (a branch forked elsewhere records no base) and this branch.
+  // ponytail: drafts/* branches are left out with the rest of the draft UI until PRs and reviews are designed
+  const branches = () => [...new Set([draft()?.branch ?? repo.branch, repo.repo?.default_branch ?? repo.branch, repo.branch])];
   const pickBranch = (sel: HTMLSelectElement) => {
     const branch = sel.value;
     sel.value = repo.branch; // the route decides which branch shows
@@ -234,45 +235,10 @@ export function EditorScreen() {
             >
               {(s) => (
                 <>
-                  <Show when={draft() || doc.draftNote}>
+                  <Show when={doc.draftNote}>
                     {/* floats in the doc's top padding instead of pushing the text down */}
                     <div class="sticky top-0 z-[5] h-0">
-                      <Show when={draft()}>
-                        {(b) => (
-                          <div class="mx-auto mt-2 flex max-w-[440px] items-center gap-1 rounded-xl bg-card py-1 pr-1.5 pl-3 whitespace-nowrap shadow-figma">
-                            <span class="flex-1 truncate text-muted">draft of {b().branch}</span>
-                            <button
-                              class={doc.showChanges ? "inline-flex h-6 cursor-pointer items-center rounded bg-on px-1 text-fg" : `${ghostBtn} h-6`}
-                              aria-pressed={doc.showChanges}
-                              title={`Highlight what this draft changed from ${b().branch}`}
-                              onClick={toggleChanges}
-                            >
-                              Changes
-                            </button>
-                            <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
-                              <button
-                                class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
-                                disabled={!!doc.drafting}
-                                title={`${b().branch} has new edits: merge them into this draft`}
-                                onClick={() => void updateDraft()}
-                              >
-                                Update from {b().branch}
-                              </button>
-                            </Show>
-                            <button
-                              class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
-                              disabled={!!doc.drafting || !canWrite()}
-                              title={`Merge this draft into ${b().branch} and delete it`}
-                              onClick={() => void mergeDraft()}
-                            >
-                              {doc.drafting || `Merge into ${b().branch}`}
-                            </button>
-                          </div>
-                        )}
-                      </Show>
-                      <Show when={doc.draftNote}>
-                        <p class="mx-auto mt-1.5 max-w-[440px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
-                      </Show>
+                      <p class="mx-auto mt-1.5 max-w-[440px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
                     </div>
                   </Show>
                   <Show when={!isReading()}>

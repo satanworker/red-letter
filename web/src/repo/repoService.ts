@@ -66,11 +66,6 @@ export async function createBranch(repo: string, branch: string, sha: string): P
   await post(`/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
 }
 
-export async function listDrafts(repo: string): Promise<string[]> {
-  const refs: { ref: string }[] = JSON.parse(await cachedGet(`/repos/${repo}/git/matching-refs/heads/drafts/`));
-  return refs.map((r) => r.ref.slice("refs/heads/".length));
-}
-
 // stale: the list this browser saw last, at once (background sync refreshes it)
 export async function listDocs(repo: string, branch: string, stale = false): Promise<string[]> {
   // ponytail: one recursive tree call; GitHub truncates past ~100k entries

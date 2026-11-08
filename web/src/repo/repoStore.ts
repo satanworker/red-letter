@@ -4,7 +4,7 @@ import { createStore } from "solid-js/store";
 import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, runDraft } from "../doc/docStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
-import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listCollaborators, listDocs, listDrafts, resolveBranch, type RepoInfo } from "./repoService.ts";
+import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
 type RepoState = {
@@ -271,7 +271,6 @@ export async function openRoute(url: URL, newTab = false): Promise<void> {
     const tabs = !path || kept.includes(path) ? kept : at < 0 ? [...kept, path] : newTab ? kept.toSpliced(at + 1, 0, path) : kept.with(at, path);
     set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path, message: "" });
     setTabs(tabs);
-    if (fresh) void listDrafts(full).then((drafts) => !stale() && set("drafts", drafts), () => {});
     if (!path) {
       closeFile();
       set("message", "This branch has no markdown files yet.");

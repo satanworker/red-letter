@@ -133,7 +133,10 @@ export class Session {
     this.#repo = new Repo({ peerId, network: this.#hub ? [this.#hub] : [], sharePolicy: async () => true });
   }
 
+  // The editor holds typing back until the frame showing it has painted (sync.ts); whatever reads the doc gets it first.
+  flushEdits: () => void = () => {};
   get doc(): A.Doc<RLDoc> {
+    this.flushEdits();
     return this.handle.doc()!;
   }
   get docId() {

@@ -16,7 +16,9 @@ export function showFixture(f: Fixture): Session {
     path: f.path,
     canWrite: true,
     handle,
+    flushEdits: () => {},
     get doc() {
+      session.flushEdits();
       return handle.doc()!;
     },
     get docId() {

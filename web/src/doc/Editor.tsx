@@ -1,6 +1,5 @@
 // CodeMirror 6 (live preview) bound to the Automerge text. CodeMirror owns its DOM; Solid only mounts it and
 // pushes decorations (a draft's changes, conflicts, comment highlights) when the doc or the comments change.
-import { automergeSyncPlugin, type DocHandle as PluginHandle } from "@automerge/automerge-codemirror";
 import { Compartment, EditorState, StateEffect, StateField, Transaction, type Range } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip, type TooltipView } from "@codemirror/view";
 import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js";
@@ -9,7 +8,7 @@ import { comments } from "../comments/commentsStore.ts";
 import type { Thread } from "../comments/inline.ts";
 import { createMentions } from "../comments/Mentions.tsx";
 import { AtIcon, TipArrow, btn } from "../ui.tsx";
-import { cancelComment, closeThread, doc, docChanged, insertImages, isReading, openThread, setView, startComment, submitComment } from "./docStore.ts";
+import { cancelComment, closeThread, doc, insertImages, isReading, openThread, setView, startComment, submitComment } from "./docStore.ts";
 import { commentMarks, commentParses, inCode } from "./commentMarks.ts";
 import { headingField } from "./headings.ts";
 import { flashField } from "./flash.ts";
@@ -18,8 +17,9 @@ import { showPanel } from "../repo/repoStore.ts";
 import { imageUrl } from "./images.ts";
 import { editorExtensions, readingMode } from "./livePreview.ts";
 import { cellSelection } from "./tables.ts";
+import { automergeSync } from "./sync.ts";
 import type { Region } from "./regions.ts";
-import type { AgentMark, RLDoc, Session } from "./session.ts";
+import type { AgentMark, Session } from "./session.ts";
 
 class DelWidget extends WidgetType {
   constructor(
@@ -52,7 +52,7 @@ const decoField = StateField.define<DecorationSet>({
 });
 
 // Remote changes (peers, agent replays) must not land on the local undo stack: one Ctrl-Z must never revert
-// someone else's edit. The automerge binding dispatches them without a userEvent; local typing always has one.
+// someone else's edit. sync.ts dispatches them without a userEvent; local typing always has one.
 const remoteNotUndoable = EditorState.transactionExtender.of((tr) =>
   tr.docChanged && !tr.annotation(Transaction.userEvent) ? { annotations: Transaction.addToHistory.of(false) } : null,
 );
@@ -244,8 +244,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
           { key: "Mod-s", preventDefault: true, run: () => (void s.save(), true) },
           { key: "Mod-Alt-m", preventDefault: true, run: () => (startComment(), true) },
         ]),
-        // automerge-repo's handle.doc() may be undefined before ready; it is ready here
-        automergeSyncPlugin({ handle: s.handle as unknown as PluginHandle<RLDoc>, path: ["text"] }),
+        automergeSync(s),
       ],
       parent: host,
     });
@@ -255,16 +254,14 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
     // they sit between is re-parsed whenever an edit could move it otherwise: commentParses), so a keystroke doesn't
     // rebuild and diff them all. A draft's changes and a read-only doc (only others' edits reach it) rebuild each time.
     const shape = createMemo(() => {
-      doc.version; // the CRDT doc changed: re-read the editor's state
-      const synced = view.state.doc.length === s.doc.text.length; // the binding catches up a frame later at times
+      doc.version; // the CRDT doc changed: re-read the editor's state (sync.ts has brought it to the editor by now)
       const every = (doc.showChanges || !s.canWrite) && doc.version;
       const threads = props.threads().map((t) => `${t.id}${t.resolved ? "r" : ""}${t.range ? "" : "-"}`).join();
       const marks = props.marks().map((m) => `${m.sha}:${m.conflicts.length}`).join();
-      return [synced, commentParses(view.state), threads, marks, every, doc.activeThread, doc.hoveredThread].join("|");
+      return [commentParses(view.state), threads, marks, every, doc.activeThread, doc.hoveredThread].join("|");
     });
     createEffect(
       on([shape, () => comments.text], () => {
-        if (view.state.doc.length !== s.doc.text.length) return docChanged(); // a frame later, `synced` flips
         view.dispatch({ effects: setDecos.of(decorations(s, view.state.doc.length, props.marks(), props.changes(), props.threads(), doc.activeThread, doc.hoveredThread)) });
       }),
     );

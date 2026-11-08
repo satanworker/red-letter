@@ -12,7 +12,7 @@ Data flow: `external event -> store action -> service call -> store update -> se
 - **Stores own state and orchestration.** `repoStore.ts` (screen, repo, branch, files, routing), `docStore.ts` (open Session, status, panel/tab/draft comment) and `commentsStore.ts`. Loading, errors and "what happens when X" live in store actions.
 - **Selectors are pure.** `*Selectors.ts` derive render data. Memoize them in components with `createMemo`; don't store derived data.
 - **Components render and call actions.** No business logic or fetching in components. Global listeners (navigation, focus, beforeunload, ⌘K) live in `main.tsx` and only call store actions.
-- `doc/session.ts`, `replay.ts`, `regions.ts` and `hub.ts` are the engine (CRDT ↔ git). Keep UI out of them.
+- `doc/session.ts`, `replay.ts`, `regions.ts` and `hub.ts` are the engine (CRDT ↔ git); `sync.ts` binds the editor to the CRDT. Keep UI out of them. Read the doc through `session.doc`, never `handle.doc()`: the getter first hands over typing `sync.ts` is still holding.
 
 ## Solid
 
@@ -24,7 +24,7 @@ Data flow: `external event -> store action -> service call -> store update -> se
 ## Verify
 
 ```sh
-cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json && bun build.ts && bun src/comments/inline.check.ts && bun src/doc/fields.check.ts
+cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json && bun build.ts && bun src/comments/inline.check.ts && bun src/doc/fields.check.ts && bun src/doc/sync.check.ts
 cd server && CGO_ENABLED=0 go test ./...
 ```
 

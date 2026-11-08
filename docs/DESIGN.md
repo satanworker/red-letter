@@ -100,7 +100,7 @@ Where both sides touched the same words, the merge can interleave (`pheople`, `G
 - Doc identity: change anchors (agent marks, conflicts) are op IDs in one specific Automerge doc. Lose the snapshot ref, lose those. An agent's `git push --mirror` deletes `refs/red-letter/*`; a default clone doesn't fetch them. Comments don't depend on it: they're text.
 - Comments are in the file: an unresolved or resolved one ships wherever the file goes until deleted (hidden when rendered, visible in the source), and each comment, resolve or delete changes the doc's history.
 - Agent→browser latency is the poll interval, not ~1s webhook.
-- `@automerge/automerge-codemirror` is 0.2.0 vs `y-codemirror.next` at 171k/wk. Price of the right primitive. Works in the smoke test.
+- The CodeMirror ⇄ Automerge binding is our own (`web/src/doc/sync.ts`, ~100 lines, after `@automerge/automerge-codemirror` 0.2.0, which it replaced): typing reaches Automerge a frame after it paints, and edits arriving meanwhile are merged as concurrent (`changeAt`). `sync.check.ts` (two peers, random edits and merges) and a two-tab run through the hub cover it.
 - `updateRefs` with a GitHub App user-to-server token: verified working in the prototype (autosave commits on `demo`).
 - Replay determinism is a cross-version contract: change bytes depend on the Automerge version, the diff and the actor recipe. Mixed builds duplicate text (Jupyter's duplication bugs are this). Done: Automerge pinned to exactly 3.5.0, `replayVersion` in `meta.json`, and a tab refuses a snapshot from a newer version.
 - The relay accepts ops from anyone holding a docId, and an honest tab later commits them under its own name. Done: the hub admits a tab only with push access to the repo.
@@ -165,7 +165,9 @@ Done:
   | wheel scroll, frames dropped | 21.9 % | 12.5 % | 28.1 % | 13.5 % | 7.2 % / 9.8 % |
   | jump far into the doc | 61 ms | 40 ms | 93 ms | 56 ms | 20 ms |
 
-  Bare CodeMirror on the same text types at 18 ms p50 / 22 ms p95 here, so the editor is 4–9 ms over CodeMirror itself. What's left is mostly upstream and grows with the doc: lezer-markdown's incremental reparse re-adds every block after the edit (~3 ms a key at 17k lines), Automerge copies the whole text string on each change (~3 ms at 1.1 MB), CodeMirror measures layout synchronously in its scroll handler, and a long doc's comment panel and table of contents still draw all their rows on open. (Opening wasn't measured apart from building the fixture doc before.)
+  Bare CodeMirror on the same text types at 18 ms p50 / 22 ms p95 here, so the editor is 4–9 ms over CodeMirror itself. What's left is mostly upstream and grows with the doc: lezer-markdown's incremental reparse re-adds every block after the edit (~3 ms a key at 17k lines), CodeMirror measures layout synchronously in its scroll handler, and a long doc's comment panel and table of contents still draw all their rows on open. (Opening wasn't measured apart from building the fixture doc before.)
+
+  Typing reaches Automerge a frame after it paints (`sync.ts`): recording a keystroke there (the change, Automerge's copy of the whole string, automerge-repo's diff and the panels' update behind it) cost 1.7 ms a key at 1k lines and 2.7 ms at 17k before the key could paint. Three alternating runs each, mean over the five typing scenarios, before → after: 1k lines p50 22.6 → 21.1 ms, p95 29.5 → 27.6 ms; 17k lines p50 27.2 → 23.7 ms, p95 34.2 → 31.5 ms (a `<textarea>`: 14 / 20 ms).
 
 Not built yet:
 - automerge-repo's incremental IndexedDB adapter instead of whole-doc saves, if docs get large;

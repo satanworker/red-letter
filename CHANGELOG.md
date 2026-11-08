@@ -13,6 +13,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **The logo is an SVG**: the Grandstander font no longer loads just to draw "Red Letter".
 - **Outline is the side panel's first tab**, before Comments and History (Left/Right follow the new order).
 - **The site ships Solid's production build**: Bun picked Solid's development build (devtools graph, dev warnings) for the live site because `NODE_ENV` wasn't set; `build.ts` now sets it.
+- **Typing paints before it's recorded**: the editor's binding to Automerge is our own (`sync.ts`, replacing `@automerge/automerge-codemirror`) and hands each keystroke to Automerge a frame after it's on screen, so keys land 1.5 ms sooner at 1k lines and 3.5 ms at 17k (median). Edits from others that arrive meanwhile merge as concurrent ones; anything that reads the doc (comments, save, copy) gets the held typing first.
 
 ## 2026-11-08: Outline tab
 

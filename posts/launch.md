@@ -10,7 +10,7 @@ That is great for speed and terrible for review. When an agent pushes a 400-line
 
 ## What Red Letter is
 
-Red Letter is a live editor for the markdown files already in your GitHub repository. Change the host in a file's URL and the same file opens in an editor several people can type in at once, with comments in the margin.
+Red Letter is a live editor for the markdown files already in your GitHub repository. Change the host in a file's URL and the same file opens in an editor fast typing in review several people can type in at once, with comments in the margin.
 And  I can also edit that immiedately right? 
 
 There is no import step and no sync button. The file in git is the document. When you stop typing, Red Letter saves a real commit to the branch you are on. Close the tab, and the file on GitHub is exactly what you saw.
@@ -70,6 +70,16 @@ When you open a file, Red Letter reads the latest saved state from git, replays 
 **Two people change the same sentence?** Both changes are kept, and the overlap is highlighted for someone to settle.
 
 **Reading without a GitHub account?** Not yet. It's the most requested feature, and it's next.
+
+## Under the hood
+
+Red Letter has no database. Everything it knows is in your repository.
+
+The text of a document is the file on your branch. The live editing history, which is what lets several people and several agents type at once without stepping on each other, is stored next to it in a git ref that GitHub doesn't show in its interface. Comments are either in the file or on a pull request. The only thing outside git is who is looking at what right now, held in memory by a small relay that forgets it when everyone leaves.
+
+Your GitHub token stays in your browser. The relay never stores it. It uses it once, when you connect, to check that you can push to the repository, because anyone who can join a live session can change the text that ends up in a commit.
+
+When you open a file, Red Letter reads the latest saved state from git, replays any commits that happened since, and connects you to the live session. If you are offline, it opens the copy in your browser and saves when you are back. On a 17,000-line document a keystroke takes about 31 ms, against about 21 ms for a plain browser text box.
 
 ## What it is not
 

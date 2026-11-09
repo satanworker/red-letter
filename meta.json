@@ -1,0 +1,10 @@
+{
+ "docId": "2jizwNAkMbd2cdEniRiwU3UTMykM",
+ "branch": "satanworker/FINDINGS-review",
+ "path": "docs/research/launch-competitors.md",
+ "commit": "ca3b69802b51354e3e1d86994af1ab6fb3528320",
+ "heads": [
+  "ca9d6fedc72e1ce512144a2e3d255a88dfd192db55048f38497a0d12d8d5724f"
+ ],
+ "replayVersion": 1
+}

@@ -1,0 +1,10 @@
+{
+ "docId": "26aYoZUpPQsdm12YpM1XcAfov2iR",
+ "branch": "satanworker/FINDINGS-review",
+ "path": "docs/research/prior-art-patchwork-git-bridges.md",
+ "commit": "ca3b69802b51354e3e1d86994af1ab6fb3528320",
+ "heads": [
+  "39fb5f6b16b2eaf9d8e3d28d1e2fb14c9c4b160b9e4b1c8a407f1010e79fd723"
+ ],
+ "replayVersion": 1
+}

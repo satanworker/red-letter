@@ -286,7 +286,7 @@ export async function mergePullRequest() {
   if (!merged) return;
   localStorage.removeItem(tabsKey(full, state.branch)); // the branch is gone
   void listBranches(full, true).then((bs) => set("branches", bs), () => {});
-  void refreshPulls();
+  void refreshPulls(true);
   navigateTo(blobUrl(full, pr.base, state.path));
 }
 
@@ -310,7 +310,7 @@ export async function requestChangesOnPullRequest(number: number, note: string) 
   if (!state.repo || !note.trim()) return;
   await runDraft("Requesting changes…", () => requestChanges(state.repo!.full_name, number, note.trim()));
   await refreshPr();
-  void refreshPulls();
+  void refreshPulls(true);
 }
 
 // Close a PR without merging: a review whose threads are settled, or a branch given up on. The branch goes too; if
@@ -325,7 +325,7 @@ export async function closePullRequest(pr: { number: number; head: string; base:
   });
   if (!ok) return;
   void listBranches(full, true).then((bs) => set("branches", bs), () => {});
-  void refreshPulls();
+  void refreshPulls(true);
   void refreshComments();
   if (pr.head === state.branch) {
     endReview();

@@ -5,8 +5,9 @@
 // file: this store holds the PR's review threads on it (refreshed on the tick and after each write) and `mode`, where
 // new comments go, remembered per repo.
 import { createStore } from "solid-js/store";
-import { doc } from "../doc/docStore.ts";
-import { prThreads as fetchPrThreads, reviewBranch, type PrLink, type PrThread } from "../repo/pulls.ts";
+import { doc, openThread } from "../doc/docStore.ts";
+import { pulls, setFocusThread } from "../pulls/pullsStore.ts";
+import { openPulls, prDetails, reviewBranch, type PrLink, type PrThread } from "../repo/pulls.ts";
 import { commitToPr, readPr, type Pr } from "./commentsPr.ts";
 
 type Target = { repo: string; branch: string; path: string; viaPr: boolean };
@@ -67,14 +68,28 @@ export async function refreshComments() {
 }
 
 // The review threads on this doc across the open PRs from its branch and into it, and those PRs (the one from the
-// branch first), read on the tick and after each write.
-async function refreshPrThreads() {
+// branch first). The open-PR list (REST, ETag: free when unchanged) is read on every tick; GitHub's GraphQL (billed by
+// nodes, no ETags) is asked only when one of those PRs' updated_at moved, or `force`d after a write of our own.
+let stamp = "";
+async function refreshPrThreads(force = false) {
   const t = cur;
   const w = writes;
   if (!t) return;
   try {
-    const r = await fetchPrThreads(t.repo, t.branch, t.path);
-    if (cur === t && w === writes) set({ prThreads: r.threads, prs: r.prs });
+    const open = await openPulls(t.repo);
+    const mine = open.prs.filter((p) => p.head === t.branch || p.base === t.branch);
+    const s = `${t.branch} ${t.path} ${mine.map((p) => `${p.number}@${p.updatedAt}`).join(" ")}`;
+    if (s === stamp && !force) return;
+    const details = await prDetails(t.repo, mine);
+    if (cur !== t || w !== writes) return;
+    stamp = s;
+    // the PR from the branch first, then the PRs into it that change this file
+    const kept = details.filter((d) => d.pr.head === t.branch || d.files.some((f) => f.path === t.path)).sort((a, b) => Number(b.pr.head === t.branch) - Number(a.pr.head === t.branch));
+    set({ prs: kept.map((d) => d.pr), prThreads: kept.flatMap((d) => d.threads.filter((th) => th.path === t.path)) });
+    if (pulls.focusThread && state.prThreads.some((th) => th.id === pulls.focusThread)) {
+      openThread(pulls.focusThread);
+      setFocusThread("");
+    }
   } catch (e) {
     console.warn("[rl] reading the pull requests' comments:", e);
   }
@@ -89,7 +104,7 @@ export async function writeOnPr<T>(action: () => Promise<T>, body = ""): Promise
   set({ sending: true, error: "" });
   try {
     const r = await action();
-    if (cur === t) await refreshPrThreads();
+    if (cur === t) await refreshPrThreads(true);
     return r;
   } catch (e) {
     if (cur === t) set("error", `${e instanceof Error ? e.message : String(e)}${body ? ` — not sent: “${body}”` : ""}`);

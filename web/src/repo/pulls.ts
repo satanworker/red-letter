@@ -68,12 +68,29 @@ export async function mergePr(repo: string, number: number, attempt = 1): Promis
   return body.sha!;
 }
 
+export type PrLink = Pr & { head: string; base: string; title: string }; // an open PR a doc takes part in
+
+// ---- the repo's open PRs, cheaply ----
+// REST, through cachedGet: GitHub answers 304 to the ETag when nothing changed, and 304s don't count against the
+// rate limit. GraphQL has no ETags and bills by nodes asked for, so nothing GraphQL runs on a timer: callers compare
+// the `stamp` (the PRs' numbers and updated_at) with the last one and ask GraphQL only when a PR they care about
+// moved, or right after a write of their own. A review comment bumps the PR's updated_at; a resolve may not (own
+// resolves refresh anyway).
+export type OpenPr = PrLink & { author: string; draft: boolean; updatedAt: string; reviewers: string[] };
+export async function openPulls(repo: string): Promise<{ prs: OpenPr[]; stamp: string }> {
+  type J = { number: number; html_url: string; title: string; draft: boolean; updated_at: string; user: { login: string } | null; head: { ref: string }; base: { ref: string }; requested_reviewers: { login: string }[] };
+  const list: J[] = JSON.parse(await cachedGet(`/repos/${repo}/pulls?state=open&per_page=100`));
+  return {
+    prs: list.map((p) => ({ number: p.number, url: p.html_url, title: p.title, head: p.head.ref, base: p.base.ref, author: p.user?.login ?? "ghost", draft: p.draft, updatedAt: p.updated_at, reviewers: p.requested_reviewers.map((r) => r.login) })),
+    stamp: list.map((p) => `${p.number}@${p.updated_at}`).join(" "),
+  };
+}
+
 // ---- review threads: comments on pull requests ----
 // GitHub anchors a review comment to a line of the file (a range of lines with start_line), or to the file as a
 // whole (subject_type file). Threads, resolution and "outdated" are GraphQL-only.
 
 export type PrComment = { id: number; nodeId: string; author: string; at: string; body: string };
-export type PrLink = Pr & { head: string; base: string; title: string }; // an open PR a doc takes part in
 export type PrThread = {
   id: string; // the thread's node id (for resolving)
   pr: PrLink; // the pull request the thread is on
@@ -84,56 +101,36 @@ export type PrThread = {
   outdated: boolean; // the commented lines changed since; GitHub keeps the thread but can't place it
   comments: PrComment[]; // the first is the thread's own comment; replies follow
 };
+export type PrDetail = { pr: PrLink; files: PrDoc[]; threads: PrThread[]; decision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null };
+export type PrDoc = { path: string; additions: number; deletions: number };
 
-// The open PRs a doc on `branch` takes part in: the one from the branch, and the ones into it (reviews of it).
-// ponytail: the 30 most recent PRs into the branch, 50 threads and 50 comments each, no paging: GitHub caps a query
-// at 500k possible nodes (5+30 PRs × 50 × 50 = 87,500); page or query per PR if a repo outgrows it
-const PRS = `query($owner:String!,$name:String!,$branch:String!){
-  repository(owner:$owner,name:$name){
-    from: pullRequests(headRefName:$branch,states:OPEN,first:5){ nodes{ ...pr } }
-    into: pullRequests(baseRefName:$branch,states:OPEN,first:30,orderBy:{field:UPDATED_AT,direction:DESC}){ nodes{ ...pr } } } }
-fragment pr on PullRequest { number url title headRefName baseRefName files(first:100){ nodes{ path } } reviewThreads(first:50){ nodes{ id path line startLine subjectType isResolved isOutdated
-  comments(first:50){ nodes{ databaseId id author{ login } createdAt body } } } } }`;
-type PrNode = {
-  number: number;
-  url: string;
-  title: string;
-  headRefName: string;
-  baseRefName: string;
-  files: { nodes: { path: string }[] };
-  reviewThreads: {
-    nodes: {
-      id: string;
-      path: string;
-      line: number | null;
-      startLine: number | null;
-      subjectType: "LINE" | "FILE";
-      isResolved: boolean;
-      isOutdated: boolean;
-      comments: { nodes: { databaseId: number; id: string; author: { login: string } | null; createdAt: string; body: string }[] };
-    }[];
-  };
+type ThreadNode = {
+  id: string;
+  path: string;
+  line: number | null;
+  startLine: number | null;
+  subjectType: "LINE" | "FILE";
+  isResolved: boolean;
+  isOutdated: boolean;
+  comments: { nodes: { databaseId: number; id: string; author: { login: string } | null; createdAt: string; body: string }[] };
 };
-type PrsJson = { repository: { from: { nodes: PrNode[] }; into: { nodes: PrNode[] } } };
+type DetailNode = { reviewDecision: PrDetail["decision"]; files: { nodes: PrDoc[] }; reviewThreads: { nodes: ThreadNode[] } };
 
-// The review threads on `path` across the open PRs from `branch` and into it, oldest PR first, GitHub's order within.
-// Also those PRs (threads or not): the one from the branch, then the ones into it that change the file (the first
-// 100 files of each are looked at).
-export async function prThreads(repo: string, branch: string, path: string): Promise<{ threads: PrThread[]; prs: PrLink[] }> {
+// The given PRs' changed files and review threads, in one GraphQL call with one alias per PR.
+// ponytail: 50 files, 30 threads and 30 comments each, no paging; cost ≈ 10 points a PR
+export async function prDetails(repo: string, prs: PrLink[]): Promise<PrDetail[]> {
+  if (!prs.length) return [];
   const [owner, name] = repo.split("/");
-  const d = await graphql<PrsJson>(PRS, { owner, name, branch });
-  const seen = new Set<number>();
-  const prs: PrLink[] = [];
-  const threads: PrThread[] = [];
-  for (const p of [...d.repository.from.nodes, ...d.repository.into.nodes.filter((p) => p.files.nodes.some((f) => f.path === path))]) {
-    if (seen.has(p.number)) continue;
-    seen.add(p.number);
-    const pr: PrLink = { number: p.number, url: p.url, title: p.title, head: p.headRefName, base: p.baseRefName };
-    prs.push(pr);
-    for (const t of p.reviewThreads.nodes) {
-      if (t.path !== path) continue;
+  const q = `query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ ${prs.map((p, i) => `p${i}: pullRequest(number:${p.number}){ ...d }`).join(" ")} } }
+fragment d on PullRequest { reviewDecision files(first:50){ nodes{ path additions deletions } } reviewThreads(first:30){ nodes{ id path line startLine subjectType isResolved isOutdated
+  comments(first:30){ nodes{ databaseId id author{ login } createdAt body } } } } }`;
+  const d = await graphql<{ repository: Record<string, DetailNode | null> }>(q, { owner, name });
+  return prs.flatMap((pr, i) => {
+    const n = d.repository[`p${i}`];
+    if (!n) return [];
+    const threads = n.reviewThreads.nodes.map((t): PrThread => {
       const placed = !t.isOutdated && t.subjectType === "LINE"; // a file-level thread says line 1; it isn't on a line
-      threads.push({
+      return {
         id: t.id,
         pr,
         path: t.path,
@@ -142,73 +139,41 @@ export async function prThreads(repo: string, branch: string, path: string): Pro
         resolved: t.isResolved,
         outdated: t.isOutdated,
         comments: t.comments.nodes.map((c) => ({ id: c.databaseId, nodeId: c.id, author: c.author?.login ?? "ghost", at: c.createdAt, body: c.body })),
-      });
-    }
-  }
-  return { threads, prs };
+      };
+    });
+    return [{ pr, files: n.files.nodes, threads, decision: n.reviewDecision }];
+  });
 }
 
 // ---- the repo's open pull requests, for the panel's PRs tab ----
-export type PrDoc = { path: string; additions: number; deletions: number };
-export type RepoPr = PrLink & {
-  author: string;
-  draft: boolean;
-  decision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
-  reviewers: string[]; // review requested from
-  docs: PrDoc[]; // the markdown files it changes (first 100 files looked at)
+export type RepoPr = OpenPr & {
+  decision: PrDetail["decision"];
+  docs: PrDoc[]; // the markdown files it changes (first 50 files looked at)
   open: number; // review threads still open, across the PR
   resolved: number;
   review: boolean; // one of our review branches: the PR is the comments, the diff is one newline
-  updatedAt: string;
+  threads: PrThread[]; // across all its files
 };
-// ponytail: the 50 most recently updated open PRs, 50 threads each, no paging
-const OPEN_PRS = `query($owner:String!,$name:String!){
-  repository(owner:$owner,name:$name){ pullRequests(states:OPEN,first:50,orderBy:{field:UPDATED_AT,direction:DESC}){ nodes{
-    number url title isDraft reviewDecision updatedAt author{ login } headRefName baseRefName
-    reviewRequests(first:10){ nodes{ requestedReviewer{ ... on User{ login } } } }
-    reviewThreads(first:50){ nodes{ isResolved } }
-    files(first:100){ nodes{ path additions deletions } } } } } }`;
-type OpenPrsJson = {
-  repository: {
-    pullRequests: {
-      nodes: {
-        number: number;
-        url: string;
-        title: string;
-        isDraft: boolean;
-        reviewDecision: RepoPr["decision"];
-        updatedAt: string;
-        author: { login: string } | null;
-        headRefName: string;
-        baseRefName: string;
-        reviewRequests: { nodes: { requestedReviewer: { login?: string } | null }[] }; // teams need read:org: left out
-        reviewThreads: { nodes: { isResolved: boolean }[] };
-        files: { nodes: PrDoc[] };
-      }[];
-    };
-  };
-};
-const isDoc = (p: string) => /\.(md|markdown|mdx|txt)$/i.test(p);
+export const isDoc = (p: string) => /\.(md|markdown|mdx|txt)$/i.test(p);
 export const isReviewBranch = (head: string) => head.startsWith("red-letter/review/");
-export async function listPulls(repo: string): Promise<RepoPr[]> {
-  const [owner, name] = repo.split("/");
-  const d = await graphql<OpenPrsJson>(OPEN_PRS, { owner, name });
-  return d.repository.pullRequests.nodes.map((p) => ({
-    number: p.number,
-    url: p.url,
-    title: p.title,
-    head: p.headRefName,
-    base: p.baseRefName,
-    author: p.author?.login ?? "ghost",
-    draft: p.isDraft,
-    decision: p.reviewDecision,
-    reviewers: p.reviewRequests.nodes.flatMap((r) => (r.requestedReviewer?.login ? [r.requestedReviewer.login] : [])),
-    docs: p.files.nodes.filter((f) => isDoc(f.path)),
-    open: p.reviewThreads.nodes.filter((t) => !t.isResolved).length,
-    resolved: p.reviewThreads.nodes.filter((t) => t.isResolved).length,
-    review: isReviewBranch(p.headRefName),
-    updatedAt: p.updatedAt,
-  }));
+
+// The open PRs with their details (ponytail: the 30 most recently updated; one GraphQL call).
+export async function listPulls(repo: string, prs: OpenPr[]): Promise<RepoPr[]> {
+  const top = [...prs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 30);
+  const details = new Map((await prDetails(repo, top)).map((d) => [d.pr.number, d]));
+  return top.map((p) => {
+    const d = details.get(p.number);
+    const threads = d?.threads ?? [];
+    return {
+      ...p,
+      decision: d?.decision ?? null,
+      docs: (d?.files ?? []).filter((f) => isDoc(f.path)),
+      open: threads.filter((t) => !t.resolved).length,
+      resolved: threads.filter((t) => t.resolved).length,
+      review: isReviewBranch(p.head),
+      threads,
+    };
+  });
 }
 
 // A "request changes" review with a note; GitHub refuses it on your own PR (422).

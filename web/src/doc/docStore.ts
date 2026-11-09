@@ -321,9 +321,13 @@ export function setIcon(icon: string) {
   view.dispatch({ changes, userEvent: "input" });
 }
 
+// A panel card: its comment lit as when clicked in the text (activeThread) and scrolled into view, not selected (a
+// selection covered the highlight and brought up the "Add a comment" pill). In a table cell, where the editor can't
+// draw the highlight, the commented text is selected in the cell instead.
 export function selectThread(t: Thread) {
   set("activeThread", t.id);
-  if (t.range) jump(t.range.from, t.range.to);
+  if (!view || !t.range || selectInTable(view, t.range.from, t.range.to)) return;
+  view.dispatch({ effects: EditorView.scrollIntoView(t.range.from) });
 }
 
 // ---- comments: edits to the doc (inline.ts), or on a protected branch to its comment PR's copy ----

@@ -9,6 +9,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **The first column is pinned only in tables wider than the text column**: thousands of pinned cells doubled a keystroke's cost in a long table.
 - **The last column of a table has no right padding**, as designed: its rule was dropped by a selector the editor's theme couldn't read.
 - **Selections are yellow**, the comment highlight's colour, in the doc and everywhere else, instead of blue.
+- **Clicking a comment card lights its comment** in the text, as clicking the comment there does, and scrolls to it; it no longer selects the text (the selection hid the highlight and brought up "Add a comment").
 
 ## 2026-11-08: Links in tables
 

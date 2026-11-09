@@ -11,6 +11,7 @@ That is great for speed and terrible for review. When an agent pushes a 400-line
 ## What Red Letter is
 
 Red Letter is a live editor for the markdown files already in your GitHub repository. Change the host in a file's URL and the same file opens in an editor several people can type in at once, with comments in the margin.
+And  I can also edit that immiedately right? 
 
 There is no import step and no sync button. The file in git is the document. When you stop typing, Red Letter saves a real commit to the branch you are on. Close the tab, and the file on GitHub is exactly what you saw.
 

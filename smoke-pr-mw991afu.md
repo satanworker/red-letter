@@ -24,6 +24,6 @@ Filler line 11.
 
 Filler line 12.
 
-The line to change.
+The line that changed.
 
 The last line.

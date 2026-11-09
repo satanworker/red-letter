@@ -24,6 +24,10 @@ Filler line 11.
 
 Filler line 12.
 
-The line to change.
+The line that changed.
 
-The last line.
+The <!--rl:117s4x-->last line<!--/rl:117s4x-->.
+
+<!--rl:117s4x
+@satanworker 2026-11-09T12:40Z: In the file now
+-->

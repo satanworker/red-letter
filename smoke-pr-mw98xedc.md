@@ -26,4 +26,8 @@ Filler line 12.
 
 The line that changed.
 
-The last line.
+The <!--rl:xnmcsw-->last line<!--/rl:xnmcsw-->.
+
+<!--rl:xnmcsw
+@satanworker 2026-11-09T12:37Z: In the file now
+-->

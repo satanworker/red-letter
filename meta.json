@@ -1,0 +1,10 @@
+{
+ "docId": "4QELWyhSCQGfyoU9o1nQotq5kaCA",
+ "branch": "satanworker/FINDINGS-review",
+ "path": "CHANGELOG.md",
+ "commit": "ca3b69802b51354e3e1d86994af1ab6fb3528320",
+ "heads": [
+  "2c64621645dfc1d5d90d25de0b8169f4e32dd7740616f29aeac5e3d95373fc68"
+ ],
+ "replayVersion": 1
+}

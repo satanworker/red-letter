@@ -1,0 +1,10 @@
+{
+ "docId": "4KC7aWZC7k2hfHM1b9r8HrfjTPsQ",
+ "branch": "satanworker/FINDINGS-review",
+ "path": "docs/research/crdt-choice.md",
+ "commit": "ca3b69802b51354e3e1d86994af1ab6fb3528320",
+ "heads": [
+  "9c317f82f255b7623910cdc7b6968755e92a5db6b5174bc70edc7b085876061e"
+ ],
+ "replayVersion": 1
+}

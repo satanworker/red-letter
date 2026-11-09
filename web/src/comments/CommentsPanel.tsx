@@ -8,7 +8,7 @@ import { repo } from "../repo/repoStore.ts";
 import { Avatar, ago, badge, btn, card, linkBtn } from "../ui.tsx";
 import type { Message as Msg, Thread } from "./inline.ts";
 import { MentionText, createMentions } from "./Mentions.tsx";
-import { comments, setCommentsMode, type Mode } from "./commentsStore.ts";
+import { comments, setCommentsMode, targetPr, type Mode } from "./commentsStore.ts";
 
 type Submit = SubmitEvent & { currentTarget: HTMLFormElement };
 
@@ -52,7 +52,7 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
   );
   return (
     <>
-      <Show when={doc.pr || doc.session?.canWrite}>
+      <Show when={targetPr() || doc.session?.canWrite}>
         <div class="flex gap-2 px-0.5" role="group" aria-label="Where new comments go">
           {modeBtn("pr", "On the pull request")}
           {modeBtn("file", "In the file")}
@@ -82,12 +82,12 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
           when={comments.viaPr}
           fallback={
             <Show
-              when={comments.mode === "pr" || (doc.pr && !doc.session?.canWrite)}
+              when={comments.mode === "pr" || (targetPr() && !doc.session?.canWrite)}
               fallback="New comments go into the file as HTML comments: hidden on GitHub's page, read by agents with the text. Resolved ones stay in the file until deleted."
             >
               <span>
                 New comments go to{" "}
-                <Show when={doc.pr} fallback={<>a pull request as review comments on this file, never into the file itself. The first one opens the pull request{doc.session?.doc.base ? " from this branch" : ` from a review branch, ${repo.user?.login}/<file>-review, back into ${repo.branch}`}.</>}>
+                <Show when={targetPr()} fallback={<>a pull request as review comments on this file, never into the file itself. The first one opens it{doc.session?.doc.base ? " from this branch" : `: a review of this doc, shared by everyone, back into ${repo.branch}`}.</>}>
                   {(pr) => (
                     <>
                       <a class="underline" href={pr().url} target="_blank">
@@ -169,18 +169,22 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
         <Show when={removed()}>
           <span class="mt-0.5 block text-muted">· text was removed</span>
         </Show>
-        {/* only while both kinds can be around: a thread on the PR, or in the file next to PR ones */}
-        <Show when={doc.pr}>
-          {(pr) => (
-            <span class="mt-1 flex gap-1.5 text-muted">
-              <span class={`${badge} px-1.5`}>{t().source === "pr" ? `on PR #${pr().number}` : "in file"}</span>
-              <Show when={t().pr?.outdated}>
-                <span class={`${badge} px-1.5`} title="GitHub lost track of the lines; placed here by the comment's quote, if found">
-                  outdated
-                </span>
-              </Show>
-            </span>
-          )}
+        {/* where the thread lives, once there's more than the file: its PR, or "in file" next to PR ones */}
+        <Show when={t().pr || comments.prs.length}>
+          <span class="mt-1 flex gap-1.5 text-muted">
+            <Show when={t().pr} fallback={<span class={`${badge} px-1.5`}>in file</span>}>
+              {(pr) => (
+                <a class={`${badge} px-1.5 hover:underline`} href={pr().url} target="_blank" rel="noopener">
+                  on PR #{pr().number}
+                </a>
+              )}
+            </Show>
+            <Show when={t().pr?.outdated}>
+              <span class={`${badge} px-1.5`} title="GitHub lost track of the lines; placed here by the comment's quote, if found">
+                outdated
+              </span>
+            </Show>
+          </span>
         </Show>
       </div>
       <For each={t().messages}>{(m) => <Message m={m} />}</For>

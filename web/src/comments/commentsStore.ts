@@ -6,7 +6,7 @@
 // new comments go, remembered per repo.
 import { createStore } from "solid-js/store";
 import { doc } from "../doc/docStore.ts";
-import { prThreads as fetchPrThreads, type PrThread } from "../repo/pulls.ts";
+import { prThreads as fetchPrThreads, reviewBranch, type PrThread } from "../repo/pulls.ts";
 import { commitToPr, readPr, type Pr } from "./commentsPr.ts";
 
 type Target = { repo: string; branch: string; path: string; viaPr: boolean };
@@ -17,6 +17,8 @@ const [state, set] = createStore({
   pr: null as Pr | null,
   text: null as string | null,
   prThreads: [] as PrThread[],
+  prs: [] as (Pr & { head: string })[], // the open PRs from this branch and into it, the former first
+  review: "", // the shared review branch of this doc on its branch (pulls.reviewBranch), once hashed
   mode: "pr" as Mode,
   sending: false,
   error: "",
@@ -25,20 +27,25 @@ export const comments = state;
 let cur: Target | null = null;
 
 export function loadComments(repo: string, branch: string, path: string, viaPr: boolean) {
-  cur = { repo, branch, path, viaPr };
-  set({ viaPr, pr: null, text: null, prThreads: [], sending: false, error: "", mode: localStorage.getItem(modeKey(repo)) === "file" ? "file" : "pr" });
+  const t = (cur = { repo, branch, path, viaPr });
+  set({ viaPr, pr: null, text: null, prThreads: [], prs: [], review: "", sending: false, error: "", mode: localStorage.getItem(modeKey(repo)) === "file" ? "file" : "pr" });
+  void reviewBranch(branch, path).then((r) => cur === t && set("review", r));
   void refreshComments();
 }
 
 export function clearComments() {
   cur = null;
-  set({ viaPr: false, pr: null, text: null, prThreads: [], sending: false, error: "" });
+  set({ viaPr: false, pr: null, text: null, prThreads: [], prs: [], review: "", sending: false, error: "" });
 }
+
+// The PR a new comment goes to, if one exists: the PR from this branch, else the shared review of this doc on it
+// (repoStore.ensurePullRequest makes one when there's none).
+export const targetPr = () => state.prs.find((p) => p.head === cur?.branch) ?? state.prs.find((p) => state.review && p.head === state.review) ?? null;
 
 // New comments go to a pull request (GitHub review comments) rather than into the file: in PR mode for anyone who
 // can push (a PR is made for the first one if there's none), and for someone who can't edit the branch (a reviewer
 // with read access) whenever a PR is open, whatever the mode says.
-export const commentsOnPr = () => (state.mode === "pr" && doc.session?.canWrite === true) || (doc.pr !== null && !(doc.session?.canWrite || state.viaPr));
+export const commentsOnPr = () => (state.mode === "pr" && doc.session?.canWrite === true) || (targetPr() !== null && !(doc.session?.canWrite || state.viaPr));
 export function setCommentsMode(mode: Mode) {
   set("mode", mode);
   if (cur) localStorage.setItem(modeKey(cur.repo), mode);
@@ -59,19 +66,17 @@ export async function refreshComments() {
   }
 }
 
+// The review threads on this doc across the open PRs from its branch and into it, and those PRs (the one from the
+// branch first), read on the tick and after each write.
 async function refreshPrThreads() {
-  const t = cur, pr = doc.pr;
+  const t = cur;
   const w = writes;
   if (!t) return;
-  if (!pr) {
-    if (state.prThreads.length) set("prThreads", []);
-    return;
-  }
   try {
-    const threads = await fetchPrThreads(t.repo, pr.number, t.path);
-    if (cur === t && w === writes) set("prThreads", threads);
+    const r = await fetchPrThreads(t.repo, t.branch, t.path);
+    if (cur === t && w === writes) set({ prThreads: r.threads, prs: r.prs });
   } catch (e) {
-    console.warn("[rl] reading the pull request's comments:", e);
+    console.warn("[rl] reading the pull requests' comments:", e);
   }
 }
 

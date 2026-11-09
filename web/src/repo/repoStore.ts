@@ -4,7 +4,7 @@ import { createStore } from "solid-js/store";
 import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
-import { approvePr, mergePr, openPr, openPrFrom, touchFile, type Pr } from "./pulls.ts";
+import { approvePr, mergeInto, mergePr, openPr, openPrFrom, reviewBranch, touchFile, type Pr } from "./pulls.ts";
 import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
@@ -229,27 +229,28 @@ async function createPr(s: Session, branch: string, base: string, title: string)
   }
 }
 
-// The pull request a comment can go on, made when there is none. GitHub has no reviews without a PR. A branch forked
-// here (it records its base) gets the PR from itself; any other branch, the default one above all, gets a review
-// branch `<login>/<file>-review` forked at the doc's last save (reused if it exists) with a PR back into it, since a
-// PR from a long-lived branch into the default one is rarely what a comment means. The caller touches the file the
-// same way createPr does when GitHub refuses the comment itself.
+// The pull request a comment goes on, made when there is none. GitHub has no reviews without a PR. A branch forked
+// here (it records its base) gets the PR from itself. Any other branch, main above all, gets the doc's shared review
+// branch (pulls.reviewBranch, one per doc and base, so everyone's review is one PR) forked at the doc's last save,
+// with a PR back into the branch; an existing one first takes in the branch's latest commits (GitHub's merge), so
+// the comment's lines refer to the text as it is now. The caller touches the file the same way createPr does when
+// GitHub refuses the comment itself.
 export async function ensurePullRequest(s: Session): Promise<{ number: number; headSha: string; branch: string }> {
   const full = state.repo!.full_name;
   let branch = s.branch;
   let base = s.doc.base?.branch;
   if (!base) {
     base = s.branch;
-    branch = `${state.user!.login}/${s.path.split("/").pop()!.replace(/\.[^.]+$/, "")}-review`;
+    branch = await reviewBranch(base, s.path);
     try {
       await createBranch(full, branch, s.doc.git!.commit);
     } catch (e) {
-      if (!(e instanceof HttpError && e.status === 422)) throw e; // exists: the review goes on there
+      if (!(e instanceof HttpError && e.status === 422)) throw e;
+      await mergeInto(full, branch, base); // exists: the review goes on there, caught up with the base
     }
-    set("branches", [...new Set([...state.branches, branch])]);
   }
   const open = await openPrFrom(full, branch);
-  const { pr, headSha } = open ? { pr: open, headSha: await branchHead(full, branch, true) } : await createPr(s, branch, base, branch === s.branch ? prTitle(branch) : `Review ${s.path}`);
+  const { pr, headSha } = open ? { pr: open, headSha: await branchHead(full, branch, true) } : await createPr(s, branch, base, branch === s.branch ? prTitle(branch) : `Review of ${s.path}`);
   return { number: pr.number, headSha, branch };
 }
 

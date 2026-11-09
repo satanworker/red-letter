@@ -82,7 +82,7 @@ export function selectThreads(docThreads: Thread[], text: string, prText: string
         if (mark && i >= 0) range = { from: doc.toText(i, 1), to: doc.toText(i + mark.quote.length, -1) };
         else if (t.line !== null) range = lineRange(t.startLine ?? t.line, t.line);
         const quote = mark?.quote || (range ? text.slice(range.from, range.to) : "");
-        return [{ id: t.id, range, quote, messages: prMessages(t), resolved: t.resolved, source: "pr", pr: { threadId: t.id, firstCommentId: first.id, outdated: t.outdated } }];
+        return [{ id: t.id, range, quote, messages: prMessages(t), resolved: t.resolved, source: "pr", pr: { number: t.pr.number, url: t.pr.url, threadId: t.id, firstCommentId: first.id, outdated: t.outdated } }];
       }),
     );
   }

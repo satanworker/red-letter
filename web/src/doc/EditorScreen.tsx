@@ -3,7 +3,7 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { CommentsPanel } from "../comments/CommentsPanel.tsx";
 import { selectThreads } from "../comments/commentsSelectors.ts";
-import { comments } from "../comments/commentsStore.ts";
+import { comments, targetPr } from "../comments/commentsStore.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
 import { approvePullRequest, closeTab, mergePullRequest, navigateTo, openPullRequest, prTitle, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
@@ -371,7 +371,7 @@ export function EditorScreen() {
                   <History session={s} entries={history} />
                 </div>
                 <div id="comments" role="tabpanel" aria-labelledby="tab-comments" class="flex flex-col gap-4" hidden={tab() !== "comments"}>
-                  <CommentsPanel canComment={s.canWrite || comments.viaPr || doc.pr !== null} threads={threads} />
+                  <CommentsPanel canComment={s.canWrite || comments.viaPr || targetPr() !== null} threads={threads} />
                 </div>
                 {/* mounted only while shown: it follows the doc's scroll */}
                 <Show when={tab() === "outline"}>

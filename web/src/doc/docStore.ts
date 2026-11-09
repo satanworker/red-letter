@@ -3,7 +3,7 @@
 import { EditorView } from "@codemirror/view";
 import { batch } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { clearComments, commentViaPr, comments, commentsOnPr, loadComments, refreshComments, writeOnPr } from "../comments/commentsStore.ts";
+import { clearComments, commentViaPr, comments, commentsOnPr, loadComments, refreshComments, targetPr, writeOnPr } from "../comments/commentsStore.ts";
 import { withPrMark } from "../comments/commentsSelectors.ts";
 import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, type User } from "../github.ts";
@@ -221,7 +221,7 @@ export function leavingWithUnsaved(): boolean {
 export function startComment() {
   const s = state.session;
   const sel = view && (view.state.field(cellSelection) ?? view.state.selection.main);
-  if (!s || !(s.canWrite || comments.viaPr || state.pr) || !view || !sel || sel.from === sel.to || inCode(view.state, sel.from) || inCode(view.state, sel.to)) return;
+  if (!s || !(s.canWrite || comments.viaPr || targetPr()) || !view || !sel || sel.from === sel.to || inCode(view.state, sel.from) || inCode(view.state, sel.to)) return;
   set("composing", { anchor: s.anchor(sel.from, sel.to), quote: view.state.sliceDoc(sel.from, sel.to) });
 }
 export const cancelComment = () => set("composing", null);
@@ -374,22 +374,21 @@ function editComments(message: string, edits: (text: string) => Edit[], body = "
   void commentViaPr(`${message} ${s.path}`, (t) => apply(t, edits(t)), body, caughtUp);
 }
 
-// A thread on the pull request takes its replies, resolution and deletion there, whatever the mode; false: not one.
-function onPr(id: string, action: (t: PrThread, pr: PrState, repo: string) => Promise<unknown>, body = ""): boolean {
-  const s = state.session, pr = state.pr, t = comments.prThreads.find((t) => t.id === id);
-  if (!s || !pr || !t) return false;
-  void writeOnPr(() => action(t, pr, s.repoName), body);
+// A thread on a pull request takes its replies, resolution and deletion there, whatever the mode; false: not one.
+function onPr(id: string, action: (t: PrThread, repo: string) => Promise<unknown>, body = ""): boolean {
+  const s = state.session, t = comments.prThreads.find((t) => t.id === id);
+  if (!s || !t) return false;
+  void writeOnPr(() => action(t, s.repoName), body);
   return true;
 }
 
-// A review comment on the PR: anchored to the selection's lines in the file as committed (the doc's text, comment
-// markup included, is the file), on the PR's head, so unsaved text is saved first. The hidden marker at the end
-// keeps the exact text (offsets without markup: plain()). With no PR yet, one is made (repoStore.ensurePullRequest:
-// from main, on a review branch the tab then moves to). GitHub takes the comment only on the PR's diff: a file the
-// PR doesn't change gets a newline appended first (touchFile), lines outside the diff take a comment on the file as
-// a whole, the marker still places it here.
+// A review comment on the doc's pull request (commentsStore.targetPr: the PR from this branch, else the shared
+// review of the doc on it; repoStore.ensurePullRequest makes one when there's none): anchored to the selection's
+// lines in the file as committed (the doc's text, comment markup included, is the file), on the PR's head, so
+// unsaved text is saved first. The hidden marker at the end keeps the exact text (offsets without markup: plain()).
+// GitHub takes the comment only on the PR's diff: a file the PR doesn't change gets a newline appended first
+// (touchFile), lines outside the diff take a comment on the file as a whole, the marker still places it here.
 async function commentOnPullRequest(s: Session, anchor: Anchor, body: string) {
-  let moved = "";
   const sent = await writeOnPr(async () => {
     await s.save();
     if (s.status.dirty) throw new Error(`Couldn't save the doc first: ${s.status.error ?? "unsaved edits"}`);
@@ -400,8 +399,9 @@ async function commentOnPullRequest(s: Session, anchor: Anchor, body: string) {
     const full = withPrMark(body, { quote: p.text.slice(from, to), from, to });
     const lineAt = (i: number) => text.slice(0, i).split("\n").length;
     const lines = { start: lineAt(at.from), end: lineAt(at.to - 1) };
-    const pr = state.pr ? { number: state.pr.number, headSha: s.doc.git?.commit ?? state.pr.headSha, branch: s.branch } : await ensurePullRequest(s);
-    if (pr.branch !== s.branch) moved = pr.branch;
+    // a PR from this branch: its head is the doc's last save; a review PR: ensurePullRequest catches it up and says
+    const known = targetPr();
+    const pr = known && known.head === s.branch ? { number: known.number, headSha: s.doc.git!.commit, branch: s.branch } : await ensurePullRequest(s);
     let sha = pr.headSha, onLines = true;
     for (;;) {
       try {
@@ -414,9 +414,7 @@ async function commentOnPullRequest(s: Session, anchor: Anchor, body: string) {
       }
     }
   }, body);
-  if (!sent) return;
-  if (moved) return navigateTo(blobUrl(s.repoName, moved, s.path)); // the review branch: its PR bar and this thread
-  const t = comments.prThreads.find((t) => t.comments[0]?.id === sent.id);
+  const t = sent && comments.prThreads.find((t) => t.comments[0]?.id === sent.id);
   if (t) set("activeThread", t.id);
 }
 
@@ -449,10 +447,10 @@ export function submitComment(body: string) {
 }
 
 export const submitReply = (id: string, body: string) =>
-  onPr(id, (t, pr, repo) => replyOnPr(repo, pr.number, t.comments[0]!.id, body), body) || editComments("Reply on", (t) => reply(t, id, { author: state.login, at: now(), body }), body);
+  onPr(id, (t, repo) => replyOnPr(repo, t.pr.number, t.comments[0]!.id, body), body) || editComments("Reply on", (t) => reply(t, id, { author: state.login, at: now(), body }), body);
 export const resolveThread = (id: string) => onPr(id, (t) => setThreadResolved(t.id, true)) || editComments("Resolve a comment on", (t) => setResolved(t, id, true));
 export const reopenThread = (id: string) => onPr(id, (t) => setThreadResolved(t.id, false)) || editComments("Reopen a comment on", (t) => setResolved(t, id, false));
-export const deleteThread = (id: string) => onPr(id, (t, _pr, repo) => deletePrComment(repo, t.comments[0]!.id)) || editComments("Delete a comment on", (t) => remove(t, id));
+export const deleteThread = (id: string) => onPr(id, (t, repo) => deletePrComment(repo, t.comments[0]!.id)) || editComments("Delete a comment on", (t) => remove(t, id));
 
 // ---- drafts ----
 export const toggleChanges = () => set("showChanges", (v) => !v);

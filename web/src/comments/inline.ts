@@ -16,7 +16,7 @@
 export type Message = { author: string; at: string; body: string };
 // source: where the thread lives. "file": markup in the doc (below); "pr": a review thread on the branch's pull
 // request (commentsSelectors.ts maps it onto the doc), with GitHub's ids for replying, resolving and deleting.
-export type PrRef = { threadId: string; firstCommentId: number; outdated: boolean };
+export type PrRef = { number: number; url: string; threadId: string; firstCommentId: number; outdated: boolean };
 export type Thread = { id: string; range: { from: number; to: number } | null; quote: string; messages: Message[]; resolved: boolean; source: "file" | "pr"; pr?: PrRef };
 export type Edit = { from: number; to: number; insert: string };
 export type Span = { from: number; to: number };

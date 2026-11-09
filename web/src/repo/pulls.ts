@@ -1,6 +1,6 @@
 // Pull requests: GitHub's own review and merge. Used by the branch bar (open, approve, merge), by comments that go on
 // the PR (commentsStore) and by a protected branch's comment PR (commentsPr). Stateless; never imports a store.
-import { HttpError, b64, cachedGet, encPath, gh, ghJson, graphql, post, unb64 } from "../github.ts";
+import { HttpError, b64, cachedGet, encPath, gh, ghJson, graphql, post, sha1, unb64 } from "../github.ts";
 
 export type Pr = { number: number; url: string };
 export type PrState = Pr & {
@@ -68,13 +68,14 @@ export async function mergePr(repo: string, number: number, attempt = 1): Promis
   return body.sha!;
 }
 
-// ---- review threads: comments on the PR ----
+// ---- review threads: comments on pull requests ----
 // GitHub anchors a review comment to a line of the file (a range of lines with start_line), or to the file as a
 // whole (subject_type file). Threads, resolution and "outdated" are GraphQL-only.
 
 export type PrComment = { id: number; nodeId: string; author: string; at: string; body: string };
 export type PrThread = {
   id: string; // the thread's node id (for resolving)
+  pr: Pr & { head: string }; // the pull request the thread is on
   path: string;
   line: number | null; // GitHub's current line (1-based), null for a file-level or outdated thread
   startLine: number | null;
@@ -83,43 +84,53 @@ export type PrThread = {
   comments: PrComment[]; // the first is the thread's own comment; replies follow
 };
 
-const THREADS = `query($owner:String!,$name:String!,$number:Int!,$after:String){
-  repository(owner:$owner,name:$name){ pullRequest(number:$number){ reviewThreads(first:100,after:$after){
-    pageInfo{ hasNextPage endCursor }
-    nodes{ id path line startLine subjectType isResolved isOutdated
-      comments(first:100){ nodes{ databaseId id author{ login } createdAt body } } } } } } }`;
-type ThreadsJson = {
-  repository: {
-    pullRequest: {
-      reviewThreads: {
-        pageInfo: { hasNextPage: boolean; endCursor: string | null };
-        nodes: {
-          id: string;
-          path: string;
-          line: number | null;
-          startLine: number | null;
-          subjectType: "LINE" | "FILE";
-          isResolved: boolean;
-          isOutdated: boolean;
-          comments: { nodes: { databaseId: number; id: string; author: { login: string } | null; createdAt: string; body: string }[] };
-        }[];
-      };
-    };
+// The open PRs a doc on `branch` takes part in: the one from the branch, and the ones into it (reviews of it).
+// ponytail: the 30 most recent PRs into the branch, 50 threads and 50 comments each, no paging: GitHub caps a query
+// at 500k possible nodes (5+30 PRs × 50 × 50 = 87,500); page or query per PR if a repo outgrows it
+const PRS = `query($owner:String!,$name:String!,$branch:String!){
+  repository(owner:$owner,name:$name){
+    from: pullRequests(headRefName:$branch,states:OPEN,first:5){ nodes{ ...pr } }
+    into: pullRequests(baseRefName:$branch,states:OPEN,first:30,orderBy:{field:UPDATED_AT,direction:DESC}){ nodes{ ...pr } } } }
+fragment pr on PullRequest { number url headRefName reviewThreads(first:50){ nodes{ id path line startLine subjectType isResolved isOutdated
+  comments(first:50){ nodes{ databaseId id author{ login } createdAt body } } } } }`;
+type PrNode = {
+  number: number;
+  url: string;
+  headRefName: string;
+  reviewThreads: {
+    nodes: {
+      id: string;
+      path: string;
+      line: number | null;
+      startLine: number | null;
+      subjectType: "LINE" | "FILE";
+      isResolved: boolean;
+      isOutdated: boolean;
+      comments: { nodes: { databaseId: number; id: string; author: { login: string } | null; createdAt: string; body: string }[] };
+    }[];
   };
 };
+type PrsJson = { repository: { from: { nodes: PrNode[] }; into: { nodes: PrNode[] } } };
 
-// The PR's review threads on `path`, in GitHub's order (oldest first).
-export async function prThreads(repo: string, number: number, path: string): Promise<PrThread[]> {
+// The review threads on `path` across the open PRs from `branch` and into it, oldest PR first, GitHub's order within.
+// Also the PRs themselves (threads or not), the one from the branch first.
+export async function prThreads(repo: string, branch: string, path: string): Promise<{ threads: PrThread[]; prs: (Pr & { head: string })[] }> {
   const [owner, name] = repo.split("/");
-  const out: PrThread[] = [];
-  for (let after: string | null = null; ; ) {
-    const d: ThreadsJson = await graphql<ThreadsJson>(THREADS, { owner, name, number, after });
-    const page = d.repository.pullRequest.reviewThreads;
-    for (const t of page.nodes) {
+  const d = await graphql<PrsJson>(PRS, { owner, name, branch });
+  const seen = new Set<number>();
+  const prs: (Pr & { head: string })[] = [];
+  const threads: PrThread[] = [];
+  for (const p of [...d.repository.from.nodes, ...d.repository.into.nodes]) {
+    if (seen.has(p.number)) continue;
+    seen.add(p.number);
+    const pr = { number: p.number, url: p.url, head: p.headRefName };
+    prs.push(pr);
+    for (const t of p.reviewThreads.nodes) {
       if (t.path !== path) continue;
       const placed = !t.isOutdated && t.subjectType === "LINE"; // a file-level thread says line 1; it isn't on a line
-      out.push({
+      threads.push({
         id: t.id,
+        pr,
         path: t.path,
         line: placed ? t.line : null,
         startLine: placed ? t.startLine : null,
@@ -128,9 +139,19 @@ export async function prThreads(repo: string, number: number, path: string): Pro
         comments: t.comments.nodes.map((c) => ({ id: c.databaseId, nodeId: c.id, author: c.author?.login ?? "ghost", at: c.createdAt, body: c.body })),
       });
     }
-    if (!page.pageInfo.hasNextPage) return out;
-    after = page.pageInfo.endCursor;
   }
+  return { threads, prs };
+}
+
+// The branch a review of `path` on `base` happens on: shared by everyone reviewing that doc, so one PR holds the
+// conversation. Hashed like the snapshot refs: a path isn't always a valid ref name, and "<base>/<path>" collides.
+export const reviewBranch = async (base: string, path: string) => `red-letter/review/${await sha1(base)}/${await sha1(path)}`;
+
+// `base` merged into `branch` (GitHub's merge), so the branch carries the base's latest text; 409 = conflict.
+export async function mergeInto(repo: string, branch: string, base: string): Promise<void> {
+  const res = await gh(`/repos/${repo}/merges`, { method: "POST", body: JSON.stringify({ base: branch, head: base, commit_message: `Merge ${base} into the review of it` }) });
+  if (res.status === 409) throw new HttpError(409, `The review branch conflicts with ${base}: resolve it on GitHub`);
+  if (!res.ok && res.status !== 204) throw new HttpError(res.status, `updating the review branch: ${res.status} ${await res.text()}`);
 }
 
 // GitHub takes review comments only on the PR's diff: a line outside the file's changed lines (and the few context

@@ -9,6 +9,7 @@ const eq = (got: unknown, want: unknown, what: string) => {
 };
 const thread = (id: string, body: string, at: Partial<PrThread> = {}): PrThread => ({
   id,
+  pr: { number: 7, url: "https://github.com/o/r/pull/7", head: "o/demo-review" },
   path: "demo.md",
   line: null,
   startLine: null,
@@ -27,7 +28,7 @@ eq(splitPrMark("plain body"), { body: "plain body", mark: null }, "no marker");
 // placed by the quote: the first "sync", not the one on the next line
 let [t] = selectThreads([], base, null, [thread("T1", marked)]);
 eq([t!.source, t!.quote, t!.messages[0]!.body, base.slice(t!.range!.from, t!.range!.to)], ["pr", q, "Which sync?", q], "quote placed and marker stripped");
-eq(t!.pr, { threadId: "T1", firstCommentId: 1, outdated: false }, "pr ref");
+eq(t!.pr, { number: 7, url: "https://github.com/o/r/pull/7", threadId: "T1", firstCommentId: 1, outdated: false }, "pr ref");
 
 // the text above it grew: the nearest "sync" to the old offset is still the right one
 const moved = "# Title, longer now\n\nAn inserted paragraph.\n" + base.slice(4);

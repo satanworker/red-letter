@@ -4,7 +4,7 @@ import { Compartment, EditorState, StateEffect, StateField, Transaction, type Ra
 import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip, type TooltipView } from "@codemirror/view";
 import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js";
 import { render } from "solid-js/web";
-import { comments } from "../comments/commentsStore.ts";
+import { comments, targetPr } from "../comments/commentsStore.ts";
 import type { Thread } from "../comments/inline.ts";
 import { createMentions } from "../comments/Mentions.tsx";
 import { AtIcon, TipArrow, btn } from "../ui.tsx";
@@ -210,7 +210,7 @@ const modeOf = (reading: boolean) => [EditorState.readOnly.of(reading), readingM
 // Who can comment: anyone who can edit, or through a PR (a protected branch's comment PR, or the branch's own pull
 // request, which turns up after the editor mounts: a reviewer with read access reviews on GitHub).
 const tip = new Compartment();
-const canComment = (s: Session) => s.canWrite || comments.viaPr || doc.pr !== null;
+const canComment = (s: Session) => s.canWrite || comments.viaPr || targetPr() !== null;
 
 // Pasted or dropped image files go to git (insertImages); anything else is CodeMirror's.
 function images(e: Event, data: DataTransfer | null, pos: number): boolean {

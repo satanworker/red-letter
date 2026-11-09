@@ -25,7 +25,7 @@ One detail makes this work. We do not diff the agent's commit against the live d
 
 ## Comments
 
-Comments are where we spent the most time and changed our minds most often.
+Comments took the most time, and we changed our minds about them more than once.
 
 Our first version stored comments as HTML comments inside the markdown file itself. GitHub hides HTML comments when it renders a page, so the published file looks clean, and agents read the comments along with the text. You can ask an agent to address the comments in plan.md and it just works.
 
@@ -99,4 +99,4 @@ This post was written and edited in Red Letter. The draft lived on main. The edi
 
 Pick any markdown file in a repository you can push to. Change github.com to our domain in the URL. Invite a teammate. Ask your agent to push a change while you both type.
 
-It's free while we learn what people need. Tell us what breaks: hello@redletter.dev.
+It's free during the beta. Tell us what breaks: hello@redletter.dev.

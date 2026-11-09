@@ -1,0 +1,10 @@
+{
+ "docId": "ob5GaW454DiFkGRh8f726eotZSD",
+ "branch": "satanworker/FINDINGS-review",
+ "path": "docs/research/github-integration.md",
+ "commit": "ca3b69802b51354e3e1d86994af1ab6fb3528320",
+ "heads": [
+  "20430a1a7187b6f6dbb5bd5f6528ed89360fba4a2a653fa6a5ac75caf40e606f"
+ ],
+ "replayVersion": 1
+}

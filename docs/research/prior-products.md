@@ -1,4 +1,4 @@
-# Web editing + comments over git — product survey
+# 🦚 Web editing + comments over git — product survey
 
 **Scope:** products that put a browser editor (and often comments) on files that also live in git. Observed from primary docs/repos unless marked `[INFERENCE]`.
 

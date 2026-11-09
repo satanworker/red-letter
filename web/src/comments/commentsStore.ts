@@ -35,9 +35,10 @@ export function clearComments() {
   set({ viaPr: false, pr: null, text: null, prThreads: [], sending: false, error: "" });
 }
 
-// New comments go to the open PR (GitHub review comments) rather than into the file. Someone who can't edit the
-// branch (a reviewer with read access) has only the PR, whatever the mode says.
-export const commentsOnPr = () => doc.pr !== null && (state.mode === "pr" || !(doc.session?.canWrite || state.viaPr));
+// New comments go to a pull request (GitHub review comments) rather than into the file: in PR mode for anyone who
+// can push (a PR is made for the first one if there's none), and for someone who can't edit the branch (a reviewer
+// with read access) whenever a PR is open, whatever the mode says.
+export const commentsOnPr = () => (state.mode === "pr" && doc.session?.canWrite === true) || (doc.pr !== null && !(doc.session?.canWrite || state.viaPr));
 export function setCommentsMode(mode: Mode) {
   set("mode", mode);
   if (cur) localStorage.setItem(modeKey(cur.repo), mode);

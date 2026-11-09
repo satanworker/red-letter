@@ -6,7 +6,7 @@ import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments } from "../comments/commentsStore.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
-import { approvePullRequest, closeTab, mergePullRequest, navigateTo, openPullRequest, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
+import { approvePullRequest, closeTab, mergePullRequest, navigateTo, openPullRequest, prTitle, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
 import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine, ghostBtn } from "../ui.tsx";
@@ -55,8 +55,7 @@ export function EditorScreen() {
   };
   const offMain = () => !!doc.session && !!repo.repo && repo.branch !== repo.repo.default_branch;
   const askPr = () => {
-    const slug = repo.branch.split("/").pop()!.replaceAll("-", " ");
-    const title = prompt("Pull request title", slug.charAt(0).toUpperCase() + slug.slice(1));
+    const title = prompt("Pull request title", prTitle(repo.branch));
     if (title) void openPullRequest(title);
   };
   const prBadge = () => {

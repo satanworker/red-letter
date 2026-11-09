@@ -4,7 +4,7 @@ import { createStore } from "solid-js/store";
 import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
-import { approvePr, mergePr, openPr } from "./pulls.ts";
+import { approvePr, mergePr, openPr, openPrFrom, touchFile, type Pr } from "./pulls.ts";
 import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
@@ -209,13 +209,55 @@ export async function forkBranch(name: string) {
 
 // A pull request from this branch into its base (the default branch when none was recorded); the bar then shows it.
 export async function openPullRequest(title: string) {
-  const full = state.repo?.full_name;
-  if (!full || !title.trim()) return;
-  const base = doc.session?.doc.base?.branch ?? state.repo!.default_branch;
-  const url = `${location.origin}${blobUrl(full, state.branch, state.path)}`;
-  await runDraft("Opening the pull request…", () => openPr(full, state.branch, base, title.trim(), `Opened from Red Letter: ${url}`));
+  const s = doc.session;
+  if (!s || !state.repo || !title.trim()) return;
+  await runDraft("Opening the pull request…", () => createPr(s, state.branch, s.doc.base?.branch ?? state.repo!.default_branch, title.trim()));
   await refreshPr();
 }
+
+// GitHub refuses a PR with no commits (422 "No commits between"): then the file gets a newline appended first
+// (pulls.touchFile), so the PR exists and its diff touches the file (review comments need both).
+async function createPr(s: Session, branch: string, base: string, title: string): Promise<{ pr: Pr; headSha: string }> {
+  const full = state.repo!.full_name;
+  const body = `Opened from Red Letter: ${location.origin}${blobUrl(full, branch, s.path)}`;
+  try {
+    return { pr: await openPr(full, branch, base, title, body), headSha: await branchHead(full, branch, true) };
+  } catch (e) {
+    if (!(e instanceof HttpError && e.status === 422 && /No commits between/i.test(e.message))) throw e;
+    const headSha = await touchFile(full, branch, s.path);
+    return { pr: await openPr(full, branch, base, title, body), headSha };
+  }
+}
+
+// The pull request a comment can go on, made when there is none. GitHub has no reviews without a PR. A branch forked
+// here (it records its base) gets the PR from itself; any other branch, the default one above all, gets a review
+// branch `<login>/<file>-review` forked at the doc's last save (reused if it exists) with a PR back into it, since a
+// PR from a long-lived branch into the default one is rarely what a comment means. The caller touches the file the
+// same way createPr does when GitHub refuses the comment itself.
+export async function ensurePullRequest(s: Session): Promise<{ number: number; headSha: string; branch: string }> {
+  const full = state.repo!.full_name;
+  let branch = s.branch;
+  let base = s.doc.base?.branch;
+  if (!base) {
+    base = s.branch;
+    branch = `${state.user!.login}/${s.path.split("/").pop()!.replace(/\.[^.]+$/, "")}-review`;
+    try {
+      await createBranch(full, branch, s.doc.git!.commit);
+    } catch (e) {
+      if (!(e instanceof HttpError && e.status === 422)) throw e; // exists: the review goes on there
+    }
+    set("branches", [...new Set([...state.branches, branch])]);
+  }
+  const open = await openPrFrom(full, branch);
+  const { pr, headSha } = open ? { pr: open, headSha: await branchHead(full, branch, true) } : await createPr(s, branch, base, branch === s.branch ? prTitle(branch) : `Review ${s.path}`);
+  return { number: pr.number, headSha, branch };
+}
+
+// "satanworker/plan-edits" -> "Plan edits"
+export const prTitle = (branch: string) => {
+  const words = branch.split("/").pop()!.replaceAll("-", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 // GitHub's approval review; GitHub refuses your own PR (422) and says so.
 export async function approvePullRequest() {

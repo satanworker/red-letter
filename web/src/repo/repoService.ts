@@ -32,8 +32,8 @@ export async function resolveBranch(repo: string, parts: string[], wholeAllowed:
   throw new Error(`No branch found in ${parts.join("/")}`);
 }
 
-export async function branchHead(repo: string, branch: string): Promise<string> {
-  const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(branch)}`));
+export async function branchHead(repo: string, branch: string, fresh = false): Promise<string> {
+  const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(branch)}`, { fresh }));
   return ref.object.sha;
 }
 

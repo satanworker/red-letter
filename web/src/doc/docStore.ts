@@ -7,8 +7,10 @@ import { clearComments, commentViaPr, comments, commentsOnPr, loadComments, refr
 import { withPrMark } from "../comments/commentsSelectors.ts";
 import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, type User } from "../github.ts";
-import { NotInDiff, commentOnPr, deletePrComment, prState, replyOnPr, setThreadResolved, type PrState, type PrThread } from "../repo/pulls.ts";
-import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
+import { NotInDiff, commentOnPr, deletePrComment, prState, replyOnPr, setThreadResolved, touchFile, type PrState, type PrThread } from "../repo/pulls.ts";
+import { blobUrl, branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
+// repoStore imports this store too; each uses the other only inside functions
+import { ensurePullRequest, navigateTo } from "../repo/repoStore.ts";
 import { inCode } from "./commentMarks.ts";
 import { flash } from "./flash.ts";
 import { selectIcon, type Heading } from "./docSelectors.ts";
@@ -382,9 +384,12 @@ function onPr(id: string, action: (t: PrThread, pr: PrState, repo: string) => Pr
 
 // A review comment on the PR: anchored to the selection's lines in the file as committed (the doc's text, comment
 // markup included, is the file), on the PR's head, so unsaved text is saved first. The hidden marker at the end
-// keeps the exact text (offsets without markup: plain()). Lines outside the PR's diff take no line comment on
-// GitHub (NotInDiff): the comment goes on the file as a whole, the marker still places it here.
-async function commentOnPullRequest(s: Session, anchor: Anchor, pr: PrState, body: string) {
+// keeps the exact text (offsets without markup: plain()). With no PR yet, one is made (repoStore.ensurePullRequest:
+// from main, on a review branch the tab then moves to). GitHub takes the comment only on the PR's diff: a file the
+// PR doesn't change gets a newline appended first (touchFile), lines outside the diff take a comment on the file as
+// a whole, the marker still places it here.
+async function commentOnPullRequest(s: Session, anchor: Anchor, body: string) {
+  let moved = "";
   const sent = await writeOnPr(async () => {
     await s.save();
     if (s.status.dirty) throw new Error(`Couldn't save the doc first: ${s.status.error ?? "unsaved edits"}`);
@@ -395,15 +400,23 @@ async function commentOnPullRequest(s: Session, anchor: Anchor, pr: PrState, bod
     const full = withPrMark(body, { quote: p.text.slice(from, to), from, to });
     const lineAt = (i: number) => text.slice(0, i).split("\n").length;
     const lines = { start: lineAt(at.from), end: lineAt(at.to - 1) };
-    const sha = s.doc.git?.commit ?? pr.headSha;
-    try {
-      return await commentOnPr(s.repoName, pr.number, sha, s.path, full, lines);
-    } catch (e) {
-      if (!(e instanceof NotInDiff)) throw e;
-      return commentOnPr(s.repoName, pr.number, sha, s.path, full);
+    const pr = state.pr ? { number: state.pr.number, headSha: s.doc.git?.commit ?? state.pr.headSha, branch: s.branch } : await ensurePullRequest(s);
+    if (pr.branch !== s.branch) moved = pr.branch;
+    let sha = pr.headSha, onLines = true;
+    for (;;) {
+      try {
+        return await commentOnPr(s.repoName, pr.number, sha, s.path, full, onLines ? lines : undefined);
+      } catch (e) {
+        if (!(e instanceof NotInDiff)) throw e;
+        if (e.what === "path") sha = await touchFile(s.repoName, pr.branch, s.path);
+        else if (onLines) onLines = false;
+        else throw e;
+      }
     }
   }, body);
-  const t = sent && comments.prThreads.find((t) => t.comments[0]?.id === sent.id);
+  if (!sent) return;
+  if (moved) return navigateTo(blobUrl(s.repoName, moved, s.path)); // the review branch: its PR bar and this thread
+  const t = comments.prThreads.find((t) => t.comments[0]?.id === sent.id);
   if (t) set("activeThread", t.id);
 }
 
@@ -415,7 +428,7 @@ export function submitComment(body: string) {
   if (!s || !c || !r || r.from === r.to) return;
   const id = newId();
   const msg = { author: state.login, at: now(), body };
-  if (commentsOnPr()) void commentOnPullRequest(s, c.anchor, state.pr!, body);
+  if (commentsOnPr()) void commentOnPullRequest(s, c.anchor, body);
   else
     editComments("Comment on", (t) => {
       if (s.canWrite) return addThread(t, r.from, r.to, id, msg);

@@ -58,7 +58,7 @@ Draft 1's assumptions, challenged:
 **Proof points** (same order everywhere):
 1. **Open the file where it lives.** Swap `github.com` for our host on any markdown link. No import, no sync, no database: a save is a commit on your branch.
 2. **Agents keep using `git push`.** Their commit lands in every open tab within seconds, merged character by character with what people are typing; only words both sides changed get flagged (keep yours / keep the agent's / keep both).
-3. **Comments where your team already looks.** On main they're HTML comments in the file: hidden on GitHub's rendered page, read and answered by agents (paste one snippet into your AGENTS.md and "address the comments in plan.md" works). On a branch with a pull request they're GitHub review comments, so Claude Code, Codex and your reviewers see them where they expect to; the review and the merge are the PR's.
+3. **Comments are pull request reviews.** Select text, comment, and it's a GitHub review comment on a PR: the first comment opens one (from a review branch when you're on main), so Claude Code, Codex and your reviewers see it where they already look, and Approve and Merge are the PR's. Prefer comments in the file itself, as HTML comments agents read with the text? One toggle, remembered per repo.
 4. **Your markdown isn't rewritten.** Live preview over the raw text, not a rich-text tree that reformats your lists. The only thing added is the comment markup, and only where you comment.
 
 **Trust line:** nothing is stored outside your repo. Tokens live in your browser; the relay checks your push access and exchanges the sign-in code, keeps nothing, and only admits people who can push.
@@ -180,9 +180,9 @@ Replies to keep ready: the perf table from DESIGN.md (17k-line doc, 31 ms a keys
 
 ## FAQ (paste-ready)
 
-- **Won't this spam my git history?** Yes, one commit per save (30 s after the last edit) and per comment. Edit on a branch and squash, or use a protected branch: the doc opens read-only there and comments go through one PR per doc.
-- **It edits main directly?** It edits the branch in the URL. Protected branches are read-only.
-- **There's HTML in my markdown now?** Comment markers around the text and a thread block at the end. Invisible on GitHub's rendered page, plain text to agents and linters. Delete a thread and the markup goes.
+- **Won't this spam my git history?** Edits: one commit per save (30 s after the last edit) on the branch you're on. Comments: none on your text; they're PR review comments (the first one opens the PR, and a file nobody changed gets one newline appended so GitHub lets the PR review it). Edit on a branch and squash, or use a protected branch: the doc opens read-only there.
+- **It edits main directly?** It edits the branch in the URL. Protected branches are read-only. Comments never edit the text; they go to a PR.
+- **There's HTML in my markdown now?** Only if you switch comments to "In the file": markers around the text and a thread block at the end, invisible on GitHub's rendered page, plain text to agents and linters. Delete a thread and the markup goes. The default keeps comments on the PR.
 - **Why `repo` scope?** It asks for `public_repo` first; `repo` only if you open a private repo, because GitHub OAuth has no per-repo scope. Prefer per-repo access? "Use the GitHub App instead" installs on the repos you pick. Tokens stay in your browser; the relay stores nothing.
 - **Where's my data?** In your repo: the file (comments included) on your branch, the live-editing history in `refs/red-letter/…` in the same repo. The relay is in-memory.
 - **How does the agent know the comment format?** `docs/for-agents.md`: a thread is `<!--rl:id\n@login date: text\n-->`; reply by adding a `@login: ` line, resolve by adding ` resolved` to the first line.

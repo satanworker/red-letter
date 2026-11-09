@@ -1,6 +1,6 @@
 // Pull requests: GitHub's own review and merge. Used by the branch bar (open, approve, merge), by comments that go on
 // the PR (commentsStore) and by a protected branch's comment PR (commentsPr). Stateless; never imports a store.
-import { HttpError, cachedGet, gh, ghJson, graphql, post } from "../github.ts";
+import { HttpError, b64, cachedGet, encPath, gh, ghJson, graphql, post, unb64 } from "../github.ts";
 
 export type Pr = { number: number; url: string };
 export type PrState = Pr & {
@@ -133,9 +133,33 @@ export async function prThreads(repo: string, number: number, path: string): Pro
   }
 }
 
-// The lines GitHub lets a comment sit on: GitHub refuses a line outside the PR's diff of the file (changed lines
-// and the few context lines around them). Thrown as NotInDiff so the caller can comment on the file instead.
-export class NotInDiff extends Error {}
+// GitHub takes review comments only on the PR's diff: a line outside the file's changed lines (and the few context
+// lines around them) gets `what: "line"`, so the caller can comment on the file as a whole; a file the PR doesn't
+// touch at all gets `what: "path"`, so the caller can put the file in the PR first (touchFile).
+export class NotInDiff extends Error {
+  constructor(
+    text: string,
+    public what: "line" | "path",
+  ) {
+    super(text);
+  }
+}
+
+// One newline appended to `path` on `branch` (the file's own EOL), so the PR from the branch has a diff touching it:
+// GitHub has no other way to review a file nobody changed. Returns the commit's sha.
+export async function touchFile(repo: string, branch: string, path: string): Promise<string> {
+  const file: { sha: string; content: string } = JSON.parse(await cachedGet(`/repos/${repo}/contents/${encPath(path)}?ref=${encodeURIComponent(branch)}`, { fresh: true }));
+  const raw = unb64(file.content);
+  const eol = new TextEncoder().encode(raw.includes(13) ? "\r\n" : "\n");
+  const content = new Uint8Array(raw.length + eol.length);
+  content.set(raw);
+  content.set(eol, raw.length);
+  const r = await ghJson<{ commit: { sha: string } }>(`/repos/${repo}/contents/${encPath(path)}`, {
+    method: "PUT",
+    body: JSON.stringify({ message: `Start a review of ${path} in Red Letter`, content: b64(content), sha: file.sha, branch }),
+  });
+  return r.commit.sha;
+}
 
 // A new thread on the PR's `path`: on lines start..end (1-based, inclusive, the new side of the diff), or on the
 // file as a whole when `lines` is left out. commitSha: the PR head the lines refer to.
@@ -147,7 +171,8 @@ export async function commentOnPr(repo: string, number: number, commitSha: strin
   if (res.status === 422) {
     const text = await res.text();
     // the refusal names the line field: "…line must be part of the diff" (2024), "…line could not be resolved" (2026)
-    if (/pull_request_review_thread\.(line|start_line|diff_hunk)/.test(text)) throw new NotInDiff(text);
+    if (/pull_request_review_thread\.path/.test(text)) throw new NotInDiff(text, "path");
+    if (/pull_request_review_thread\.(line|start_line|diff_hunk)/.test(text)) throw new NotInDiff(text, "line");
     throw new HttpError(422, text);
   }
   if (!res.ok) throw new HttpError(res.status, `commenting on #${number}: ${res.status} ${await res.text()}`);

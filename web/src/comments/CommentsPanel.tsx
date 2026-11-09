@@ -52,7 +52,7 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
   );
   return (
     <>
-      <Show when={doc.pr}>
+      <Show when={doc.pr || doc.session?.canWrite}>
         <div class="flex gap-2 px-0.5" role="group" aria-label="Where new comments go">
           {modeBtn("pr", "On the pull request")}
           {modeBtn("file", "In the file")}
@@ -82,23 +82,22 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
           when={comments.viaPr}
           fallback={
             <Show
-              when={doc.pr}
-              fallback="Comments are HTML comments in the file: hidden on GitHub's page, read by agents with the text. Resolved ones stay in the file until deleted."
+              when={comments.mode === "pr" || (doc.pr && !doc.session?.canWrite)}
+              fallback="New comments go into the file as HTML comments: hidden on GitHub's page, read by agents with the text. Resolved ones stay in the file until deleted."
             >
-              {(pr) => (
-                <span>
-                  <Show
-                    when={comments.mode === "pr" || !doc.session?.canWrite}
-                    fallback="New comments go into the file as HTML comments: hidden on GitHub's page, read by agents with the text. Resolved ones stay in the file until deleted."
-                  >
-                    New comments go to{" "}
-                    <a class="underline" href={pr().url} target="_blank">
-                      pull request #{pr().number}
-                    </a>{" "}
-                    as review comments on this file; they never change the file. On text the pull request didn't change, GitHub takes them as comments on the whole file.
-                  </Show>
-                </span>
-              )}
+              <span>
+                New comments go to{" "}
+                <Show when={doc.pr} fallback={<>a pull request as review comments on this file, never into the file itself. The first one opens the pull request{doc.session?.doc.base ? " from this branch" : ` from a review branch, ${repo.user?.login}/<file>-review, back into ${repo.branch}`}.</>}>
+                  {(pr) => (
+                    <>
+                      <a class="underline" href={pr().url} target="_blank">
+                        pull request #{pr().number}
+                      </a>{" "}
+                      as review comments on this file; they never change the file. On text the pull request didn't change, GitHub takes them as comments on the whole file.
+                    </>
+                  )}
+                </Show>
+              </span>
             </Show>
           }
         >

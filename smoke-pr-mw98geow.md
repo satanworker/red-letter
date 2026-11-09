@@ -26,4 +26,8 @@ Filler line 12.
 
 The line that changed.
 
-The last line.
+The <!--rl:wphwd5-->last line<!--/rl:wphwd5-->.
+
+<!--rl:wphwd5
+@satanworker 2026-11-09T12:24Z: In the file now
+-->

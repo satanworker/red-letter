@@ -157,3 +157,4 @@ Precondition: the client holds `head` (branch sha), `headTree`, `crdtHead` from 
 Total: 5 REST + 1 GraphQL, about 2–3 s. CRDT ref creation (DESIGN step 2): `POST /git/refs` → 422 `Reference already exists` means someone else won. `updateRefs` with `beforeOid` of zeros also works but its error is opaque. Poll: `GET /git/ref/heads/<branch>`, `cache:"no-store"`, `If-None-Match`. Read file: `GET /contents/{path}?ref=<sha>` with `Accept: application/vnd.github.raw+json`.
 
 Content-creating calls used across all scripts: roughly 130 (under the 150 budget).
+

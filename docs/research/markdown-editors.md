@@ -55,8 +55,6 @@ Live-preview (Obsidian-style hide markers):
 | Tables | preserved | Tiptap pipe-escape data loss | GFM alignment on mdast |
 | Fences `` ``` `` vs `~~~` | preserved | canonicalized | preserved on mdast |
 
----
-
 ## Production products
 
 | Product | Editor | Git/md SoT? | Fidelity |
@@ -68,8 +66,6 @@ Live-preview (Obsidian-style hide markers):
 | **Docmost** | Tiptap + Hocuspocus | Canonical = Tiptap JSON + ydoc; md via Turndown | Not git-md SoT |
 | **TinaCMS** | visual MDX | Git files, **not realtime**. Load/save corrupts braces, code-block meta, MDX comments ([#6651](https://github.com/tinacms/tinacms/discussions/6651), [#6653](https://github.com/tinacms/tinacms/issues/6653)) |
 | **Decap CMS** | Slate + remark@10; markdown widget [deprecated](https://decapcms.org/docs/widgets/markdown/) | Git commits, not collab. remark-stringify canonicalizes |
-
----
 
 ## Collab cursors & comments
 

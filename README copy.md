@@ -1,6 +1,6 @@
 # ⭐ Red Letter
 
-Live co-editing and margin comments for markdown files in a GitHub repo. Git stays the source of truth: agents `git pull` / `git push`, and their commits show up in the browser as reviewable changes.
+Li<!--rl:q6pdcp-->ve co-editing and margin comments for markdown files in a GitHub repo. Git stays the source of truth: agents `git pull` / `git push`, and their commits show up in the browser as re<!--/rl:q6pdcp-->viewable changes.
 
 Open any file by swapping the host: `https://github.com/o/r/blob/main/x.md` → `https://diff.satanworker.com/o/r/blob/main/x.md`.
 
@@ -52,3 +52,7 @@ flowchart LR
   B[Start] --> C[End]
   B[Middle] --> D[Another option]
 ```
+
+<!--rl:q6pdcp
+@satanworker 2026-11-09T09:43Z: test
+-->

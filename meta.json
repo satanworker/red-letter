@@ -1,0 +1,10 @@
+{
+ "docId": "hAX8Dagw8AfHZqVrGgyz67rAJm6",
+ "branch": "satanworker/FINDINGS-review",
+ "path": "experiments/github/FINDINGS.md",
+ "commit": "ca3b69802b51354e3e1d86994af1ab6fb3528320",
+ "heads": [
+  "a73967768f7bebd1957801d677999285bbfec6bb0c9beab5ad4a5497bc76856a"
+ ],
+ "replayVersion": 1
+}

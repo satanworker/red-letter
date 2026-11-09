@@ -74,7 +74,8 @@ When you open a file, Red Letter reads the latest saved state from git, replays 
 
 Red Letter is not a CMS. Your existing build still publishes your site from the repository.
 
-It is not a rich text editor either. Every rich text editor we tried rewrote our markdown on the way in and out: lists renumbered, emphasis markers swapped, tables reformatted. In a repository that agents also edit, that noise shows up in every diff. Red Letter edits the raw markdown and only styles it on screen.
+It is not a rich text editor either. Every rich text editor we tried rewrote our markdown on the way in and out: lists renumbered, emphasis markers swapped, tables reformatted. 
+In a repository that agents also edit, that noise shows up in every diff. Red Letter edits the raw markdown and only styles it on screen.
 
 ## Why now
 

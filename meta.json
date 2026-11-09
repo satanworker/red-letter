@@ -1,0 +1,10 @@
+{
+ "docId": "4KYmphyHjqctbMDhi3RpvsM7Kyg4",
+ "branch": "satanworker/prior-art-patchwork-git-bridges-review",
+ "path": "docs/research/github-integration.md",
+ "commit": "8e94a7c7263f936f026d792658eca522b072b5e4",
+ "heads": [
+  "e2e620bcf2c91ba4f37c1a86df9013881871afc355bc599f3bcea3a64315e2a8"
+ ],
+ "replayVersion": 1
+}

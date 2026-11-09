@@ -26,4 +26,8 @@ Filler line 12.
 
 The line that changed.
 
-The last line.
+The <!--rl:oc34ot-->last line<!--/rl:oc34ot-->.
+
+<!--rl:oc34ot
+@satanworker 2026-11-09T12:42Z: In the file now
+-->

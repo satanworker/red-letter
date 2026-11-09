@@ -50,23 +50,65 @@ const starts = (parts: string[], from: number) => {
   return out;
 };
 
+// How alike two lines are: Dice over their words, so a rewritten paragraph pairs with its old self and a removed one
+// pairs with nothing (word-diffing unrelated paragraphs lines up their "a"s and "the"s into word salad).
+function alike(a: string, b: string) {
+  if (a === b) return 1;
+  const wa = new Set(a.toLowerCase().match(/[\p{L}\p{N}_]+/gu)), wb = new Set(b.toLowerCase().match(/[\p{L}\p{N}_]+/gu));
+  if (!wa.size || !wb.size) return 0;
+  let both = 0;
+  for (const w of wa) if (wb.has(w)) both++;
+  return (2 * both) / (wa.size + wb.size);
+}
+
 export function textChanges(base: string, text: string): Region[] {
   if (base === text) return [];
   const al = lines(base), bl = lines(text);
   const ao = starts(al, 0), bo = starts(bl, 0);
   const raw: Hunk[] = []; // in characters
-  for (const h of myers(al, bl)) {
-    // words inside the changed lines
-    const as = base.slice(ao[h.a0], ao[h.a1]), bs = text.slice(bo[h.b0], bo[h.b1]);
-    const aw = words(as), bw = words(bs);
-    const awo = starts(aw, ao[h.a0]!), bwo = starts(bw, bo[h.b0]!);
+  const wordsOf = (a0: number, a1: number, b0: number, b1: number) => {
+    const aw = words(base.slice(a0, a1)), bw = words(text.slice(b0, b1));
+    const awo = starts(aw, a0), bwo = starts(bw, b0);
     for (const w of myers(aw, bw)) raw.push({ a0: awo[w.a0]!, a1: awo[w.a1]!, b0: bwo[w.b0]!, b1: bwo[w.b1]! });
+  };
+  // hunks only blank lines apart are one change to the paragraphs: Myers lines up the blank lines between rewritten
+  // paragraphs, which would leave each paragraph to pair only with what sits in its own small hunk
+  const hunks: Hunk[] = [];
+  for (const h of myers(al, bl)) {
+    const last = hunks[hunks.length - 1];
+    if (last && al.slice(last.a1, h.a0).every((l) => !l.trim())) (last.a1 = h.a1), (last.b1 = h.b1);
+    else hunks.push(h);
+  }
+  for (const h of hunks) {
+    // each new line takes the most alike old line still ahead of it (40% of words in common at least): the old
+    // lines skipped were removed, a new line with no match was added, a matched pair has its words diffed
+    let i = h.a0;
+    for (let j = h.b0; j < h.b1; j++) {
+      let best = -1, score = 0.4;
+      for (let k = i; k < h.a1; k++) {
+        const s = alike(al[k]!, bl[j]!);
+        if (s >= score) (best = k), (score = s);
+        if (s === 1) break;
+      }
+      if (best < 0) {
+        raw.push({ a0: ao[i]!, a1: ao[i]!, b0: bo[j]!, b1: bo[j + 1]! });
+        continue;
+      }
+      if (best > i) raw.push({ a0: ao[i]!, a1: ao[best]!, b0: bo[j]!, b1: bo[j]! });
+      wordsOf(ao[best]!, ao[best + 1]!, bo[j]!, bo[j + 1]!);
+      i = best + 1;
+    }
+    if (i < h.a1) raw.push({ a0: ao[i]!, a1: ao[h.a1]!, b0: bo[h.b1]!, b1: bo[h.b1]! });
   }
   // hunks a few characters apart read as one edit
   const merged: Hunk[] = [];
   for (const h of raw) {
     const last = merged[merged.length - 1];
-    if (last && h.b0 - last.b1 < 12 && h.a0 - last.a1 < 12) (last.a1 = h.a1), (last.b1 = h.b1);
+    // two edits read as one only when nothing but a space or a mark sits between them ("the cat" → "a dog"), never
+    // across a line: merging edits a word apart cascaded through busy paragraphs into one struck-out block
+    const gap = last ? text.slice(last.b1, h.b0) : "";
+    const ends = last ? base.slice(last.a0, last.a1) + text.slice(last.b0, last.b1) : "";
+    if (last && /^[^\p{L}\p{N}\n]{0,2}$/u.test(gap) && base.slice(last.a1, h.a0) === gap && !ends.endsWith("\n")) (last.a1 = h.a1), (last.b1 = h.b1);
     else merged.push({ ...h });
   }
   return merged.map((h) => ({ from: h.b0, to: h.b1, before: base.slice(h.a0, h.a1) }));

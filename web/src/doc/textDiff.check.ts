@@ -25,6 +25,16 @@ for (const [a, b] of cases) {
   for (let i = 1; i < rs.length; i++) ok(rs[i]!.from >= rs[i - 1]!.to, "ordered, no overlap");
 }
 ok(textChanges("The cat sat.", "The dog sat.").length === 1, "one word, one region");
+// a removed paragraph doesn't pull the rewritten one after it into one struck-out block, and edits a word apart stay apart
+{
+  const a = "Here is what a day looks like for us now.\n\nAt nine, an agent picks up a ticket and writes a plan for it.\n";
+  const b = "**9:00.** An agent picks up a ticket and writes a plan.\n";
+  const rs = textChanges(a, b);
+  ok(undo(b, rs) === a, "removed paragraph round trip");
+  ok(!rs.some((r) => r.before.includes("Here") && r.before.includes("agent")), `removed paragraph kept apart: ${JSON.stringify(rs)}`);
+  ok(rs.some((r) => r.before === "for it" || r.before === " for it"), `the rewrite is diffed by word: ${JSON.stringify(rs)}`);
+  ok(textChanges("That turned out to be exactly right, and now there are two.", "That is exactly right and Red Letter has two.").length >= 3, "a word apart stays apart");
+}
 // random edits
 let seed = 1;
 const rnd = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % n);

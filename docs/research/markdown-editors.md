@@ -84,3 +84,4 @@ Live-preview (Obsidian-style hide markers):
 
 *[INFERENCE] Dual-mode (CM source + Lexical view on one `Y.Text`) is feasible but not observed as a shipped product. X discussion of CM×PM dual-binding: https://x.com/nick_mune0127/status/2021792399337697781*
 
+чето поредактировала 

@@ -45,4 +45,10 @@ On home-satan the hub and `cloudflared` run as systemd user units (`deploy/*.ser
 
 Sign-in: OAuth App "Red Letter" (`repo` scope, default, nothing to install) or GitHub App [`red-letter-diff`](https://github.com/apps/red-letter-diff) (per-repo install; contents + pull requests read/write). The hub needs `RL_OAUTH_CLIENT_ID` / `RL_OAUTH_CLIENT_SECRET` in `env` for the former.
 
-sfdfdsf hui  up;sldksld;k
+
+```mermaid
+flowchart LR
+  A[Start] --> B[Middle]
+  B[Start] --> C[End]
+  B[Middle] --> D[Another option]
+```

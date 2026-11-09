@@ -6,12 +6,11 @@
 
 Most of what a software team writes now lives as markdown in a git repository: specs, plans, design notes, research, READMEs. More and more of it is written by coding agents. Claude Code drafts the plan, Codex rewrites the spec, Cursor updates the README after the refactor.
 
-That is great for speed and terrible for review. When an agent pushes a 400-line plan, the people who need to read it have two bad options. They can read it in the GitHub pull request view, where comments can only attach to lines that changed and the text is shown as a diff instead of as a document. Or they can copy it into Google Docs, comment there, and then somebody has to carry the comments back into the repository by hand. By lunch there are two copies, and nobody knows which one is right. Stress test typing here and more typing now
+That is great for speed and terrible for review. When an agent pushes a 400-line plan, the people who need to read it have two bad options. They can read it in the GitHub pull request view, where comments can only attach to lines that changed and the text is shown as a diff instead of as a document. Or they can copy it into Google Docs, comment there, and then somebody has to carry the comments back into the repository by hand. By lunch there are two copies, and nobody knows which one is right.
 
 ## What Red Letter is
 
-Red Letter is a live editor for the markdown files already in your GitHub repository. Change the host in a file's URL and the same file opens in an editor fast typing in review several people can type in at once, with comments in the margin.
-And  I can also edit that immiedately right? 
+Red Letter is a live editor for the markdown files already in your GitHub repository. Change the host in a file's URL and the same file opens in an editor several people can type in at once, with comments in the margin.
 
 There is no import step and no sync button. The file in git is the document. When you stop typing, Red Letter saves a real commit to the branch you are on. Close the tab, and the file on GitHub is exactly what you saw.
 
@@ -25,7 +24,7 @@ One detail makes this work. We do not diff the agent's commit against the live d
 
 ## Comments
 
-Comments took the most time, and we changed our minds very about them more than once.
+Comments are where we spent the most time and changed our minds most often.
 
 Our first version stored comments as HTML comments inside the markdown file itself. GitHub hides HTML comments when it renders a page, so the published file looks clean, and agents read the comments along with the text. You can ask an agent to address the comments in plan.md and it just works.
 
@@ -71,16 +70,6 @@ When you open a file, Red Letter reads the latest saved state from git, replays 
 
 **Reading without a GitHub account?** Not yet. It's the most requested feature, and it's next.
 
-## Under the hood
-
-Red Letter has no database. Everything it knows is in your repository.
-
-The text of a document is the file on your branch. The live editing history, which is what lets several people and several agents type at once without stepping on each other, is stored next to it in a git ref that GitHub doesn't show in its interface. Comments are either in the file or on a pull request. The only thing outside git is who is looking at what right now, held in memory by a small relay that forgets it when everyone leaves.
-
-Your GitHub token stays in your browser. The relay never stores it. It uses it once, when you connect, to check that you can push to the repository, because anyone who can join a live session can change the text that ends up in a commit.
-
-When you open a file, Red Letter reads the latest saved state from git, replays any commits that happened since, and connects you to the live session. If you are offline, it opens the copy in your browser and saves when you are back. On a 17,000-line document a keystroke takes about 31 ms, against about 21 ms for a plain browser text box.
-
 ## What it is not
 
 Red Letter is not a CMS. Your existing build still publishes your site from the repository.
@@ -99,4 +88,4 @@ This post was written and edited in Red Letter. The draft lived on main. The edi
 
 Pick any markdown file in a repository you can push to. Change github.com to our domain in the URL. Invite a teammate. Ask your agent to push a change while you both type.
 
-It's free during the beta. Tell us what breaks: hello@redletter.dev.
+It's free while we learn what people need. Tell us what breaks: hello@redletter.dev.

@@ -6,12 +6,13 @@ import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments, targetPr } from "../comments/commentsStore.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
-import { approvePullRequest, closeTab, mergePullRequest, navigateTo, openPullRequest, prTitle, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
+import { closeTab, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine, ghostBtn } from "../ui.tsx";
+import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
 import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
+import { PullRequests } from "./PullRequests.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
 import { Outline } from "./Outline.tsx";
@@ -47,23 +48,12 @@ export function EditorScreen() {
   });
   createEffect(() => showFavicon(icon()));
   onCleanup(() => showFavicon(""));
-  // every branch of the repo: this one first, then its base, the default branch, yours, the rest alphabetically
+  // every branch of the repo but Red Letter's own (red-letter/comments/…, red-letter/review/…: hashed names nobody
+  // picks), unless it's the one open: this one first, then its base, the default branch, yours, the rest alphabetically
   const branches = () => {
     const login = `${repo.user?.login}/`;
-    const rest = [...repo.branches].sort((a, b) => Number(b.startsWith(login)) - Number(a.startsWith(login)) || a.localeCompare(b));
+    const rest = repo.branches.filter((b) => !b.startsWith("red-letter/")).sort((a, b) => Number(b.startsWith(login)) - Number(a.startsWith(login)) || a.localeCompare(b));
     return [...new Set([repo.branch, draft()?.branch ?? "", repo.repo?.default_branch ?? "", ...rest])].filter(Boolean);
-  };
-  const offMain = () => !!doc.session && !!repo.repo && repo.branch !== repo.repo.default_branch;
-  const askPr = () => {
-    const title = prompt("Pull request title", prTitle(repo.branch));
-    if (title) void openPullRequest(title);
-  };
-  const prBadge = () => {
-    const pr = doc.pr!;
-    if (pr.mergeable === false) return `not mergeable: update from ${pr.base}`;
-    if (pr.changesRequested.length) return `changes requested by ${pr.changesRequested.join(", ")}`;
-    if (pr.approved.length) return `approved by ${pr.approved.join(", ")}`;
-    return "";
   };
   const pickBranch = (sel: HTMLSelectElement) => {
     const branch = sel.value;
@@ -183,6 +173,28 @@ export function EditorScreen() {
               protected
             </span>
           </Show>
+          <Show when={draft()}>
+            {(b) => (
+              <>
+                <button
+                  class={`ml-2 ${badge} cursor-pointer px-1.5 ${doc.showChanges ? "bg-on text-fg" : ""}`}
+                  aria-pressed={doc.showChanges}
+                  title={`Highlight what this branch changed from ${b().branch}`}
+                  onClick={toggleChanges}
+                >
+                  Changes
+                </button>
+                <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
+                  <button class={`ml-2 ${badge} cursor-pointer px-1.5 disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} title={`${b().branch} has new edits: merge them into this branch`} onClick={() => void updateDraft()}>
+                    Update from {b().branch}
+                  </button>
+                </Show>
+              </>
+            )}
+          </Show>
+          <Show when={doc.session}>
+            <PullRequests />
+          </Show>
         </nav>
         <div class="flex w-80 shrink-0 items-start px-3">
           <Show when={doc.session}>
@@ -264,75 +276,10 @@ export function EditorScreen() {
             >
               {(s) => (
                 <>
-                  <Show when={offMain() || doc.draftNote}>
+                  <Show when={doc.draftNote}>
                     {/* floats in the doc's top padding instead of pushing the text down */}
                     <div class="sticky top-0 z-[5] h-0">
-                      <Show when={offMain()}>
-                        <div class="mx-auto mt-2 flex max-w-[560px] items-center gap-1 rounded-xl bg-card py-1 pr-1.5 pl-3 whitespace-nowrap shadow-figma">
-                          <span class="flex-1 truncate text-muted">{draft() ? `branch of ${draft()!.branch}` : repo.branch}</span>
-                          <Show when={draft()}>
-                            {(b) => (
-                              <>
-                                <button
-                                  class={doc.showChanges ? "inline-flex h-6 cursor-pointer items-center rounded bg-on px-1 text-fg" : `${ghostBtn} h-6`}
-                                  aria-pressed={doc.showChanges}
-                                  title={`Highlight what this branch changed from ${b().branch}`}
-                                  onClick={toggleChanges}
-                                >
-                                  Changes
-                                </button>
-                                <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
-                                  <button
-                                    class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
-                                    disabled={!!doc.drafting}
-                                    title={`${b().branch} has new edits: merge them into this branch`}
-                                    onClick={() => void updateDraft()}
-                                  >
-                                    Update from {b().branch}
-                                  </button>
-                                </Show>
-                              </>
-                            )}
-                          </Show>
-                          <Show
-                            when={doc.pr}
-                            fallback={
-                              <Show when={canWrite()}>
-                                <button class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} onClick={askPr}>
-                                  {doc.drafting || "Open pull request"}
-                                </button>
-                              </Show>
-                            }
-                          >
-                            {(pr) => (
-                              <>
-                                <a class="h-6 px-1 leading-6 text-fg underline" href={pr().url} target="_blank" rel="noopener" title={pr().title}>
-                                  #{pr().number}
-                                </a>
-                                <Show when={prBadge()}>
-                                  <span class={`${badge} max-w-[200px] truncate px-1.5`}>{prBadge()}</span>
-                                </Show>
-                                <Show when={pr().author !== repo.user?.login}>
-                                  <button class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} onClick={() => void approvePullRequest()}>
-                                    Approve
-                                  </button>
-                                </Show>
-                                <button
-                                  class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
-                                  disabled={!!doc.drafting || pr().mergeable === false}
-                                  title={`Merge the pull request into ${pr().base} and delete this branch`}
-                                  onClick={() => void mergePullRequest()}
-                                >
-                                  {doc.drafting || "Merge"}
-                                </button>
-                              </>
-                            )}
-                          </Show>
-                        </div>
-                      </Show>
-                      <Show when={doc.draftNote}>
-                        <p class="mx-auto mt-1.5 max-w-[560px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
-                      </Show>
+                      <p class="mx-auto mt-1.5 max-w-[560px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
                     </div>
                   </Show>
                   <Show when={!isReading()}>

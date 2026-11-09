@@ -9,7 +9,7 @@ const eq = (got: unknown, want: unknown, what: string) => {
 };
 const thread = (id: string, body: string, at: Partial<PrThread> = {}): PrThread => ({
   id,
-  pr: { number: 7, url: "https://github.com/o/r/pull/7", head: "o/demo-review" },
+  pr: { number: 7, url: "https://github.com/o/r/pull/7", head: "o/demo-review", base: "main", title: "Review of demo.md" },
   path: "demo.md",
   line: null,
   startLine: null,

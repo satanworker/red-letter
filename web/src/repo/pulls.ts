@@ -73,9 +73,10 @@ export async function mergePr(repo: string, number: number, attempt = 1): Promis
 // whole (subject_type file). Threads, resolution and "outdated" are GraphQL-only.
 
 export type PrComment = { id: number; nodeId: string; author: string; at: string; body: string };
+export type PrLink = Pr & { head: string; base: string; title: string }; // an open PR a doc takes part in
 export type PrThread = {
   id: string; // the thread's node id (for resolving)
-  pr: Pr & { head: string }; // the pull request the thread is on
+  pr: PrLink; // the pull request the thread is on
   path: string;
   line: number | null; // GitHub's current line (1-based), null for a file-level or outdated thread
   startLine: number | null;
@@ -91,12 +92,14 @@ const PRS = `query($owner:String!,$name:String!,$branch:String!){
   repository(owner:$owner,name:$name){
     from: pullRequests(headRefName:$branch,states:OPEN,first:5){ nodes{ ...pr } }
     into: pullRequests(baseRefName:$branch,states:OPEN,first:30,orderBy:{field:UPDATED_AT,direction:DESC}){ nodes{ ...pr } } } }
-fragment pr on PullRequest { number url headRefName reviewThreads(first:50){ nodes{ id path line startLine subjectType isResolved isOutdated
+fragment pr on PullRequest { number url title headRefName baseRefName reviewThreads(first:50){ nodes{ id path line startLine subjectType isResolved isOutdated
   comments(first:50){ nodes{ databaseId id author{ login } createdAt body } } } } }`;
 type PrNode = {
   number: number;
   url: string;
+  title: string;
   headRefName: string;
+  baseRefName: string;
   reviewThreads: {
     nodes: {
       id: string;
@@ -114,16 +117,16 @@ type PrsJson = { repository: { from: { nodes: PrNode[] }; into: { nodes: PrNode[
 
 // The review threads on `path` across the open PRs from `branch` and into it, oldest PR first, GitHub's order within.
 // Also the PRs themselves (threads or not), the one from the branch first.
-export async function prThreads(repo: string, branch: string, path: string): Promise<{ threads: PrThread[]; prs: (Pr & { head: string })[] }> {
+export async function prThreads(repo: string, branch: string, path: string): Promise<{ threads: PrThread[]; prs: PrLink[] }> {
   const [owner, name] = repo.split("/");
   const d = await graphql<PrsJson>(PRS, { owner, name, branch });
   const seen = new Set<number>();
-  const prs: (Pr & { head: string })[] = [];
+  const prs: PrLink[] = [];
   const threads: PrThread[] = [];
   for (const p of [...d.repository.from.nodes, ...d.repository.into.nodes]) {
     if (seen.has(p.number)) continue;
     seen.add(p.number);
-    const pr = { number: p.number, url: p.url, head: p.headRefName };
+    const pr: PrLink = { number: p.number, url: p.url, title: p.title, head: p.headRefName, base: p.baseRefName };
     prs.push(pr);
     for (const t of p.reviewThreads.nodes) {
       if (t.path !== path) continue;

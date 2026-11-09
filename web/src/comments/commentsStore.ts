@@ -6,7 +6,7 @@
 // new comments go, remembered per repo.
 import { createStore } from "solid-js/store";
 import { doc } from "../doc/docStore.ts";
-import { prThreads as fetchPrThreads, reviewBranch, type PrThread } from "../repo/pulls.ts";
+import { prThreads as fetchPrThreads, reviewBranch, type PrLink, type PrThread } from "../repo/pulls.ts";
 import { commitToPr, readPr, type Pr } from "./commentsPr.ts";
 
 type Target = { repo: string; branch: string; path: string; viaPr: boolean };
@@ -17,7 +17,7 @@ const [state, set] = createStore({
   pr: null as Pr | null,
   text: null as string | null,
   prThreads: [] as PrThread[],
-  prs: [] as (Pr & { head: string })[], // the open PRs from this branch and into it, the former first
+  prs: [] as PrLink[], // the open PRs from this branch and into it, the former first
   review: "", // the shared review branch of this doc on its branch (pulls.reviewBranch), once hashed
   mode: "pr" as Mode,
   sending: false,

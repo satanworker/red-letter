@@ -1,6 +1,7 @@
 // Pull requests: GitHub's own review and merge. Used by the branch bar (open, approve, merge), by comments that go on
 // the PR (commentsStore) and by a protected branch's comment PR (commentsPr). Stateless; never imports a store.
 import { HttpError, b64, cachedGet, encPath, gh, ghJson, graphql, post, sha1, unb64 } from "../github.ts";
+import { idbGet, idbPut } from "../idb.ts";
 
 export type Pr = { number: number; url: string };
 export type PrState = Pr & {
@@ -116,15 +117,24 @@ type ThreadNode = {
 };
 type DetailNode = { reviewDecision: PrDetail["decision"]; files: { nodes: PrDoc[] }; reviewThreads: { nodes: ThreadNode[] } };
 
-// The given PRs' changed files and review threads, in one GraphQL call with one alias per PR.
+// The given PRs' changed files and review threads, in one GraphQL call with one alias per PR. Each PR's answer is
+// kept in this browser under its updated_at, so a reload or another tab asks only for PRs that moved since (`fresh`:
+// ask anyway, after a write of ours: a resolve doesn't always bump updated_at).
 // ponytail: 50 files, 30 threads and 30 comments each, no paging; cost ≈ 10 points a PR
-export async function prDetails(repo: string, prs: PrLink[]): Promise<PrDetail[]> {
-  if (!prs.length) return [];
-  const [owner, name] = repo.split("/");
-  const q = `query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ ${prs.map((p, i) => `p${i}: pullRequest(number:${p.number}){ ...d }`).join(" ")} } }
+export async function prDetails(repo: string, prs: OpenPr[], fresh = false): Promise<PrDetail[]> {
+  const key = (p: OpenPr) => `gql pr ${repo}#${p.number}@${p.updatedAt}`;
+  const kept = new Map<number, DetailNode>();
+  if (!fresh) for (const p of prs) { const c = await idbGet<{ body: string }>("http", key(p)); if (c) kept.set(p.number, JSON.parse(c.body)); }
+  const ask = prs.filter((p) => !kept.has(p.number));
+  if (ask.length) {
+    const [owner, name] = repo.split("/");
+    const q = `query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ ${ask.map((p, i) => `p${i}: pullRequest(number:${p.number}){ ...d }`).join(" ")} } }
 fragment d on PullRequest { reviewDecision files(first:50){ nodes{ path additions deletions } } reviewThreads(first:30){ nodes{ id path line startLine subjectType isResolved isOutdated
   comments(first:30){ nodes{ databaseId id author{ login } createdAt body } } } } }`;
-  const d = await graphql<{ repository: Record<string, DetailNode | null> }>(q, { owner, name });
+    const r = await graphql<{ repository: Record<string, DetailNode | null> }>(q, { owner, name });
+    await Promise.all(ask.map((p, i) => { const n = r.repository[`p${i}`]; if (!n) return; kept.set(p.number, n); return idbPut("http", key(p), { etag: "", body: JSON.stringify(n) }); }));
+  }
+  const d = { repository: Object.fromEntries(prs.map((p, i) => [`p${i}`, kept.get(p.number) ?? null])) };
   return prs.flatMap((pr, i) => {
     const n = d.repository[`p${i}`];
     if (!n) return [];
@@ -158,9 +168,9 @@ export const isDoc = (p: string) => /\.(md|markdown|mdx|txt)$/i.test(p);
 export const isReviewBranch = (head: string) => head.startsWith("red-letter/review/");
 
 // The open PRs with their details (ponytail: the 30 most recently updated; one GraphQL call).
-export async function listPulls(repo: string, prs: OpenPr[]): Promise<RepoPr[]> {
+export async function listPulls(repo: string, prs: OpenPr[], fresh = false): Promise<RepoPr[]> {
   const top = [...prs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 30);
-  const details = new Map((await prDetails(repo, top)).map((d) => [d.pr.number, d]));
+  const details = new Map((await prDetails(repo, top, fresh)).map((d) => [d.pr.number, d]));
   return top.map((p) => {
     const d = details.get(p.number);
     const threads = d?.threads ?? [];

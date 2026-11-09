@@ -3,7 +3,7 @@
 // This browser keeps a copy of the doc in IndexedDB: a file opens from it at once and catches up with git after.
 import * as A from "@automerge/automerge";
 import { Repo, type DocHandle, type DocumentId, type PeerId } from "@automerge/automerge-repo";
-import { HUB, HttpError, b64, cachedGet, encPath, gh, post, sha1, token, unb64, updateRefs } from "../github.ts";
+import { HUB, HttpError, b64, cachedGet, encPath, gh, graphql, post, sha1, token, unb64, updateRefs } from "../github.ts";
 import { idbDelete, idbGet, idbPut } from "../idb.ts";
 import { HubAdapter } from "./hub.ts";
 import { findConflicts } from "./regions.ts";
@@ -61,17 +61,55 @@ async function object<T>(repo: string, kind: "commits" | "trees" | "blobs", sha:
   return JSON.parse(await cachedGet(`/repos/${repo}/git/${kind}/${sha}`, { immutable: true }));
 }
 
+// Up to 50 commits reachable from `sha` (GitHub's list, newest first), by sha, in the shape of a git commit object.
+async function commitsBehind(repo: string, sha: string): Promise<Map<string, GitCommit>> {
+  type J = { sha: string; parents: { sha: string }[]; commit: { message: string; author: { name: string; date: string }; tree: { sha: string } } };
+  const list: J[] = JSON.parse(await cachedGet(`/repos/${repo}/commits?sha=${sha}&per_page=50`, { immutable: true }));
+  return new Map(list.map((c) => [c.sha, { sha: c.sha, parents: c.parents, message: c.commit.message, author: c.commit.author, tree: c.commit.tree }]));
+}
+
+// Whether `path` is unchanged between two commits, from one compare (sha-addressed: cached for good). GitHub lists up
+// to 300 files; a longer list, or `base` not behind `head` (rewritten history), says "don't know" (false).
+async function untouched(repo: string, base: string, head: string, path: string): Promise<boolean> {
+  type J = { status: string; files?: { filename: string; previous_filename?: string }[] };
+  const c: J | null = await cachedGet(`/repos/${repo}/compare/${base}...${head}?per_page=300`, { immutable: true }).then((s) => JSON.parse(s) as J, () => null);
+  if (!c) return false;
+  if (c.status !== "ahead" || !c.files || c.files.length >= 300) return false;
+  return !c.files.some((f) => f.filename === path || f.previous_filename === path);
+}
+
+// A snapshot's two files, read by path at the snapshot commit (two calls; it was commit, tree, then both blobs: four).
+// The contents API inlines files up to 1 MB; a bigger doc.automerge comes as its blob (sha in the same answer).
 async function readSnapshot(repo: string, sha: string): Promise<{ meta: Meta; bytes: Uint8Array }> {
-  const c = await object<GitCommit>(repo, "commits", sha);
-  const tree = await object<{ tree: { path: string; sha: string }[] }>(repo, "trees", c.tree.sha);
-  const blob = async (name: string) => unb64((await object<{ content: string }>(repo, "blobs", tree.tree.find((e) => e.path === name)!.sha)).content);
-  const [metaBytes, bytes] = await Promise.all([blob("meta.json"), blob("doc.automerge")]);
+  const file = async (name: string) => {
+    const f: { sha: string; content: string; encoding: string } = JSON.parse(await cachedGet(`/repos/${repo}/contents/${name}?ref=${sha}`, { immutable: true }));
+    return unb64(f.encoding === "base64" && f.content ? f.content : (await object<{ content: string }>(repo, "blobs", f.sha)).content);
+  };
+  const [metaBytes, bytes] = await Promise.all([file("meta.json"), file("doc.automerge")]);
   const meta: Meta = JSON.parse(new TextDecoder().decode(metaBytes));
   if ((meta.replayVersion ?? 1) > REPLAY_VERSION) throw new Error("This file was saved by a newer Red Letter. Reload the page.");
   return { meta, bytes };
 }
 
 const fileAt = (repo: string, path: string, sha: string) => cachedGet(`/repos/${repo}/contents/${encPath(path)}?ref=${sha}`, { raw: true, immutable: true });
+
+// The texts of many files at one commit in one GraphQL call (blobs have no connections: about a point a call), put
+// where fileAt looks, so background sync then reads them from this browser. One REST call a file before.
+export async function prefetchTexts(repo: string, sha: string, paths: string[]) {
+  const key = (p: string) => `raw /repos/${repo}/contents/${encPath(p)}?ref=${sha}`;
+  const missing: string[] = [];
+  for (const p of paths) if (!(await idbGet("http", key(p)))) missing.push(p);
+  const [owner, name] = repo.split("/");
+  for (let i = 0; i < missing.length; i += 50) {
+    const chunk = missing.slice(i, i + 50);
+    const q = `query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ ${chunk.map((p, j) => `f${j}: object(expression:${JSON.stringify(`${sha}:${p}`)}){ ... on Blob{ text isBinary } }`).join(" ")} } }`;
+    const d = await graphql<{ repository: Record<string, { text: string | null; isBinary: boolean } | null> }>(q, { owner, name });
+    await Promise.all(chunk.map((p, j) => {
+      const b = d.repository[`f${j}`];
+      return b && !b.isBinary && b.text !== null ? idbPut("http", key(p), { etag: "", body: b.text }) : undefined;
+    }));
+  }
+}
 
 // Background sync, read-only: bring this browser's copy of a doc up to its snapshot so opening it is instant.
 // Files nobody opened yet have no snapshot; their text at `branchHead` is fetched so the first open is quicker.
@@ -85,7 +123,9 @@ export async function syncCopy(repo: string, branch: string, path: string, snaps
   const snap = await readSnapshot(repo, snapshot);
   const same = local?.docId === snap.meta.docId; // a different doc means the ref was recreated: theirs wins
   const doc = local && same ? A.merge(A.load<RLDoc>(local.bytes), A.load<RLDoc>(snap.bytes)) : A.load<RLDoc>(snap.bytes);
-  const crlf = local && same ? local.crlf : (await fileAt(repo, path, snap.meta.commit).catch(() => "")).includes("\r\n");
+  // the file's EOL style from its text at the branch head (background sync prefetches every doc's in one call); a
+  // Session re-learns it from git when the doc opens
+  const crlf = local && same ? local.crlf : (await fileAt(repo, path, branchHead).catch(() => "")).includes("\r\n");
   if (!isOpen()) await idbPut("docs", key, { docId: snap.meta.docId, bytes: A.save(doc), crlf, crdtHead: snapshot } satisfies Local);
   return doc.text;
 }
@@ -314,7 +354,18 @@ export class Session {
       if (this.doc.base) this.status.baseHead = await headOf(this.repoName, this.doc.base.branch, fresh);
       const git = this.doc.git!;
       if (head === git.commit) return;
-      // first-parent chain head..git.commit, oldest first
+      // nothing in git.commit..head touched this file (other docs were saved, code was pushed): no replay can change
+      // the text, so the doc just moves to head. One sha-addressed compare instead of a walk and a file read per commit.
+      if (await untouched(this.repoName, git.commit, head, this.path)) {
+        this.handle.change((d) => {
+          d.git = { commit: head, heads: [...git.heads] };
+        });
+        return;
+      }
+      // first-parent chain head..git.commit, oldest first. One list call brings up to 50 commits behind head (sha
+      // addressed: cached for good); the chain is walked through it, and only a commit it lacks (a long side branch's
+      // merge) is asked for on its own. One commit per call cost 58 calls on a doc 58 commits behind.
+      const listed = await commitsBehind(this.repoName, head);
       const chain: GitCommit[] = [];
       let connected = false;
       for (let sha = head; chain.length < 50; ) {
@@ -322,7 +373,7 @@ export class Session {
           connected = true;
           break;
         }
-        const c = await object<GitCommit>(this.repoName, "commits", sha);
+        const c = listed.get(sha) ?? (await object<GitCommit>(this.repoName, "commits", sha));
         chain.unshift(c);
         if (!c.parents.length) break;
         sha = c.parents[0].sha;

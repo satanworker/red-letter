@@ -30,7 +30,7 @@ export async function refreshPulls(force = false) {
   try {
     const open = await openPulls(repo);
     if (open.stamp === stamp && !force) return;
-    const list = await listPulls(repo, open.prs);
+    const list = await listPulls(repo, open.prs, force);
     if (state.repo !== repo) return;
     stamp = open.stamp;
     set({ list, loaded: true, error: "" });

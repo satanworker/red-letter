@@ -80,7 +80,7 @@ async function refreshPrThreads(force = false) {
     const mine = open.prs.filter((p) => p.head === t.branch || p.base === t.branch);
     const s = `${t.branch} ${t.path} ${mine.map((p) => `${p.number}@${p.updatedAt}`).join(" ")}`;
     if (s === stamp && !force) return;
-    const details = await prDetails(t.repo, mine);
+    const details = await prDetails(t.repo, mine, force);
     if (cur !== t || w !== writes) return;
     stamp = s;
     // the PR from the branch first, then the PRs into it that change this file

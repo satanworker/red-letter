@@ -4,7 +4,7 @@ import { createStore } from "solid-js/store";
 import { clearIcons, clearReview, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
 import { refreshComments } from "../comments/commentsStore.ts";
 import { loadPulls, refreshPulls, setReviewing } from "../pulls/pullsStore.ts";
-import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
+import { NO_SNAPSHOT, prefetchTexts, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
 import { approvePr, closePr, mergeInto, mergePr, openPr, openPrFrom, requestChanges, reviewBranch, touchFile, type Pr } from "./pulls.ts";
 import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
@@ -379,7 +379,10 @@ export async function openRoute(url: URL, newTab = false): Promise<void> {
     let path = rest.join("/");
     if (rest[0] === "blob" || rest[0] === "tree") {
       const tail = rest.slice(1).join("/");
-      branch = same && tail.startsWith(`${state.branch}/`) ? state.branch : await resolveBranch(full, rest.slice(1), rest[0] === "tree");
+      // a branch we already know (the picker's list, longest first: "a/b" before "a") needs no probing; GitHub is asked
+      // prefix by prefix only for one we don't (each miss is a 404 call)
+      const known = same ? [...state.branches].sort((a, b) => b.length - a.length).find((b) => tail === b || tail.startsWith(`${b}/`)) : undefined;
+      branch = same && tail.startsWith(`${state.branch}/`) ? state.branch : (known ?? (await resolveBranch(full, rest.slice(1), rest[0] === "tree")));
       path = rest.slice(1 + branch.split("/").length).join("/");
     }
     const fresh = !(same && branch === state.branch); // another repo or branch: sync its files in the background
@@ -408,7 +411,10 @@ export async function openRoute(url: URL, newTab = false): Promise<void> {
     const draftOf = drafting.get(branch);
     drafting.delete(branch);
     if (!(await openFile(info, branch, path, user, create, draftOf)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
-    if (fresh && !stale()) void syncAll(full, branch, docs);
+    // background sync reads every doc of the branch (≈4 calls a doc with a snapshot, 1 without; cached for good after):
+    // worth it on the default branch, where people live; a review or feature branch opens its docs on demand instead
+    // (measured: ~37 calls on a first visit to a PR's branch of this repo, for docs nobody opened)
+    if (fresh && !stale() && branch === info.default_branch) void syncAll(full, branch, docs);
   } catch (e) {
     if (!stale()) set({ screen: "error", message: e instanceof Error ? e.message : String(e) });
   }
@@ -431,6 +437,9 @@ async function syncAll(repo: string, branch: string, cached: string[]) {
     const [docs, heads, head] = await Promise.all([listDocs(repo, branch), snapshotHeads(repo, branch), branchHead(repo, branch)]);
     // the sidebar showed this browser's last list; files added or removed since show up now
     if (run === syncRun && docs.join("\n") !== cached.join("\n")) set("docs", docs);
+    // every doc's text at head in one GraphQL call (the unopened ones are synced from it; the others take their line
+    // endings from it), instead of one REST call each
+    await prefetchTexts(repo, head, docs).catch(() => {});
     // four at a time: GitHub's latency (~400 ms per request), not bandwidth, is the limit
     const queue = docs.slice();
     const worker = async () => {

@@ -8,7 +8,7 @@ Decisions:
 - [ ] Domain: pick and buy one. Then update both OAuth callback URLs (App `red-letter-diff` + OAuth App "Red Letter"), `RL_ORIGINS` in `~/.config/red-letter/env`, the Cloudflare route, README and DESIGN.
 - [ ] Licence: MIT (and claim open source) or none (and don't).
 - [ ] Launch date.
-- [ ] Read-only view: go / no-go once it's sized.
+- [ ] <!--rl:evqu8d-->Read-only view: go / no-go once it's sized.<!--/rl:evqu8d-->
 - [ ] Template repo content: three docs; Claude Code or generic `git push` as the agent in the walkthrough.
 
 GitHub / infra:
@@ -217,3 +217,7 @@ Cloudflare Web Analytics: visits, landing → doc, country, device. Hub logs: OA
 3. **Domain:** which one.
 4. **Template repo content:** which three docs, and whether the "agent" in the walkthrough is Claude Code specifically or a generic `git push`.
 5. **Date.**
+
+<!--rl:evqu8d
+@satanworker 2026-11-09T12:32Z: wait what does that mean? What do we need to size?
+-->

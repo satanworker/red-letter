@@ -25,17 +25,18 @@ class DelWidget extends WidgetType {
   constructor(
     readonly text: string,
     readonly by: string,
+    readonly block = false,
   ) {
     super();
   }
   eq(o: DelWidget) {
-    return o.text === this.text && o.by === this.by;
+    return o.text === this.text && o.by === this.by && o.block === this.block;
   }
   toDOM() {
     const el = document.createElement("del");
-    // a removed paragraph sits at the start of the next line, which may be a heading: shown as its own block of body
-    // text instead of in the heading's size
-    el.className = this.text.includes("\n") ? "rl-del rl-del-block" : "rl-del";
+    // a removed paragraph at the start of a line (which may be a heading): its own block of body text, not the
+    // heading's size; one removed inside a sentence stays inline, or it would split the sentence
+    el.className = this.block ? "rl-del rl-del-block" : "rl-del";
     el.textContent = this.text;
     el.title = `removed ${this.by}`;
     return el;
@@ -182,7 +183,9 @@ function CommentBox() {
 
 function decorations(session: Session, len: number, marks: AgentMark[], changes: Region[], threads: Thread[], active: string, hovered: string): DecorationSet {
   const out: Range<Decoration>[] = [];
-  const del = (at: number, text: string, by: string) => out.push(Decoration.widget({ widget: new DelWidget(text, by), side: -1 }).range(Math.min(at, len)));
+  const text = session.doc.text;
+  const del = (at: number, t: string, by: string) =>
+    out.push(Decoration.widget({ widget: new DelWidget(t, by, t.includes("\n") && (at === 0 || text[at - 1] === "\n")), side: -1 }).range(Math.min(at, len)));
   const mark = (from: number, to: number, cls: string, attrs?: Record<string, string>) => {
     from = Math.min(from, len);
     to = Math.min(to, len);

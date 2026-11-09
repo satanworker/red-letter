@@ -26,4 +26,8 @@ Filler line 12.
 
 The line that changed.
 
-The last line.
+The <!--rl:8jtdxr-->last line<!--/rl:8jtdxr-->.
+
+<!--rl:8jtdxr
+@satanworker 2026-11-09T12:27Z: In the file now
+-->

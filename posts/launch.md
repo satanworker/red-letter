@@ -6,7 +6,7 @@
 
 Most of what a software team writes now lives as markdown in a git repository: specs, plans, design notes, research, READMEs. More and more of it is written by coding agents. Claude Code drafts the plan, Codex rewrites the spec, Cursor updates the README after the refactor.
 
-That is great for speed and terrible for review. When an agent pushes a 400-line plan, the people who need to read it have two bad options. They can read it in the GitHub pull request view, where comments can only attach to lines that changed and the text is shown as a diff instead of as a document. Or they can copy it into Google Docs, comment there, and then somebody has to carry the comments back into the repository by hand. By lunch there are two copies, and nobody knows which one is right.
+That is great for speed and terrible for review. When an agent pushes a 400-line plan, the people who need to read it have two bad options. They can read it in the GitHub pull request view, where comments can only attach to lines that changed and the text is shown as a diff instead of as a document. Or they can copy it into Google Docs, comment there, and then somebody has to carry the comments back into the repository by hand. By lunch there are two copies, and nobody knows which one is right. Stress test typing here and more typing now
 
 ## What Red Letter is
 

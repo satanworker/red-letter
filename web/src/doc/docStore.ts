@@ -16,8 +16,9 @@ import { flash } from "./flash.ts";
 import { selectIcon, type Heading } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection, flashInTable, selectInTable } from "./tables.ts";
+import { refreshPulls } from "../pulls/pullsStore.ts";
 
-type Tab = "comments" | "history" | "outline";
+type Tab = "comments" | "history" | "outline" | "pulls";
 type DocState = {
   session: Session | null;
   opening: string; // path being opened
@@ -87,6 +88,7 @@ export function tick() {
   void state.session?.poll(true);
   void refreshComments();
   void refreshPr();
+  void refreshPulls();
 }
 
 // The PR from the open branch, if the branch isn't the repo's default one (a PR from main is not a thing we show).

@@ -9,10 +9,10 @@ import { blobUrl } from "../repo/repoService.ts";
 import { closeTab, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
+import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, PullRequestIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
+import { PullsPanel } from "../pulls/PullsPanel.tsx";
 import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
-import { PullRequests } from "./PullRequests.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
 import { Outline } from "./Outline.tsx";
@@ -79,8 +79,8 @@ export function EditorScreen() {
   const tabKeys = (e: KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
-    const order = ["outline", "comments", "history"] as const;
-    showTab(order[(order.indexOf(tab()) + (e.key === "ArrowRight" ? 1 : 2)) % 3]!);
+    const order = ["outline", "comments", "history", "pulls"] as const;
+    showTab(order[(order.indexOf(tab()) + (e.key === "ArrowRight" ? 1 : 3)) % 4]!);
     (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
   };
   // Figma 22:561: the chosen tab is white with its label; the others shrink to a grey icon + count pill.
@@ -133,6 +133,22 @@ export function EditorScreen() {
           <i class={count}>{marks().length}</i>
         </Show>
       </button>
+      <button
+        role="tab"
+        id="tab-pulls"
+        aria-selected={tab() === "pulls"}
+        aria-controls="panel"
+        tabindex={tab() === "pulls" ? 0 : -1}
+        title="Pull requests"
+        class={tabClass(tab() === "pulls", "px-3")}
+        onClick={() => showTab("pulls")}
+      >
+        <PullRequestIcon />
+        <Show when={tab() === "pulls"}>PRs</Show>
+        <Show when={comments.prs.length}>
+          <i class={count}>{comments.prs.length}</i>
+        </Show>
+      </button>
     </div>
   );
 
@@ -152,50 +168,8 @@ export function EditorScreen() {
             <SidebarIcon closed={repo.filesHidden} />
           </button>
         </span>
-        <nav aria-label="Branch" class="mt-[9px] flex min-w-0 flex-1 items-center overflow-hidden px-3 text-fg">
-          <label class={`inline-flex items-center gap-1 ${badge} px-1.5`} title="Switch branch">
-            <BranchIcon />
-            <select class="max-w-[260px] cursor-pointer truncate bg-transparent" onChange={(e) => pickBranch(e.currentTarget)}>
-              <For each={branches()}>
-                {(b) => (
-                  <option value={b} selected={b === repo.branch}>
-                    {b}
-                  </option>
-                )}
-              </For>
-            </select>
-          </label>
-          <Show when={!canWrite()}>
-            <span class={`ml-2 ${badge} px-1.5`}>read-only</span>
-          </Show>
-          <Show when={comments.viaPr}>
-            <span class={`ml-2 ${badge} px-1.5`} title={`${repo.branch} is protected: no edits here; comments go through a pull request`}>
-              protected
-            </span>
-          </Show>
-          <Show when={draft()}>
-            {(b) => (
-              <>
-                <button
-                  class={`ml-2 ${badge} cursor-pointer px-1.5 ${doc.showChanges ? "bg-on text-fg" : ""}`}
-                  aria-pressed={doc.showChanges}
-                  title={`Highlight what this branch changed from ${b().branch}`}
-                  onClick={toggleChanges}
-                >
-                  Changes
-                </button>
-                <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
-                  <button class={`ml-2 ${badge} cursor-pointer px-1.5 disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} title={`${b().branch} has new edits: merge them into this branch`} onClick={() => void updateDraft()}>
-                    Update from {b().branch}
-                  </button>
-                </Show>
-              </>
-            )}
-          </Show>
-          <Show when={doc.session}>
-            <PullRequests />
-          </Show>
-        </nav>
+        {/* the branch, its state and the pull requests moved to the doc's bottom-right corner and the panel */}
+        <span class="min-w-0 flex-1" />
         <div class="flex w-80 shrink-0 items-start px-3">
           <Show when={doc.session}>
             {/* Figma 140:2607 / 140:2799: the comments panel's toggle, 12px before the status */}
@@ -209,28 +183,6 @@ export function EditorScreen() {
             >
               <SidebarIcon closed={repo.panelHidden} right />
             </button>
-            <span class="mt-2.5 flex gap-3" role="status">
-              <Show when={!doc.status.saving} fallback="Saving…">
-                <Show when={!doc.status.dirty} fallback="Edited">
-                  Saved <span class="w-2">●</span>
-                  <a class="underline" href={`https://github.com/${full()}/commit/${doc.status.commit}`} target="_blank" title={`Last commit on ${repo.branch}`}>
-                    {doc.status.commit.slice(0, 7)}
-                  </a>
-                </Show>
-              </Show>
-              <Show when={doc.session?.canWrite && !doc.status.online}>
-                <span class="text-[#d9730d]" title="Live sync is reconnecting; edits are kept and saved to git">
-                  offline
-                </span>
-              </Show>
-              <Show when={doc.status.error}>
-                {(err) => (
-                  <span class="text-red" title={err()}>
-                    error
-                  </span>
-                )}
-              </Show>
-            </span>
           </Show>
           <span class="flex-1" />
           <span class="mt-[5.5px] mr-3 inline-flex" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
@@ -286,10 +238,74 @@ export function EditorScreen() {
                     <IconPicker icon={icon()} />
                   </Show>
                   <Editor session={s} marks={marks} changes={changes} threads={threads} />
-                  {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls; the pencil switches
-                      between editing and reading (faded); read-only docs stay in reading */}
+                  {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls. Left to right: the branch
+                      (a picker), what's special about it (read-only, protected, Changes / Update from its base), the
+                      local changes (Saved · sha / Edited / Saving…, offline, error), then the pencil that switches
+                      editing and reading (faded; read-only docs stay in reading) and the word count. */}
                   <div class="sticky bottom-0 z-[5] h-0">
-                    <p class="absolute right-0 bottom-0 flex h-6 items-center gap-2.5 rounded-tl-xl border-t-[.4px] border-l-[.4px] border-rule bg-card px-3 font-light whitespace-nowrap text-muted">
+                    <p class="absolute right-0 bottom-0 flex h-6 max-w-full items-center gap-2.5 rounded-tl-xl border-t-[.4px] border-l-[.4px] border-rule bg-card px-3 font-light whitespace-nowrap text-muted">
+                      <label class="inline-flex min-w-0 items-center gap-1 text-fg" title="Switch branch">
+                        <BranchIcon />
+                        <select class="max-w-[220px] cursor-pointer truncate bg-transparent font-normal [field-sizing:content]" onChange={(e) => pickBranch(e.currentTarget)}>
+                          <For each={branches()}>
+                            {(b) => (
+                              <option value={b} selected={b === repo.branch}>
+                                {b}
+                              </option>
+                            )}
+                          </For>
+                        </select>
+                      </label>
+                      <Show when={!canWrite()}>
+                        <span class={`${badge} px-1.5`}>read-only</span>
+                      </Show>
+                      <Show when={comments.viaPr}>
+                        <span class={`${badge} px-1.5`} title={`${repo.branch} is protected: no edits here; comments go through a pull request`}>
+                          protected
+                        </span>
+                      </Show>
+                      <Show when={draft()}>
+                        {(b) => (
+                          <>
+                            <button
+                              class={`${badge} cursor-pointer px-1.5 hover:text-fg ${doc.showChanges ? "bg-on text-fg" : ""}`}
+                              aria-pressed={doc.showChanges}
+                              title={`Highlight what this branch changed from ${b().branch}`}
+                              onClick={toggleChanges}
+                            >
+                              Changes
+                            </button>
+                            <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
+                              <button class={`${badge} cursor-pointer px-1.5 hover:text-fg disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} title={`${b().branch} has new edits: merge them into this branch`} onClick={() => void updateDraft()}>
+                                Update from {b().branch}
+                              </button>
+                            </Show>
+                          </>
+                        )}
+                      </Show>
+                      <span class="flex items-center gap-1.5" role="status">
+                        <Show when={!doc.status.saving} fallback="Saving…">
+                          <Show when={!doc.status.dirty} fallback={<span class="text-fg">Edited</span>}>
+                            Saved ·
+                            <a class="underline" href={`https://github.com/${full()}/commit/${doc.status.commit}`} target="_blank" title={`Last commit on ${repo.branch}`}>
+                              {doc.status.commit.slice(0, 7)}
+                            </a>
+                          </Show>
+                        </Show>
+                        <Show when={s.canWrite && !doc.status.online}>
+                          <span class="text-[#d9730d]" title="Live sync is reconnecting; edits are kept and saved to git">
+                            offline
+                          </span>
+                        </Show>
+                        <Show when={doc.status.error}>
+                          {(err) => (
+                            <span class="text-red" title={err()}>
+                              error
+                            </span>
+                          )}
+                        </Show>
+                      </span>
+                      <span class="h-3 w-px bg-rule" />
                       <button
                         class={`cursor-pointer rounded hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent ${isReading() ? "opacity-40" : ""}`}
                         disabled={!s.canWrite}
@@ -326,6 +342,9 @@ export function EditorScreen() {
                     <Outline />
                   </div>
                 </Show>
+                <div id="pulls" role="tabpanel" aria-labelledby="tab-pulls" hidden={tab() !== "pulls"}>
+                  <PullsPanel />
+                </div>
               </>
             )}
           </Show>

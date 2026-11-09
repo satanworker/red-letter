@@ -2,6 +2,7 @@
 // openRoute is the one entry point: page load, links, back/forward (see main.tsx).
 import { createStore } from "solid-js/store";
 import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
+import { loadPulls, refreshPulls } from "../pulls/pullsStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
 import { approvePr, mergeInto, mergePr, openPr, openPrFrom, reviewBranch, touchFile, type Pr } from "./pulls.ts";
@@ -284,6 +285,7 @@ export async function mergePullRequest() {
   if (!merged) return;
   localStorage.removeItem(tabsKey(full, state.branch)); // the branch is gone
   void listBranches(full, true).then((bs) => set("branches", bs), () => {});
+  void refreshPulls();
   navigateTo(blobUrl(full, pr.base, state.path));
 }
 
@@ -349,6 +351,7 @@ export async function openRoute(url: URL, newTab = false): Promise<void> {
     set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path, message: "" });
     setTabs(tabs);
     if (fresh) void listBranches(full).then((bs) => !stale() && set("branches", [...new Set([...bs, branch])]), () => {});
+    loadPulls(full);
     if (!path) {
       closeFile();
       set("message", "This branch has no markdown files yet.");

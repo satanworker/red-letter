@@ -148,6 +148,59 @@ export async function prThreads(repo: string, branch: string, path: string): Pro
   return { threads, prs };
 }
 
+// ---- the repo's open pull requests, for the panel's Pull requests tab ----
+export type RepoPr = PrLink & {
+  author: string;
+  draft: boolean;
+  decision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
+  reviewers: string[]; // review requested from
+  docs: string[]; // the markdown files it changes (first 100 files looked at)
+  updatedAt: string;
+};
+// ponytail: the 50 most recently updated open PRs, no paging
+const OPEN_PRS = `query($owner:String!,$name:String!){
+  repository(owner:$owner,name:$name){ pullRequests(states:OPEN,first:50,orderBy:{field:UPDATED_AT,direction:DESC}){ nodes{
+    number url title isDraft reviewDecision updatedAt author{ login } headRefName baseRefName
+    reviewRequests(first:10){ nodes{ requestedReviewer{ ... on User{ login } } } }
+    files(first:100){ nodes{ path } } } } } }`;
+type OpenPrsJson = {
+  repository: {
+    pullRequests: {
+      nodes: {
+        number: number;
+        url: string;
+        title: string;
+        isDraft: boolean;
+        reviewDecision: RepoPr["decision"];
+        updatedAt: string;
+        author: { login: string } | null;
+        headRefName: string;
+        baseRefName: string;
+        reviewRequests: { nodes: { requestedReviewer: { login?: string } | null }[] }; // teams need read:org: left out
+        files: { nodes: { path: string }[] };
+      }[];
+    };
+  };
+};
+const isDoc = (p: string) => /\.(md|markdown|mdx|txt)$/i.test(p);
+export async function listPulls(repo: string): Promise<RepoPr[]> {
+  const [owner, name] = repo.split("/");
+  const d = await graphql<OpenPrsJson>(OPEN_PRS, { owner, name });
+  return d.repository.pullRequests.nodes.map((p) => ({
+    number: p.number,
+    url: p.url,
+    title: p.title,
+    head: p.headRefName,
+    base: p.baseRefName,
+    author: p.author?.login ?? "ghost",
+    draft: p.isDraft,
+    decision: p.reviewDecision,
+    reviewers: p.reviewRequests.nodes.flatMap((r) => (r.requestedReviewer?.login ? [r.requestedReviewer.login] : [])),
+    docs: p.files.nodes.map((f) => f.path).filter(isDoc),
+    updatedAt: p.updatedAt,
+  }));
+}
+
 // The branch a review of `path` on `base` happens on: shared by everyone reviewing that doc, so one PR holds the
 // conversation. Hashed like the snapshot refs: a path isn't always a valid ref name, and "<base>/<path>" collides.
 export const reviewBranch = async (base: string, path: string) => `red-letter/review/${await sha1(base)}/${await sha1(path)}`;

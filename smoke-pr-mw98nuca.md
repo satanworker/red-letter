@@ -26,4 +26,8 @@ Filler line 12.
 
 The line that changed.
 
-The last line.
+The <!--rl:faxsep-->last line<!--/rl:faxsep-->.
+
+<!--rl:faxsep
+@satanworker 2026-11-09T12:30Z: In the file now
+-->

@@ -207,6 +207,10 @@ function decorations(session: Session, len: number, marks: AgentMark[], changes:
 // Reading mode: read-only (paste, typing and table cells off) with the markdown rendered; the comment tooltip stays.
 const mode = new Compartment();
 const modeOf = (reading: boolean) => [EditorState.readOnly.of(reading), readingMode.of(reading), reading ? EditorView.editorAttributes.of({ class: "cm-reading" }) : []];
+// Who can comment: anyone who can edit, or through a PR (a protected branch's comment PR, or the branch's own pull
+// request, which turns up after the editor mounts: a reviewer with read access reviews on GitHub).
+const tip = new Compartment();
+const canComment = (s: Session) => s.canWrite || comments.viaPr || doc.pr !== null;
 
 // Pasted or dropped image files go to git (insertImages); anything else is CodeMirror's.
 function images(e: Event, data: DataTransfer | null, pos: number): boolean {
@@ -232,7 +236,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
         keepPlace,
         remoteNotUndoable,
         mode.of(modeOf(isReading())),
-        s.canWrite || comments.viaPr ? commentTooltip() : [],
+        tip.of(canComment(s) ? commentTooltip() : []),
         s.canWrite
           ? EditorView.domEventHandlers({
               paste: (e, v) => !v.state.readOnly && images(e, e.clipboardData, v.state.selection.main.head),
@@ -250,6 +254,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
     });
     setView(view);
     createEffect(on(isReading, (r) => view.dispatch({ effects: mode.reconfigure(modeOf(r)) }), { defer: true }));
+    createEffect(on(() => canComment(s), (c) => view.dispatch({ effects: tip.reconfigure(c ? commentTooltip() : []) }), { defer: true }));
     // What the highlights show, apart from where: as text is typed, decoField maps them along (and the comment markup
     // they sit between is re-parsed whenever an edit could move it otherwise: commentParses), so a keystroke doesn't
     // rebuild and diff them all. A draft's changes and a read-only doc (only others' edits reach it) rebuild each time.

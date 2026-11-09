@@ -66,6 +66,13 @@ export async function createBranch(repo: string, branch: string, sha: string): P
   await post(`/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
 }
 
+// Every branch of the repo, for the picker. Stale-first; a branch just forked is added by the store.
+// ponytail: first 100 only; page when a repo with more shows up
+export async function listBranches(repo: string, fresh = false): Promise<string[]> {
+  const bs: { name: string }[] = JSON.parse(await cachedGet(`/repos/${repo}/branches?per_page=100`, fresh ? { fresh: true } : { stale: true }));
+  return bs.map((b) => b.name);
+}
+
 // stale: the list this browser saw last, at once (background sync refreshes it)
 export async function listDocs(repo: string, branch: string, stale = false): Promise<string[]> {
   // ponytail: one recursive tree call; GitHub truncates past ~100k entries

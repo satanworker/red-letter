@@ -58,7 +58,7 @@ Draft 1's assumptions, challenged:
 **Proof points** (same order everywhere):
 1. **Open the file where it lives.** Swap `github.com` for our host on any markdown link. No import, no sync, no database: a save is a commit on your branch.
 2. **Agents keep using `git push`.** Their commit lands in every open tab within seconds, merged character by character with what people are typing; only words both sides changed get flagged (keep yours / keep the agent's / keep both).
-3. **Comments live in the file** as HTML comments: hidden on GitHub's rendered page, read and answered by agents. Paste one snippet into your AGENTS.md and "address the comments in plan.md" works.
+3. **Comments where your team already looks.** On main they're HTML comments in the file: hidden on GitHub's rendered page, read and answered by agents (paste one snippet into your AGENTS.md and "address the comments in plan.md" works). On a branch with a pull request they're GitHub review comments, so Claude Code, Codex and your reviewers see them where they expect to; the review and the merge are the PR's.
 4. **Your markdown isn't rewritten.** Live preview over the raw text, not a rich-text tree that reformats your lists. The only thing added is the comment markup, and only where you comment.
 
 **Trust line:** nothing is stored outside your repo. Tokens live in your browser; the relay checks your push access and exchanges the sign-in code, keeps nothing, and only admits people who can push.

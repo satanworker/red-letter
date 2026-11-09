@@ -14,7 +14,10 @@
 // Pure text in, text edits out: the editor (direct) and the comment PR (commentsPr.ts) both apply them.
 
 export type Message = { author: string; at: string; body: string };
-export type Thread = { id: string; range: { from: number; to: number } | null; quote: string; messages: Message[]; resolved: boolean };
+// source: where the thread lives. "file": markup in the doc (below); "pr": a review thread on the branch's pull
+// request (commentsSelectors.ts maps it onto the doc), with GitHub's ids for replying, resolving and deleting.
+export type PrRef = { threadId: string; firstCommentId: number; outdated: boolean };
+export type Thread = { id: string; range: { from: number; to: number } | null; quote: string; messages: Message[]; resolved: boolean; source: "file" | "pr"; pr?: PrRef };
 export type Edit = { from: number; to: number; insert: string };
 export type Span = { from: number; to: number };
 export type Block = Span & { id: string; resolved: boolean; close: number; messages: Message[] }; // close: start of the "-->" line
@@ -93,7 +96,7 @@ export function threadsOf({ blocks, markers }: Parsed, slice: (from: number, to:
   return blocks.map((b): Thread => {
     const start = opens.get(b.id), end = closes.get(b.id);
     const range = start && end && start.to <= end.from ? { from: start.to, to: end.from } : null;
-    return { id: b.id, range, quote: range ? slice(range.from, range.to).replace(MARKER, "") : "", messages: b.messages, resolved: b.resolved };
+    return { id: b.id, range, quote: range ? slice(range.from, range.to).replace(MARKER, "") : "", messages: b.messages, resolved: b.resolved, source: "file" };
   });
 }
 

@@ -1,26 +1,18 @@
 // A protected branch takes no direct commits, so its docs get comments through one pull request per doc, from the
 // branch red-letter/comments/<sha1(branch)>/<sha1(path)>: the doc plus the comment markup (inline.ts). Merging the PR
 // lands the comments; they are HTML comments, so the rendered page doesn't change.
-import { HttpError, b64, cachedGet, encPath, gh, ghJson, post, sha1, unb64 } from "../github.ts";
+import { HttpError, b64, cachedGet, encPath, gh, post, sha1, unb64 } from "../github.ts";
+import { openPr, openPrFrom, type Pr } from "../repo/pulls.ts";
 
-export type Pr = { number: number; url: string };
-type PrJson = { number: number; html_url: string };
+export type { Pr };
 
 // Hashed: a path isn't always a valid ref name (".devcontainer/x", "a b.md"), and "<branch>/<path>" collides.
 const commentBranch = async (branch: string, path: string) => `red-letter/comments/${await sha1(branch)}/${await sha1(path)}`;
 
-// Always asked of GitHub (an unchanged answer is a free 304): a shared in-flight request or a recent answer can
-// predate a comment just written, and would take it off the panel.
-async function openPrOf(repo: string, branch: string, head: string): Promise<Pr | null> {
-  const q = `state=open&base=${encodeURIComponent(branch)}&head=${encodeURIComponent(`${repo.split("/")[0]}:${head}`)}`;
-  const [p]: PrJson[] = JSON.parse(await cachedGet(`/repos/${repo}/pulls?${q}`, { fresh: true }));
-  return p ? { number: p.number, url: p.html_url } : null;
-}
-
 // The doc's open comment PR and the doc's text on its branch; null when none is open.
 export async function readPr(repo: string, branch: string, path: string): Promise<{ pr: Pr; text: string } | null> {
   const head = await commentBranch(branch, path);
-  const pr = await openPrOf(repo, branch, head);
+  const pr = await openPrFrom(repo, head, branch);
   if (!pr) return null;
   const text = await cachedGet(`/repos/${repo}/contents/${encPath(path)}?ref=${encodeURIComponent(head)}`, { raw: true, fresh: true });
   return { pr, text: text.replaceAll("\r\n", "\n") };
@@ -31,7 +23,7 @@ export async function readPr(repo: string, branch: string, path: string): Promis
 export async function commitToPr(repo: string, branch: string, path: string, message: string, edit: (text: string) => string): Promise<{ pr: Pr; text: string }> {
   const head = await commentBranch(branch, path);
   const ref = `/repos/${repo}/git/refs/heads/${encPath(head)}`;
-  let pr = await openPrOf(repo, branch, head);
+  let pr = await openPrFrom(repo, head, branch);
   if (!pr) {
     const base: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(branch)}`, { fresh: true }));
     const sha = base.object.sha;
@@ -55,14 +47,6 @@ export async function commitToPr(repo: string, branch: string, path: string, mes
     if (res.status !== 409 || attempt >= 3) throw new HttpError(res.status, `saving the comment: ${res.status} ${await res.text()}`);
   }
   if (pr) return { pr, text };
-  const p = await ghJson<PrJson>(`/repos/${repo}/pulls`, {
-    method: "POST",
-    body: JSON.stringify({
-      title: `Comments on ${path}`,
-      head,
-      base: branch,
-      body: `Comments on \`${path}\` from Red Letter, for \`${branch}\`, which is protected. They're HTML comments: merging changes nothing in the rendered page. The threads are at the end of the file.`,
-    }),
-  });
-  return { pr: { number: p.number, url: p.html_url }, text };
+  const body = `Comments on \`${path}\` from Red Letter, for \`${branch}\`, which is protected. They're HTML comments: merging changes nothing in the rendered page. The threads are at the end of the file.`;
+  return { pr: await openPr(repo, head, branch, `Comments on ${path}`, body), text };
 }

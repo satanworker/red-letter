@@ -6,7 +6,7 @@ import { render } from "solid-js/web";
 import { App } from "./App.tsx";
 import "./app.css";
 import { comments } from "./comments/commentsStore.ts";
-import { doc, leavingWithUnsaved, tick } from "./doc/docStore.ts";
+import { doc, editorView, leavingWithUnsaved, tick } from "./doc/docStore.ts";
 import { showFigmaFixture } from "./dev/figma.tsx";
 import { openInBackground, openRoute, repo } from "./repo/repoStore.ts";
 import { togglePalette } from "./palette/paletteStore.ts";
@@ -52,4 +52,4 @@ addEventListener("beforeunload", (e) => {
 });
 if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
 
-Object.assign(window, { rl: { doc, repo, comments } }); // console debugging and smoke tests: rl.doc.session, rl.repo.docs
+Object.assign(window, { rl: { doc, repo, comments, editorView } }); // console debugging and smoke tests: rl.doc.session, rl.repo.docs, rl.editorView()

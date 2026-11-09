@@ -2,6 +2,11 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-09: Branches and pull requests
+
+- **Branches**: "New branch" in the page menu forks the open file onto `<login>/<slug>` (the name is editable). Off the default branch a bar over the doc offers Changes and "Update from <base>" (when the base moved), then the pull request: Open pull request, and once one exists `#N` with its review state, Approve (not on your own PR) and Merge. The review and the merge are GitHub's (`PUT /pulls/N/merge`): protection, required reviews and the merge method apply; the in-app merge that moved three refs at once is gone. After the merge the branch and its snapshot ref are deleted and the tab goes to the base. The branch picker lists every branch of the repo.
+- **Comments on a pull request**: on a branch with an open PR, new comments are GitHub review comments by default (a toggle in the comments panel, remembered per repo, puts them in the file instead; viewers without push access always comment on the PR). They show in the panel next to the in-file threads, each card saying where it lives; reply, resolve, reopen and delete go through GitHub. The comment body ends in a hidden `<!--rl {quote,from,to}-->` marker, so the highlight is the exact text, not GitHub's whole line; a comment on text outside the PR's diff, which GitHub refuses as a line comment, goes on the file as a whole and is still highlighted from the marker; a thread whose lines changed since ("outdated") shows without a highlight. Verified end to end in headless Chromium on `demo` with a scratch file: New branch → edit → Open pull request → a line comment, a far comment (file-level), a reply, a resolve, the toggle writing an in-file comment → Merge landed on `demo` with the branch gone.
+
 ## 2026-11-09: Table stress test
 
 - **`bun bench/stress.ts --doc tables`**: a doc of tables only (10 to 200 rows, 3 to 12 columns, one of 2,000 rows), measured scrolling, flinging, sideways scrolling, jumping and typing in a cell, against the same tables as a static page and a contenteditable cell in them; it also checks that the header row sits at the top on every frame of a scroll (it did, on all of them).

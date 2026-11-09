@@ -6,10 +6,10 @@ import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments } from "../comments/commentsStore.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
-import { closeTab, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
+import { approvePullRequest, closeTab, mergePullRequest, navigateTo, openPullRequest, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
+import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine, ghostBtn } from "../ui.tsx";
 import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
 import { History } from "./History.tsx";
@@ -17,7 +17,7 @@ import { IconPicker } from "./IconPicker.tsx";
 import { Outline } from "./Outline.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab, selectWords } from "./docSelectors.ts";
 import { commentThreads } from "./commentMarks.ts";
-import { doc, editorState, isReading, showFavicon, showTab, toggleReading } from "./docStore.ts";
+import { doc, editorState, isReading, showFavicon, showTab, toggleChanges, toggleReading, updateDraft } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -25,7 +25,7 @@ export function EditorScreen() {
   const threads = createMemo(() => {
     doc.version;
     const state = editorState();
-    return doc.session && state ? selectThreads(commentThreads(state), doc.session.doc.text, comments.text) : [];
+    return doc.session && state ? selectThreads(commentThreads(state), doc.session.doc.text, comments.text, comments.prThreads) : [];
   });
   const marks = createMemo(() => {
     doc.version;
@@ -47,9 +47,25 @@ export function EditorScreen() {
   });
   createEffect(() => showFavicon(icon()));
   onCleanup(() => showFavicon(""));
-  // the branch this file came from, the default branch (a branch forked elsewhere records no base) and this branch.
-  // ponytail: drafts/* branches are left out with the rest of the draft UI until PRs and reviews are designed
-  const branches = () => [...new Set([draft()?.branch ?? repo.branch, repo.repo?.default_branch ?? repo.branch, repo.branch])];
+  // every branch of the repo: this one first, then its base, the default branch, yours, the rest alphabetically
+  const branches = () => {
+    const login = `${repo.user?.login}/`;
+    const rest = [...repo.branches].sort((a, b) => Number(b.startsWith(login)) - Number(a.startsWith(login)) || a.localeCompare(b));
+    return [...new Set([repo.branch, draft()?.branch ?? "", repo.repo?.default_branch ?? "", ...rest])].filter(Boolean);
+  };
+  const offMain = () => !!doc.session && !!repo.repo && repo.branch !== repo.repo.default_branch;
+  const askPr = () => {
+    const slug = repo.branch.split("/").pop()!.replaceAll("-", " ");
+    const title = prompt("Pull request title", slug.charAt(0).toUpperCase() + slug.slice(1));
+    if (title) void openPullRequest(title);
+  };
+  const prBadge = () => {
+    const pr = doc.pr!;
+    if (pr.mergeable === false) return `not mergeable: update from ${pr.base}`;
+    if (pr.changesRequested.length) return `changes requested by ${pr.changesRequested.join(", ")}`;
+    if (pr.approved.length) return `approved by ${pr.approved.join(", ")}`;
+    return "";
+  };
   const pickBranch = (sel: HTMLSelectElement) => {
     const branch = sel.value;
     sel.value = repo.branch; // the route decides which branch shows
@@ -249,10 +265,75 @@ export function EditorScreen() {
             >
               {(s) => (
                 <>
-                  <Show when={doc.draftNote}>
+                  <Show when={offMain() || doc.draftNote}>
                     {/* floats in the doc's top padding instead of pushing the text down */}
                     <div class="sticky top-0 z-[5] h-0">
-                      <p class="mx-auto mt-1.5 max-w-[440px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
+                      <Show when={offMain()}>
+                        <div class="mx-auto mt-2 flex max-w-[560px] items-center gap-1 rounded-xl bg-card py-1 pr-1.5 pl-3 whitespace-nowrap shadow-figma">
+                          <span class="flex-1 truncate text-muted">{draft() ? `branch of ${draft()!.branch}` : repo.branch}</span>
+                          <Show when={draft()}>
+                            {(b) => (
+                              <>
+                                <button
+                                  class={doc.showChanges ? "inline-flex h-6 cursor-pointer items-center rounded bg-on px-1 text-fg" : `${ghostBtn} h-6`}
+                                  aria-pressed={doc.showChanges}
+                                  title={`Highlight what this branch changed from ${b().branch}`}
+                                  onClick={toggleChanges}
+                                >
+                                  Changes
+                                </button>
+                                <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
+                                  <button
+                                    class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
+                                    disabled={!!doc.drafting}
+                                    title={`${b().branch} has new edits: merge them into this branch`}
+                                    onClick={() => void updateDraft()}
+                                  >
+                                    Update from {b().branch}
+                                  </button>
+                                </Show>
+                              </>
+                            )}
+                          </Show>
+                          <Show
+                            when={doc.pr}
+                            fallback={
+                              <Show when={canWrite()}>
+                                <button class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} onClick={askPr}>
+                                  {doc.drafting || "Open pull request"}
+                                </button>
+                              </Show>
+                            }
+                          >
+                            {(pr) => (
+                              <>
+                                <a class="h-6 px-1 leading-6 text-fg underline" href={pr().url} target="_blank" rel="noopener" title={pr().title}>
+                                  #{pr().number}
+                                </a>
+                                <Show when={prBadge()}>
+                                  <span class={`${badge} max-w-[200px] truncate px-1.5`}>{prBadge()}</span>
+                                </Show>
+                                <Show when={pr().author !== repo.user?.login}>
+                                  <button class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} onClick={() => void approvePullRequest()}>
+                                    Approve
+                                  </button>
+                                </Show>
+                                <button
+                                  class={`${ghostBtn} h-6 disabled:cursor-default disabled:opacity-50`}
+                                  disabled={!!doc.drafting || pr().mergeable === false}
+                                  title={`Merge the pull request into ${pr().base} and delete this branch`}
+                                  onClick={() => void mergePullRequest()}
+                                >
+                                  {doc.drafting || "Merge"}
+                                </button>
+                              </>
+                            )}
+                          </Show>
+                        </div>
+                      </Show>
+                      <Show when={doc.draftNote}>
+                        <p class="mx-auto mt-1.5 max-w-[560px] rounded-xl bg-yellow-bg px-3 py-1.5">{doc.draftNote}</p>
+                      </Show>
                     </div>
                   </Show>
                   <Show when={!isReading()}>
@@ -291,7 +372,7 @@ export function EditorScreen() {
                   <History session={s} entries={history} />
                 </div>
                 <div id="comments" role="tabpanel" aria-labelledby="tab-comments" class="flex flex-col gap-4" hidden={tab() !== "comments"}>
-                  <CommentsPanel canComment={s.canWrite || comments.viaPr} threads={threads} />
+                  <CommentsPanel canComment={s.canWrite || comments.viaPr || doc.pr !== null} threads={threads} />
                 </div>
                 {/* mounted only while shown: it follows the doc's scroll */}
                 <Show when={tab() === "outline"}>

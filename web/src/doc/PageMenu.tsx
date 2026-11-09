@@ -1,8 +1,8 @@
 // Figma 134:1701: the header's "…" menu for the open file. A native popover: light dismiss, Esc and focus return
 // come with it, and the top layer puts it over the tab strip and the doc. Move / delete prompt here, then commit.
 import { For, type JSX } from "solid-js";
-import { deleteFile, duplicateFile, moveFile } from "../repo/repoStore.ts";
-import { CopyPageIcon, DeleteIcon, DotsIcon, DuplicateIcon, LinkIcon, MoveIcon } from "../ui.tsx";
+import { deleteFile, duplicateFile, forkBranch, moveFile, repo } from "../repo/repoStore.ts";
+import { BranchIcon, CopyPageIcon, DeleteIcon, DotsIcon, DuplicateIcon, LinkIcon, MoveIcon } from "../ui.tsx";
 import { copyContents, doc } from "./docStore.ts";
 
 export function PageMenu(props: { canWrite: boolean }) {
@@ -11,6 +11,20 @@ export function PageMenu(props: { canWrite: boolean }) {
     { label: "Copy link", icon: LinkIcon, run: () => navigator.clipboard.writeText(location.href) },
     ...(props.canWrite ? [{ label: "Duplicate", icon: DuplicateIcon, run: duplicateFile }] : []),
     { label: "Copy page contents", icon: CopyPageIcon, run: copyContents },
+    // this file on a new branch; from any branch without a recorded base, a protected main included (that's the point)
+    ...(repo.repo?.permissions?.push && !doc.session?.doc.base
+      ? [
+          {
+            label: "New branch",
+            icon: BranchIcon,
+            run: () => {
+              const stem = doc.session!.path.split("/").pop()!.replace(/\.[^.]+$/, "");
+              const name = prompt("Branch name", `${repo.user!.login}/${stem}-edits`);
+              return name && forkBranch(name);
+            },
+          },
+        ]
+      : []),
     ...(props.canWrite
       ? [
           {

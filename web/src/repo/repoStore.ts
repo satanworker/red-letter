@@ -1,10 +1,11 @@
 // Which screen is showing, and the open repo + branch: info, the branch's markdown files, the current path.
 // openRoute is the one entry point: page load, links, back/forward (see main.tsx).
 import { createStore } from "solid-js/store";
-import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, runDraft } from "../doc/docStore.ts";
+import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
-import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
+import { approvePr, mergePr, openPr } from "./pulls.ts";
+import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
 type RepoState = {
@@ -18,7 +19,7 @@ type RepoState = {
   docs: string[];
   path: string;
   tabs: string[]; // open files of this repo + branch, in tab order; the route's file is always one of them
-  drafts: string[]; // draft branches of the repo (drafts/<login>/<name>)
+  branches: string[]; // every branch of the repo, for the picker
   filesHidden: boolean;
   panelHidden: boolean; // the comments / history panel
   collaborators: User[]; // who can be @mentioned, loaded on first use
@@ -35,7 +36,7 @@ const [state, set] = createStore<RepoState>({
   docs: [],
   path: "",
   tabs: [],
-  drafts: [],
+  branches: [],
   filesHidden: localStorage.getItem("rl_files") === "hidden" || innerWidth < 900,
   panelHidden: localStorage.getItem("rl_panel") === "hidden",
   collaborators: [],
@@ -176,38 +177,71 @@ async function removeFile(s: Session, busy: string, to?: string): Promise<boolea
   }
 }
 
-// Branches forked in this tab and not opened yet: openRoute opens them as drafts of the branch they came from.
+// Branches forked in this tab and not opened yet: openRoute opens them with the branch they came from as base.
 const drafting = new Map<string, string>();
 
-// A draft of the open file on its own branch, drafts/<login>/<name>, forked where the doc was last saved (unsaved
-// text is saved first, so the draft starts from what's on screen). It opens at once.
-export async function createDraft(name: string) {
-  const slug = name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
+// A git branch name from what the user typed: each segment lowercased, odd characters to "-", empty segments dropped.
+const branchName = (input: string) =>
+  input
+    .split("/")
+    .map((seg) => seg.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, ""))
+    .filter(Boolean)
+    .join("/");
+
+// The open file on a new branch `name`, forked where the doc was last saved (unsaved text is saved first, so the
+// branch starts from what's on screen). It opens at once, with this branch as its base.
+export async function forkBranch(name: string) {
+  const branch = branchName(name);
   const s = doc.session;
-  if (!slug || !s || !state.repo || !state.user) return;
-  noteDraft("Starting the draft…");
+  if (!branch || !s || !state.repo || !state.user) return;
+  noteDraft("Creating the branch…");
   await s.save();
   if (s.status.dirty || s.status.error) return noteDraft(`Couldn't save the text first: ${s.status.error ?? "try again"}`);
-  const branch = `drafts/${state.user.login}/${slug}`;
   try {
     await createBranch(state.repo.full_name, branch, s.doc.git!.commit);
   } catch (e) {
-    return noteDraft(e instanceof HttpError && e.status === 422 ? `There's already a draft called ${slug}` : String(e));
+    return noteDraft(e instanceof HttpError && e.status === 422 ? `There's already a branch called ${branch}` : String(e));
   }
   drafting.set(branch, state.branch);
-  set("drafts", [...state.drafts, branch]);
+  set("branches", [...new Set([...state.branches, branch])]);
   navigateTo(blobUrl(state.repo.full_name, branch, state.path));
 }
 
-// Land the open draft on its base branch and go there; the merge shows up in its History.
-export async function mergeDraft() {
-  const base = doc.session?.doc.base?.branch;
-  const merged = await runDraft("Merging…", (s) => s.mergeIntoBase());
-  if (merged === false) noteDraft(`${base} had new edits: they're merged into the draft now (its History shows them). Check, then merge again.`);
-  if (!merged || !base || !state.repo) return;
-  set("drafts", state.drafts.filter((b) => b !== state.branch));
-  localStorage.removeItem(tabsKey(state.repo.full_name, state.branch)); // the draft branch is gone
-  navigateTo(blobUrl(state.repo.full_name, base, state.path));
+// A pull request from this branch into its base (the default branch when none was recorded); the bar then shows it.
+export async function openPullRequest(title: string) {
+  const full = state.repo?.full_name;
+  if (!full || !title.trim()) return;
+  const base = doc.session?.doc.base?.branch ?? state.repo!.default_branch;
+  const url = `${location.origin}${blobUrl(full, state.branch, state.path)}`;
+  await runDraft("Opening the pull request…", () => openPr(full, state.branch, base, title.trim(), `Opened from Red Letter: ${url}`));
+  await refreshPr();
+}
+
+// GitHub's approval review; GitHub refuses your own PR (422) and says so.
+export async function approvePullRequest() {
+  const pr = doc.pr;
+  if (!pr || !state.repo) return;
+  await runDraft("Approving…", () => approvePr(state.repo!.full_name, pr.number));
+  await refreshPr();
+}
+
+// Merge the open branch's PR through GitHub (protection, required reviews and the merge method are its), then drop
+// the branch and go to the base.
+export async function mergePullRequest() {
+  const pr = doc.pr;
+  if (!pr || !state.repo) return;
+  const full = state.repo.full_name;
+  const merged = await runDraft("Merging…", async (s) => {
+    await s.save();
+    if (s.status.dirty || s.status.error) throw new Error(`Couldn't save the text first: ${s.status.error ?? "try again"}`);
+    await mergePr(full, pr.number);
+    await s.dropBranch();
+    return true;
+  });
+  if (!merged) return;
+  localStorage.removeItem(tabsKey(full, state.branch)); // the branch is gone
+  void listBranches(full, true).then((bs) => set("branches", bs), () => {});
+  navigateTo(blobUrl(full, pr.base, state.path));
 }
 
 let current = 0;
@@ -271,6 +305,7 @@ export async function openRoute(url: URL, newTab = false): Promise<void> {
     const tabs = !path || kept.includes(path) ? kept : at < 0 ? [...kept, path] : newTab ? kept.toSpliced(at + 1, 0, path) : kept.with(at, path);
     set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path, message: "" });
     setTabs(tabs);
+    if (fresh) void listBranches(full).then((bs) => !stale() && set("branches", [...new Set([...bs, branch])]), () => {});
     if (!path) {
       closeFile();
       set("message", "This branch has no markdown files yet.");

@@ -24,7 +24,7 @@ Data flow: `external event -> store action -> service call -> store update -> se
 ## Verify
 
 ```sh
-cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json && bun build.ts && bun src/comments/inline.check.ts && bun src/doc/fields.check.ts && bun src/doc/sync.check.ts
+cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json && bun build.ts && bun src/comments/inline.check.ts && bun src/comments/prThreads.check.ts && bun src/doc/fields.check.ts && bun src/doc/sync.check.ts
 cd server && CGO_ENABLED=0 go test ./...
 ```
 

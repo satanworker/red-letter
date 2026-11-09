@@ -3,9 +3,11 @@
 import { EditorView } from "@codemirror/view";
 import { batch } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { clearComments, commentViaPr, comments, loadComments, refreshComments } from "../comments/commentsStore.ts";
+import { clearComments, commentViaPr, comments, commentsOnPr, loadComments, refreshComments, writeOnPr } from "../comments/commentsStore.ts";
+import { withPrMark } from "../comments/commentsSelectors.ts";
 import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, type User } from "../github.ts";
+import { NotInDiff, commentOnPr, deletePrComment, prState, replyOnPr, setThreadResolved, type PrState, type PrThread } from "../repo/pulls.ts";
 import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 import { inCode } from "./commentMarks.ts";
 import { flash } from "./flash.ts";
@@ -30,6 +32,7 @@ type DocState = {
   showChanges: boolean; // a draft's edits highlighted against its base branch
   drafting: string; // the draft action under way ("Merging…"), one at a time
   draftNote: string; // what the last draft action ended with, if it needs saying
+  pr: PrState | null; // the open pull request from this branch, as of the last poll (null: none, or the default branch)
   icons: Record<string, string>; // path -> the doc's icon ("": none), for the branch's docs as last synced or closed
   reading: boolean; // reading mode chosen (the footer's pencil); read-only docs are always read
 };
@@ -52,6 +55,7 @@ const [state, set] = createStore<DocState>({
   showChanges: false,
   drafting: "",
   draftNote: "",
+  pr: null,
   icons: {},
   reading: localStorage.getItem("rl_mode") === "reading",
 });
@@ -62,6 +66,7 @@ export const fixtureDoc = (s: Partial<DocState>) => set(s);
 let view: EditorView | undefined;
 // The editor's state (its text is the CRDT's): read after `version` ticks, which a new editor also does.
 export const editorState = () => view?.state;
+export const editorView = () => view;
 export function setView(v: EditorView | undefined) {
   view = v;
   docChanged();
@@ -79,6 +84,23 @@ let ticker: number | undefined;
 export function tick() {
   void state.session?.poll(true);
   void refreshComments();
+  void refreshPr();
+}
+
+// The PR from the open branch, if the branch isn't the repo's default one (a PR from main is not a thing we show).
+let prOf: { repo: string; branch: string } | null = null;
+export async function refreshPr() {
+  const t = prOf;
+  if (!t) return;
+  try {
+    const pr = await prState(t.repo, t.branch);
+    if (prOf !== t) return;
+    const was = state.pr?.number;
+    set("pr", reconcile(pr));
+    if (was !== pr?.number) void refreshComments(); // the PR's threads, without waiting for the next tick
+  } catch (e) {
+    console.warn("[rl] reading the pull request:", e);
+  }
 }
 
 // false: the file doesn't exist on that branch. create: make it, starting with this text.
@@ -117,11 +139,13 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
   batch(() => {
     release();
     loadComments(repo.full_name, branch, path, viaPr); // before the editor mounts: it reads comments.viaPr
+    prOf = branch === repo.default_branch ? null : { repo: repo.full_name, branch };
     // the panel tab stays as it was: a tab picked on one page is still open on the next
-    set({ session, opening: "", history: [], shown: null, activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "" });
+    set({ session, opening: "", history: [], shown: null, activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "", pr: null });
     pushStatus();
   });
   ticker = window.setInterval(tick, 15_000);
+  void refreshPr();
   void navigator.storage?.persist?.(); // ask the browser not to evict this origin's copies under disk pressure
   session.synced.catch((e) => {
     if (e instanceof DocReset && state.session === session) {
@@ -139,6 +163,7 @@ function release() {
   if (s?.handle) noteIcon(s.path, s.doc.text); // the sidebar keeps an icon set or changed while it was open
   s?.close();
   clearComments();
+  prOf = null;
   historyAt = "";
 }
 
@@ -194,7 +219,7 @@ export function leavingWithUnsaved(): boolean {
 export function startComment() {
   const s = state.session;
   const sel = view && (view.state.field(cellSelection) ?? view.state.selection.main);
-  if (!s || !(s.canWrite || comments.viaPr) || !view || !sel || sel.from === sel.to || inCode(view.state, sel.from) || inCode(view.state, sel.to)) return;
+  if (!s || !(s.canWrite || comments.viaPr || state.pr) || !view || !sel || sel.from === sel.to || inCode(view.state, sel.from) || inCode(view.state, sel.to)) return;
   set("composing", { anchor: s.anchor(sel.from, sel.to), quote: view.state.sliceDoc(sel.from, sel.to) });
 }
 export const cancelComment = () => set("composing", null);
@@ -330,7 +355,8 @@ export function selectThread(t: Thread) {
   view.dispatch({ effects: EditorView.scrollIntoView(t.range.from) });
 }
 
-// ---- comments: edits to the doc (inline.ts), or on a protected branch to its comment PR's copy ----
+// ---- comments: edits to the doc (inline.ts), on a protected branch to its comment PR's copy, or review comments on
+// the branch's pull request (commentsStore.prThreads), which never touch the file ----
 function editComments(message: string, edits: (text: string) => Edit[], body = "") {
   const s = state.session;
   if (!s) return;
@@ -346,6 +372,41 @@ function editComments(message: string, edits: (text: string) => Edit[], body = "
   void commentViaPr(`${message} ${s.path}`, (t) => apply(t, edits(t)), body, caughtUp);
 }
 
+// A thread on the pull request takes its replies, resolution and deletion there, whatever the mode; false: not one.
+function onPr(id: string, action: (t: PrThread, pr: PrState, repo: string) => Promise<unknown>, body = ""): boolean {
+  const s = state.session, pr = state.pr, t = comments.prThreads.find((t) => t.id === id);
+  if (!s || !pr || !t) return false;
+  void writeOnPr(() => action(t, pr, s.repoName), body);
+  return true;
+}
+
+// A review comment on the PR: anchored to the selection's lines in the file as committed (the doc's text, comment
+// markup included, is the file), on the PR's head, so unsaved text is saved first. The hidden marker at the end
+// keeps the exact text (offsets without markup: plain()). Lines outside the PR's diff take no line comment on
+// GitHub (NotInDiff): the comment goes on the file as a whole, the marker still places it here.
+async function commentOnPullRequest(s: Session, anchor: Anchor, pr: PrState, body: string) {
+  const sent = await writeOnPr(async () => {
+    await s.save();
+    if (s.status.dirty) throw new Error(`Couldn't save the doc first: ${s.status.error ?? "unsaved edits"}`);
+    const at = s.resolve(anchor);
+    if (!at || at.from === at.to) throw new Error("The commented text is gone");
+    const text = s.doc.text, p = plain(text);
+    const from = p.toPlain(at.from), to = p.toPlain(at.to);
+    const full = withPrMark(body, { quote: p.text.slice(from, to), from, to });
+    const lineAt = (i: number) => text.slice(0, i).split("\n").length;
+    const lines = { start: lineAt(at.from), end: lineAt(at.to - 1) };
+    const sha = s.doc.git?.commit ?? pr.headSha;
+    try {
+      return await commentOnPr(s.repoName, pr.number, sha, s.path, full, lines);
+    } catch (e) {
+      if (!(e instanceof NotInDiff)) throw e;
+      return commentOnPr(s.repoName, pr.number, sha, s.path, full);
+    }
+  }, body);
+  const t = sent && comments.prThreads.find((t) => t.comments[0]?.id === sent.id);
+  if (t) set("activeThread", t.id);
+}
+
 export function submitComment(body: string) {
   const s = state.session;
   const c = state.composing;
@@ -354,37 +415,41 @@ export function submitComment(body: string) {
   if (!s || !c || !r || r.from === r.to) return;
   const id = newId();
   const msg = { author: state.login, at: now(), body };
-  editComments("Comment on", (t) => {
-    if (s.canWrite) return addThread(t, r.from, r.to, id, msg);
-    // the comment PR's copy: the same doc plus comments, so positions correspond through the text without markup;
-    // the anchor is resolved again, the doc may have caught up meanwhile
-    const at = s.resolve(c.anchor);
-    const doc = plain(s.doc.text), pr = plain(t);
-    if (!at || at.from === at.to) throw new Error("The commented text is gone");
-    if (!sameProse(doc, pr)) throw new Error("The comment PR's copy of this doc differs from it in more than comments");
-    return addThread(t, pr.toText(doc.toPlain(at.from), 1), pr.toText(doc.toPlain(at.to), -1), id, msg);
-  }, body);
-  // the comment shows on the right only now that it's sent (Figma 22:561)
-  set({ activeThread: id, tab: "comments", picked: true });
+  if (commentsOnPr()) void commentOnPullRequest(s, c.anchor, state.pr!, body);
+  else
+    editComments("Comment on", (t) => {
+      if (s.canWrite) return addThread(t, r.from, r.to, id, msg);
+      // the comment PR's copy: the same doc plus comments, so positions correspond through the text without markup;
+      // the anchor is resolved again, the doc may have caught up meanwhile
+      const at = s.resolve(c.anchor);
+      const doc = plain(s.doc.text), pr = plain(t);
+      if (!at || at.from === at.to) throw new Error("The commented text is gone");
+      if (!sameProse(doc, pr)) throw new Error("The comment PR's copy of this doc differs from it in more than comments");
+      return addThread(t, pr.toText(doc.toPlain(at.from), 1), pr.toText(doc.toPlain(at.to), -1), id, msg);
+    }, body);
+  // the comment shows on the right only now that it's sent (Figma 22:561); a PR comment's card lights up once GitHub has it
+  set({ activeThread: commentsOnPr() ? "" : id, tab: "comments", picked: true });
   if (view) {
     view.dispatch({ selection: { anchor: view.state.selection.main.to } });
     view.focus();
   }
 }
 
-export const submitReply = (id: string, body: string) => editComments("Reply on", (t) => reply(t, id, { author: state.login, at: now(), body }), body);
-export const resolveThread = (id: string) => editComments("Resolve a comment on", (t) => setResolved(t, id, true));
-export const reopenThread = (id: string) => editComments("Reopen a comment on", (t) => setResolved(t, id, false));
-export const deleteThread = (id: string) => editComments("Delete a comment on", (t) => remove(t, id));
+export const submitReply = (id: string, body: string) =>
+  onPr(id, (t, pr, repo) => replyOnPr(repo, pr.number, t.comments[0]!.id, body), body) || editComments("Reply on", (t) => reply(t, id, { author: state.login, at: now(), body }), body);
+export const resolveThread = (id: string) => onPr(id, (t) => setThreadResolved(t.id, true)) || editComments("Resolve a comment on", (t) => setResolved(t, id, true));
+export const reopenThread = (id: string) => onPr(id, (t) => setThreadResolved(t.id, false)) || editComments("Reopen a comment on", (t) => setResolved(t, id, false));
+export const deleteThread = (id: string) => onPr(id, (t, _pr, repo) => deletePrComment(repo, t.comments[0]!.id)) || editComments("Delete a comment on", (t) => remove(t, id));
 
 // ---- drafts ----
 export const toggleChanges = () => set("showChanges", (v) => !v);
 export const noteDraft = (note: string) => set("draftNote", note);
 
-// One draft action at a time on the open draft; an error ends up in draftNote. undefined: it didn't finish.
+// One draft action at a time on the open branch (PR actions need no recorded base); an error ends up in draftNote.
+// undefined: it didn't finish.
 export async function runDraft<T>(busy: string, action: (s: Session) => Promise<T>): Promise<T | undefined> {
   const s = state.session;
-  if (!s?.doc.base || state.drafting) return;
+  if (!s || state.drafting) return;
   set({ drafting: busy, draftNote: "" });
   try {
     return await action(s);
@@ -395,4 +460,4 @@ export async function runDraft<T>(busy: string, action: (s: Session) => Promise<
   }
 }
 
-export const updateDraft = () => runDraft("Updating…", (s) => s.updateFromBase());
+export const updateDraft = () => (state.session?.doc.base ? runDraft("Updating…", (s) => s.updateFromBase()) : undefined);

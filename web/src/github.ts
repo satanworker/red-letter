@@ -185,17 +185,22 @@ async function load(path: string, key: string, opts: GetOpts): Promise<string> {
 
 export const post = <T>(path: string, body: unknown) => ghJson<T>(path, { method: "POST", body: JSON.stringify(body) });
 
+// One GraphQL call; errors (HTTP or in the body) throw with GitHub's messages.
+export async function graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  const res = await gh(`${API}/graphql`, { method: "POST", body: JSON.stringify({ query, variables }) });
+  const body: { data?: T; errors?: { message: string }[] } = await res.json().catch(() => ({}));
+  if (!res.ok || body.errors || !body.data) throw new HttpError(res.status, body.errors?.map((e) => e.message).join("; ") ?? `GraphQL -> ${res.status}`);
+  return body.data;
+}
+
 // Atomic multi-ref compare-and-swap. REST PATCH has no CAS on non-branch refs. Any error = conflict.
 export async function updateRefs(repositoryId: string, refUpdates: { name: string; beforeOid: string; afterOid: string; force?: boolean }[]) {
-  const res = await gh(`${API}/graphql`, {
-    method: "POST",
-    body: JSON.stringify({
-      query: "mutation($input: UpdateRefsInput!){ updateRefs(input:$input){ clientMutationId } }",
-      variables: { input: { repositoryId, refUpdates } },
-    }),
-  });
-  const body: { errors?: { message: string }[] } = await res.json();
-  return res.ok && !body.errors ? null : (body.errors?.map((e) => e.message).join("; ") ?? `HTTP ${res.status}`);
+  try {
+    await graphql("mutation($input: UpdateRefsInput!){ updateRefs(input:$input){ clientMutationId } }", { input: { repositoryId, refUpdates } });
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
 }
 
 export type User = { login: string; avatar_url: string };

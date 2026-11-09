@@ -560,28 +560,17 @@ export class Session {
     if (this.status.error) throw new Error(this.status.error);
   }
 
-  // Land the draft: a merge commit on the base branch with the draft's tree; the draft branch and its snapshot are
-  // deleted in the same atomic update, which fails if anyone moved either branch meanwhile. Tabs on the base see
-  // the merge as an external push and replay it. false: the base had moved, its changes are now merged into the
-  // draft to look at first, and merging again lands exactly what was looked at.
-  async mergeIntoBase(): Promise<boolean> {
-    const before = this.doc.base!.commit;
-    await this.updateFromBase();
-    const b = this.doc.base!;
-    if (b.commit !== before) return false;
-    if (b.inGit !== b.commit || this.status.dirty) throw new Error("the draft isn't saved yet");
-    const draft = this.doc.git!.commit;
-    const { tree } = await object<GitCommit>(this.repoName, "commits", draft);
-    const message = `Merge draft ${this.branch} into ${b.branch}`;
-    const m = await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message, tree: tree.sha, parents: [b.commit, draft] });
-    const err = await updateRefs(this.repoId, [
-      { name: `refs/heads/${b.branch}`, beforeOid: b.commit, afterOid: m.sha },
-      { name: `refs/heads/${this.branch}`, beforeOid: draft, afterOid: ZERO },
-      { name: this.#crdtRef, beforeOid: await this.#crdtRefSha(true), afterOid: ZERO },
-    ]);
-    if (err) throw new Error(`merge lost a race, try again: ${err}`);
-    this.log("merged into", b.branch, m.sha.slice(0, 7));
-    return true;
+  // After the branch's PR merged: delete the branch (GitHub may have done it already: 404 / 422 are fine) and its
+  // snapshot ref, and this browser's copy. Nothing more leaves this Session afterwards.
+  async dropBranch() {
+    this.#removed = true;
+    clearTimeout(this.#autosave);
+    for (const ref of [`refs/heads/${this.branch}`, this.#crdtRef]) {
+      const res = await gh(`/repos/${this.repoName}/git/${ref}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 404 && res.status !== 422) throw new HttpError(res.status, `delete ${ref}: ${res.status} ${await res.text()}`);
+    }
+    await idbDelete("docs", this.#key);
+    this.log("dropped", this.branch);
   }
 
   // Delete the file, or move it to `to`, in one commit (unsaved text is saved first); its snapshot ref is deleted in

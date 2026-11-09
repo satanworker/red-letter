@@ -31,26 +31,18 @@ export function PullRequests() {
   };
   return (
     <>
-      <Show
-        when={n()}
-        fallback={
-          <Show when={canWrite() && repo.repo && repo.branch !== repo.repo.default_branch}>
-            <button class={`ml-2 ${badge} cursor-pointer px-1.5 disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} onClick={askPr}>
-              {doc.drafting || "Open pull request"}
-            </button>
-          </Show>
-        }
-      >
-        <button class={`ml-2 ${badge} cursor-pointer px-1.5`} popoverTarget="pull-requests" title="Pull requests this doc takes part in" onClick={(e) => place(e.currentTarget)}>
-          {n()} pull request{n() === 1 ? "" : "s"}
-        </button>
-      </Show>
+      <button class={`ml-2 ${badge} cursor-pointer px-1.5`} popoverTarget="pull-requests" title="Pull requests this doc takes part in" onClick={(e) => place(e.currentTarget)}>
+        {n() ? `${n()} pull request${n() === 1 ? "" : "s"}` : "Pull requests"}
+      </button>
       <div
         ref={menu}
         id="pull-requests"
         popover
         class="fixed inset-auto m-0 w-[420px] flex-col gap-4 rounded-xl bg-card px-5 py-5 text-fg shadow-[0_4px_17.8px_rgba(0,0,0,.1),var(--shadow)] [&:popover-open]:flex"
       >
+        <Show when={!n()}>
+          <p class="text-muted">No open pull request touches this doc. {canWrite() ? "The first comment opens one: a review of this doc, shared by everyone, back into this branch." : ""}</p>
+        </Show>
         <For each={comments.prs}>
           {(pr) => {
             const mine = () => pr.head === repo.branch;

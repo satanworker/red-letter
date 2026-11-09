@@ -1,0 +1,10 @@
+{
+ "docId": "39cN5JBhRXL8ZjGEVnvLV8snuGCv",
+ "branch": "satanworker/prior-art-patchwork-git-bridges-review",
+ "path": "docs/research/crdt-choice.md",
+ "commit": "8e94a7c7263f936f026d792658eca522b072b5e4",
+ "heads": [
+  "aa3723481b46f970aef561a7201014db907bed41555fab7034e6bf03b018c95a"
+ ],
+ "replayVersion": 1
+}

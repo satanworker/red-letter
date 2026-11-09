@@ -103,7 +103,7 @@ export type PrThread = {
   comments: PrComment[]; // the first is the thread's own comment; replies follow
 };
 export type PrDetail = { pr: PrLink; files: PrDoc[]; threads: PrThread[]; decision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null };
-export type PrDoc = { path: string; additions: number; deletions: number };
+export type PrDoc = { path: string; additions: number; deletions: number; changeType: "ADDED" | "MODIFIED" | "DELETED" | "RENAMED" | "COPIED" | "CHANGED" };
 
 type ThreadNode = {
   id: string;
@@ -122,14 +122,14 @@ type DetailNode = { reviewDecision: PrDetail["decision"]; files: { nodes: PrDoc[
 // ask anyway, after a write of ours: a resolve doesn't always bump updated_at).
 // ponytail: 50 files, 30 threads and 30 comments each, no paging; cost ≈ 10 points a PR
 export async function prDetails(repo: string, prs: OpenPr[], fresh = false): Promise<PrDetail[]> {
-  const key = (p: OpenPr) => `gql pr ${repo}#${p.number}@${p.updatedAt}`;
+  const key = (p: OpenPr) => `gql pr2 ${repo}#${p.number}@${p.updatedAt}`;
   const kept = new Map<number, DetailNode>();
   if (!fresh) for (const p of prs) { const c = await idbGet<{ body: string }>("http", key(p)); if (c) kept.set(p.number, JSON.parse(c.body)); }
   const ask = prs.filter((p) => !kept.has(p.number));
   if (ask.length) {
     const [owner, name] = repo.split("/");
     const q = `query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ ${ask.map((p, i) => `p${i}: pullRequest(number:${p.number}){ ...d }`).join(" ")} } }
-fragment d on PullRequest { reviewDecision files(first:50){ nodes{ path additions deletions } } reviewThreads(first:30){ nodes{ id path line startLine subjectType isResolved isOutdated
+fragment d on PullRequest { reviewDecision files(first:100){ nodes{ path additions deletions changeType } } reviewThreads(first:30){ nodes{ id path line startLine subjectType isResolved isOutdated
   comments(first:30){ nodes{ databaseId id author{ login } createdAt body } } } } }`;
     const r = await graphql<{ repository: Record<string, DetailNode | null> }>(q, { owner, name });
     await Promise.all(ask.map((p, i) => { const n = r.repository[`p${i}`]; if (!n) return; kept.set(p.number, n); return idbPut("http", key(p), { etag: "", body: JSON.stringify(n) }); }));
@@ -158,7 +158,8 @@ fragment d on PullRequest { reviewDecision files(first:50){ nodes{ path addition
 // ---- the repo's open pull requests, for the panel's PRs tab ----
 export type RepoPr = OpenPr & {
   decision: PrDetail["decision"];
-  docs: PrDoc[]; // the markdown files it changes (first 50 files looked at)
+  files: PrDoc[]; // every file it changes (first 100)
+  docs: PrDoc[]; // the markdown ones
   open: number; // review threads still open, across the PR
   resolved: number;
   review: boolean; // one of our review branches: the PR is the comments, the diff is one newline
@@ -177,6 +178,7 @@ export async function listPulls(repo: string, prs: OpenPr[], fresh = false): Pro
     return {
       ...p,
       decision: d?.decision ?? null,
+      files: d?.files ?? [],
       docs: (d?.files ?? []).filter((f) => isDoc(f.path)),
       open: threads.filter((t) => !t.resolved).length,
       resolved: threads.filter((t) => t.resolved).length,

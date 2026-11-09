@@ -1,27 +1,37 @@
-// The repo's open pull requests, for the side panel's PRs tab and review mode: loaded when a repo opens, refreshed on
-// the doc's 15 s tick. The open-PR list is REST (ETag: free when unchanged); its details (files, threads, decision)
-// are GraphQL, asked only when the list's stamp (numbers + updated_at) changed, or `force`d after a write of ours.
-// Also the review under way: Review on a PR opens its doc on the PR's branch with the PR's changes against its base
-// highlighted (docStore.reviewBase); leaving that branch ends it.
+// The repo's open pull requests, for the left sidebar's Pull requests view and review mode: loaded when a repo
+// opens, refreshed on the doc's 15 s tick. The open-PR list is REST (ETag: free when unchanged); its details (files,
+// threads, decision) are GraphQL, asked only when the list's stamp (numbers + updated_at) changed, or `force`d after a
+// write of ours. Also the review under way: a PR's file clicked in the tree opens it on the PR's branch with the PR's
+// changes against its base highlighted (docStore.reviewBase); leaving that branch ends it.
 import { createStore } from "solid-js/store";
 import { listPulls, openPulls, type RepoPr } from "../repo/pulls.ts";
 
 export type Reviewing = { number: number; head: string; base: string };
-const [state, set] = createStore({ repo: "", list: [] as RepoPr[], loaded: false, error: "", reviewing: null as Reviewing | null, focusThread: "" });
+type View = "files" | "pulls";
+const [state, set] = createStore({
+  repo: "",
+  list: [] as RepoPr[],
+  loaded: false,
+  error: "",
+  reviewing: null as Reviewing | null,
+  focusThread: "",
+  view: (localStorage.getItem("rl_sidebar") === "pulls" ? "pulls" : "files") as View, // the left sidebar: the branch's files or the open PRs
+  open: [] as number[], // PRs unfolded in the tree
+});
 export const pulls = state;
 let stamp = "";
 
 export function loadPulls(repo: string) {
   if (state.repo !== repo) {
     stamp = "";
-    set({ repo, list: [], loaded: false, error: "", reviewing: null });
+    set({ repo, list: [], loaded: false, error: "", reviewing: null, open: [] });
   }
   void refreshPulls();
 }
 
 export function clearPulls() {
   stamp = "";
-  set({ repo: "", list: [], loaded: false, error: "", reviewing: null });
+  set({ repo: "", list: [], loaded: false, error: "", reviewing: null, open: [] });
 }
 
 export async function refreshPulls(force = false) {
@@ -39,6 +49,17 @@ export async function refreshPulls(force = false) {
   }
 }
 
-export const setReviewing = (r: Reviewing | null) => set("reviewing", r);
-// A thread picked in the review sidebar whose doc is still opening: commentsStore lights it once its threads arrive.
+export const setReviewing = (r: Reviewing | null) => {
+  set("reviewing", r);
+  if (r) {
+    showView("pulls");
+    if (!state.open.includes(r.number)) set("open", [...state.open, r.number]);
+  }
+};
+// A thread picked in the tree whose doc is still opening: commentsStore lights it once its threads arrive.
 export const setFocusThread = (id: string) => set("focusThread", id);
+export function showView(view: View) {
+  set("view", view);
+  localStorage.setItem("rl_sidebar", view);
+}
+export const togglePr = (n: number) => set("open", state.open.includes(n) ? state.open.filter((x) => x !== n) : [...state.open, n]);

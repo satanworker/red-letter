@@ -126,15 +126,6 @@ export const BranchIcon = () => (
     <path d="M4.5 5v6M11.5 7c0 2.5-7 1.5-7 4" />
   </Svg>
 );
-// git-pull-request: a branch line on the left, an arrow into a dot on the right
-export const PullRequestIcon = () => (
-  <Svg size={12}>
-    <circle cx="4" cy="3.5" r="1.5" />
-    <circle cx="4" cy="12.5" r="1.5" />
-    <circle cx="12" cy="12.5" r="1.5" />
-    <path d="M4 5v6M12 11V7a2 2 0 0 0-2-2H8M9.5 3.5 8 5l1.5 1.5" />
-  </Svg>
-);
 export const OutlineIcon = () => (
   <Svg size={12}>
     <path d="M2 3.5h12M5 8h9M8 12.5h6" />

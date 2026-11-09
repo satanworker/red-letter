@@ -29,6 +29,7 @@ let cur: Target | null = null;
 
 export function loadComments(repo: string, branch: string, path: string, viaPr: boolean) {
   const t = (cur = { repo, branch, path, viaPr });
+  stamp = ""; // the threads were just cleared: the next refresh must fill them, even if no PR moved
   set({ viaPr, pr: null, text: null, prThreads: [], prs: [], review: "", sending: false, error: "", mode: localStorage.getItem(modeKey(repo)) === "file" ? "file" : "pr" });
   void reviewBranch(branch, path).then((r) => cur === t && set("review", r));
   void refreshComments();
@@ -36,6 +37,7 @@ export function loadComments(repo: string, branch: string, path: string, viaPr: 
 
 export function clearComments() {
   cur = null;
+  stamp = "";
   set({ viaPr: false, pr: null, text: null, prThreads: [], prs: [], review: "", sending: false, error: "" });
 }
 

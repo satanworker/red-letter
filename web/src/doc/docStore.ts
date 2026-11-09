@@ -19,7 +19,7 @@ import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection, flashInTable, selectInTable } from "./tables.ts";
 import { pulls, refreshPulls, setReviewing } from "../pulls/pullsStore.ts";
 
-type Tab = "comments" | "history" | "outline" | "pulls";
+type Tab = "comments" | "history" | "outline";
 type DocState = {
   session: Session | null;
   opening: string; // path being opened

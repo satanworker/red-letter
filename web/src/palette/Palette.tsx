@@ -5,6 +5,7 @@ import { showTab, startComment } from "../doc/docStore.ts";
 import { blobUrl } from "../repo/repoService.ts";
 import { navigateTo, repo, showPanel, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { FileIcon, card } from "../ui.tsx";
+import { showView } from "../pulls/pullsStore.ts";
 import { closePalette, palette } from "./paletteStore.ts";
 
 type Item = { label: string; hint?: string; file?: boolean; run: () => void };
@@ -31,7 +32,7 @@ export function Palette() {
     { label: "Show comments", run: () => (showTab("comments"), showPanel()) },
     { label: "Show history", run: () => (showTab("history"), showPanel()) },
     { label: "Show outline", run: () => (showTab("outline"), showPanel()) },
-    { label: "Show pull requests", run: () => (showTab("pulls"), showPanel()) },
+    { label: "Show pull requests", run: () => showView("pulls") },
     { label: repo.filesHidden ? "Show files" : "Hide files", run: toggleFiles },
     { label: repo.panelHidden ? "Show comments panel" : "Hide comments panel", run: togglePanel },
     { label: "Copy link to this file", run: () => void navigator.clipboard.writeText(location.href) },

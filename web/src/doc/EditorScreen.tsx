@@ -9,8 +9,7 @@ import { blobUrl } from "../repo/repoService.ts";
 import { closeTab, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, PullRequestIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
-import { PullsPanel } from "../pulls/PullsPanel.tsx";
+import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
 import { pulls } from "../pulls/pullsStore.ts";
 import { isReviewBranch } from "../repo/pulls.ts";
 import { rate, resetTime } from "../rate.ts";
@@ -85,8 +84,8 @@ export function EditorScreen() {
   const tabKeys = (e: KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
-    const order = ["outline", "comments", "history", "pulls"] as const;
-    showTab(order[(order.indexOf(tab()) + (e.key === "ArrowRight" ? 1 : 3)) % 4]!);
+    const order = ["outline", "comments", "history"] as const;
+    showTab(order[(order.indexOf(tab()) + (e.key === "ArrowRight" ? 1 : 2)) % 3]!);
     (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
   };
   // Figma 22:561: the chosen tab is white with its label; the others shrink to a grey icon + count pill.
@@ -137,22 +136,6 @@ export function EditorScreen() {
         <Show when={tab() === "history"}>History</Show>
         <Show when={marks().length}>
           <i class={count}>{marks().length}</i>
-        </Show>
-      </button>
-      <button
-        role="tab"
-        id="tab-pulls"
-        aria-selected={tab() === "pulls"}
-        aria-controls="panel"
-        tabindex={tab() === "pulls" ? 0 : -1}
-        title="Pull requests"
-        class={tabClass(tab() === "pulls", "px-3")}
-        onClick={() => showTab("pulls")}
-      >
-        <PullRequestIcon />
-        <Show when={tab() === "pulls"}>PRs</Show>
-        <Show when={comments.prs.length}>
-          <i class={count}>{comments.prs.length}</i>
         </Show>
       </button>
     </div>
@@ -356,9 +339,6 @@ export function EditorScreen() {
                     <Outline />
                   </div>
                 </Show>
-                <div id="pulls" role="tabpanel" aria-labelledby="tab-pulls" hidden={tab() !== "pulls"}>
-                  <PullsPanel />
-                </div>
               </>
             )}
           </Show>

@@ -3,7 +3,7 @@
 import { createStore } from "solid-js/store";
 import { clearIcons, clearReview, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
 import { refreshComments } from "../comments/commentsStore.ts";
-import { loadPulls, refreshPulls, setReviewing } from "../pulls/pullsStore.ts";
+import { loadPulls, pulls, refreshPulls, setReviewing } from "../pulls/pullsStore.ts";
 import { NO_SNAPSHOT, prefetchTexts, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
 import { approvePr, closePr, mergeInto, mergePr, openPr, openPrFrom, requestChanges, reviewBranch, touchFile, type Pr } from "./pulls.ts";
@@ -292,12 +292,14 @@ export async function mergePullRequest() {
 
 // Review a PR: its doc on its branch (this doc if the PR changes it, else the first markdown file it changes), with
 // the changes against the base highlighted once it opens (docStore: reviewBase, showChanges).
-export function reviewPullRequest(pr: { number: number; head: string; base: string }, docs: string[] = []) {
+export function reviewPullRequest(pr: { number: number; head: string; base: string }, docs: string[] = [], file?: string) {
   if (!state.repo) return;
-  const path = docs.includes(state.path) || !docs.length ? state.path : docs[0]!;
+  const path = file ?? (docs.includes(state.path) || !docs.length ? state.path : docs[0]!);
+  const already = pulls.reviewing?.number === pr.number && pr.head === state.branch;
   setReviewing({ number: pr.number, head: pr.head, base: pr.base });
-  if (pr.head === state.branch && path === state.path) void openFile(state.repo, state.branch, state.path, state.user!); // already there: reopen to load the base
-  else navigateTo(blobUrl(state.repo.full_name, pr.head, path));
+  if (pr.head === state.branch && path === state.path) {
+    if (!already) void openFile(state.repo, state.branch, state.path, state.user!); // already there: reopen to load the base
+  } else navigateTo(blobUrl(state.repo.full_name, pr.head, path));
 }
 
 export function endReview() {

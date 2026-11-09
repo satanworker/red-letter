@@ -5,7 +5,7 @@ import type { Commit } from "../repo/repoService.ts";
 import { editRegions, type Region } from "./regions.ts";
 import type { AgentMark, Session } from "./session.ts";
 
-type PanelState = { picked: boolean; tab: "comments" | "history" | "outline" | "pulls" };
+type PanelState = { picked: boolean; tab: "comments" | "history" | "outline" };
 export type HistoryEntry = { commit: Commit; conflicts?: AgentMark };
 
 // Agent commits with conflicts still to settle, oldest first (marks of older docs may hold none: left out).

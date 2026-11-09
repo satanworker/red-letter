@@ -10,8 +10,8 @@ import { encPath } from "../github.ts";
 import { blobUrl } from "./repoService.ts";
 import { selectMatches, selectTree, type Dir } from "./repoSelectors.ts";
 import { createFile, repo } from "./repoStore.ts";
-import { pulls } from "../pulls/pullsStore.ts";
-import { ReviewSidebar } from "../pulls/ReviewSidebar.tsx";
+import { pulls, showView } from "../pulls/pullsStore.ts";
+import { PullsTree } from "../pulls/PullsTree.tsx";
 
 const href = (path: string) => blobUrl(repo.repo!.full_name, repo.branch, path);
 // Figma 129:1342: icons at 12px, 16px deeper per level, 4px from their label
@@ -89,8 +89,20 @@ export function FileSidebar() {
               {repo.repo!.full_name}
             </a>
           </div>
-          {/* reviewing a pull request: its changed docs and actions take the tree's place (pulls/ReviewSidebar.tsx) */}
-          <Show when={!pulls.reviewing} fallback={<ReviewSidebar />}>
+          {/* the branch's files, or the repo's open pull requests (pulls/PullsTree.tsx), VS Code's GitHub view style */}
+          <div class="flex shrink-0 gap-1 px-3 pt-2 pb-1" role="tablist" aria-label="Sidebar">
+            {(["files", "pulls"] as const).map((v) => (
+              <button
+                role="tab"
+                aria-selected={pulls.view === v}
+                class={`h-6 cursor-pointer rounded-xl px-2.5 ${pulls.view === v ? "bg-card text-fg shadow-figma" : "text-muted hover:text-fg"}`}
+                onClick={() => showView(v)}
+              >
+                {v === "files" ? "Files" : `Pull requests${pulls.list.length ? ` ${pulls.list.length}` : ""}`}
+              </button>
+            ))}
+          </div>
+          <Show when={pulls.view === "files"} fallback={<PullsTree />}>
           <div class="sticky top-0 z-[1] flex items-center gap-2 bg-side px-3 py-1">
             <label class={`${field} flex min-w-0 flex-1 items-center gap-2`}>
               <SearchIcon />

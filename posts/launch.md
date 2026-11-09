@@ -25,7 +25,7 @@ One detail makes this work. We do not diff the agent's commit against the live d
 
 ## Comments
 
-Comments took the most time, and we changed our minds about them more than once.
+Comments took the most time, and we changed our minds very about them more than once.
 
 Our first version stored comments as HTML comments inside the markdown file itself. GitHub hides HTML comments when it renders a page, so the published file looks clean, and agents read the comments along with the text. You can ask an agent to address the comments in plan.md and it just works.
 

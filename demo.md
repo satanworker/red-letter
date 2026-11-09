@@ -1,7 +1,7 @@
 # Red Letter demo (agent edition)
 - [x] her
 
-- <!--rl:4byv91-->sadsadsa<!--/rl:4byv91-->
+- sadsadsa
 
 - asdsadsad
 
@@ -11,7 +11,3 @@
 sdff
 
 
-
-<!--rl:4byv91
-@satanworker 2026-11-07T17:15Z: asdsd
--->

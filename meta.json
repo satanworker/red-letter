@@ -1,0 +1,10 @@
+{
+ "docId": "4FEboYpX25Aa6GFaXdNv5dM4Z7uj",
+ "branch": "satanworker/prior-art-patchwork-git-bridges-review",
+ "path": "docs/research/crdts-in-production.md",
+ "commit": "8e94a7c7263f936f026d792658eca522b072b5e4",
+ "heads": [
+  "ccbb74c99988e557c1810eb0e22193bacbd1df3ee119273b311f6d8ababb0f09"
+ ],
+ "replayVersion": 1
+}

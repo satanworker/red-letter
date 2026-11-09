@@ -1,0 +1,10 @@
+{
+ "docId": "3sjbk96wJrTmG42zNyWPdUGZL5uL",
+ "branch": "satanworker/FINDINGS-review",
+ "path": "docs/research/crdts-in-production.md",
+ "commit": "ca3b69802b51354e3e1d86994af1ab6fb3528320",
+ "heads": [
+  "32b3e212f418b7b0f712c0b6c3567e1e5d36e336090fea005b3db7b33263a06d"
+ ],
+ "replayVersion": 1
+}

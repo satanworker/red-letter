@@ -90,3 +90,7 @@ This post was written and edited in Red Letter. The draft lived on main. The edi
 Pick any markdown file in a repository you can push to. Change github.com to our domain in the URL. Invite a teammate. Ask your agent to push a change while you both type.
 
 It's free while we learn what people need. Tell us what breaks: hello@redletter.dev.
+
+
+Привет говно
+

@@ -10,6 +10,7 @@ import { doc, editorView, leavingWithUnsaved, tick } from "./doc/docStore.ts";
 import { showFigmaFixture } from "./dev/figma.tsx";
 import { openInBackground, openRoute, repo } from "./repo/repoStore.ts";
 import { togglePalette } from "./palette/paletteStore.ts";
+import { rate } from "./rate.ts";
 
 await initializeWasm(wasmUrl);
 render(() => <App />, document.getElementById("app")!);
@@ -35,7 +36,7 @@ if (location.pathname === "/__figma") showFigmaFixture();
 else if (location.pathname === "/__stress") void import("./dev/stress.ts").then((m) => m.showStress());
 else void openRoute(new URL(location.href));
 
-addEventListener("focus", tick);
+addEventListener("focus", () => tick());
 // Cmd/Ctrl+K: the palette (also from inside the editor, which would otherwise take the key)
 addEventListener(
   "keydown",
@@ -46,10 +47,11 @@ addEventListener(
   },
   { capture: true },
 );
-addEventListener("online", tick); // queued comments and failed saves go out as soon as the network is back
+addEventListener("online", () => tick(true)); // queued comments and failed saves go out as soon as the network is back
+addEventListener("visibilitychange", () => !document.hidden && tick()); // a hidden tab stops polling; shown again, it catches up
 addEventListener("beforeunload", (e) => {
   if (leavingWithUnsaved()) e.preventDefault();
 });
 if ("serviceWorker" in navigator) void navigator.serviceWorker.register("/sw.js");
 
-Object.assign(window, { rl: { doc, repo, comments, editorView } }); // console debugging and smoke tests: rl.doc.session, rl.repo.docs, rl.editorView()
+Object.assign(window, { rl: { doc, repo, comments, rate, editorView } }); // console debugging and smoke tests: rl.doc.session, rl.repo.docs, rl.rate, rl.editorView()

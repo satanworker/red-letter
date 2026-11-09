@@ -13,6 +13,7 @@ import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon
 import { PullsPanel } from "../pulls/PullsPanel.tsx";
 import { pulls } from "../pulls/pullsStore.ts";
 import { isReviewBranch } from "../repo/pulls.ts";
+import { rate, resetTime } from "../rate.ts";
 import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
 import { History } from "./History.tsx";
@@ -208,6 +209,11 @@ export function EditorScreen() {
                     error
                   </span>
                 )}
+              </Show>
+              <Show when={rate.blockedUntil > Date.now()}>
+                <span class={`${badge} px-1.5 text-red`} title="GitHub's hourly API limit for your account is used up. Nothing is polled until it resets; saves and comments still go through if GitHub lets them.">
+                  GitHub limit · resets {resetTime()}
+                </span>
               </Show>
             </span>
           </Show>

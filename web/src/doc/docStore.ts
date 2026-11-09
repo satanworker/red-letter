@@ -7,6 +7,7 @@ import { clearComments, commentViaPr, comments, commentsOnPr, loadComments, refr
 import { withPrMark } from "../comments/commentsSelectors.ts";
 import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, cachedGet, encPath, type User } from "../github.ts";
+import { blocked, low } from "../rate.ts";
 import { NotInDiff, commentOnPr, deletePrComment, isReviewBranch, prState, replyOnPr, setThreadResolved, touchFile, type PrState, type PrThread } from "../repo/pulls.ts";
 import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 // repoStore imports this store too; each uses the other only inside functions
@@ -87,8 +88,14 @@ export function docChanged() {
   });
 }
 
+// The 15 s tick: the branch ref, the comment PR, the PR from the branch, the open-PR list, all REST with ETags (a
+// 304 costs nothing; GraphQL follows only when something moved). A hidden tab doesn't tick (main.tsx ticks it when
+// it's shown again); with under a fifth of the budget left only every fourth tick runs; while GitHub refuses us,
+// none, until the reset (rate.ts).
 let ticker: number | undefined;
-export function tick() {
+let ticks = 0;
+export function tick(force = false) {
+  if (!force && (document.hidden || blocked() || (low() && ++ticks % 4))) return;
   void state.session?.poll(true);
   void refreshComments();
   void refreshPr();

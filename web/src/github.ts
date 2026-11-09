@@ -2,6 +2,7 @@
 // - "app":   GitHub App user token: access = repos where the App is installed ∩ the user's access.
 // - "oauth": classic OAuth App with `repo` scope: every repo the user can reach, nothing to install.
 import { idbClear, idbGet, idbPut } from "./idb.ts";
+import { noteGraphqlLimited, noteResponse } from "./rate.ts";
 
 export const APP_SLUG = "red-letter-diff";
 const CLIENT_IDS = { app: "Iv23liTw70O2dgREat8o", oauth: "Ov23liCuqRqQVEAWuFcA" };
@@ -106,7 +107,7 @@ export async function token(): Promise<string | null> {
 
 export async function gh(path: string, init: RequestInit & { raw?: boolean } = {}): Promise<Response> {
   const t = await token();
-  return fetch(path.startsWith("https://") ? path : API + path, {
+  const res = await fetch(path.startsWith("https://") ? path : API + path, {
     ...init,
     cache: "no-store", // API refs carry max-age=60; the browser cache would serve stale heads
     headers: {
@@ -116,6 +117,8 @@ export async function gh(path: string, init: RequestInit & { raw?: boolean } = {
       ...init.headers,
     },
   });
+  noteResponse(res);
+  return res;
 }
 
 export class HttpError extends Error {
@@ -188,7 +191,8 @@ export const post = <T>(path: string, body: unknown) => ghJson<T>(path, { method
 // One GraphQL call; errors (HTTP or in the body) throw with GitHub's messages.
 export async function graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   const res = await gh(`${API}/graphql`, { method: "POST", body: JSON.stringify({ query, variables }) });
-  const body: { data?: T; errors?: { message: string }[] } = await res.json().catch(() => ({}));
+  const body: { data?: T; errors?: { message: string; type?: string }[] } = await res.json().catch(() => ({}));
+  if (body.errors?.some((e) => e.type === "RATE_LIMITED")) noteGraphqlLimited(res);
   if (!res.ok || body.errors || !body.data) throw new HttpError(res.status, body.errors?.map((e) => e.message).join("; ") ?? `GraphQL -> ${res.status}`);
   return body.data;
 }

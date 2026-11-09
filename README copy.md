@@ -53,6 +53,6 @@ flowchart LR
   B[Middle] --> D[Another option]
 ```
 
-<!--rl:q6pdcp
+<!--rl:q6pdcp resolved
 @satanworker 2026-11-09T09:43Z: test
 -->

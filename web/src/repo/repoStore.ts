@@ -1,11 +1,12 @@
 // Which screen is showing, and the open repo + branch: info, the branch's markdown files, the current path.
 // openRoute is the one entry point: page load, links, back/forward (see main.tsx).
 import { createStore } from "solid-js/store";
-import { clearIcons, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
-import { loadPulls, refreshPulls } from "../pulls/pullsStore.ts";
+import { clearIcons, clearReview, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
+import { refreshComments } from "../comments/commentsStore.ts";
+import { loadPulls, refreshPulls, setReviewing } from "../pulls/pullsStore.ts";
 import { NO_SNAPSHOT, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
-import { approvePr, mergeInto, mergePr, openPr, openPrFrom, reviewBranch, touchFile, type Pr } from "./pulls.ts";
+import { approvePr, closePr, mergeInto, mergePr, openPr, openPrFrom, requestChanges, reviewBranch, touchFile, type Pr } from "./pulls.ts";
 import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
@@ -287,6 +288,50 @@ export async function mergePullRequest() {
   void listBranches(full, true).then((bs) => set("branches", bs), () => {});
   void refreshPulls();
   navigateTo(blobUrl(full, pr.base, state.path));
+}
+
+// Review a PR: its doc on its branch (this doc if the PR changes it, else the first markdown file it changes), with
+// the changes against the base highlighted once it opens (docStore: reviewBase, showChanges).
+export function reviewPullRequest(pr: { number: number; head: string; base: string }, docs: string[] = []) {
+  if (!state.repo) return;
+  const path = docs.includes(state.path) || !docs.length ? state.path : docs[0]!;
+  setReviewing({ number: pr.number, head: pr.head, base: pr.base });
+  if (pr.head === state.branch && path === state.path) void openFile(state.repo, state.branch, state.path, state.user!); // already there: reopen to load the base
+  else navigateTo(blobUrl(state.repo.full_name, pr.head, path));
+}
+
+export function endReview() {
+  setReviewing(null);
+  clearReview();
+}
+
+// GitHub's "request changes" review, with a note; GitHub refuses it on your own PR (422) and says so.
+export async function requestChangesOnPullRequest(number: number, note: string) {
+  if (!state.repo || !note.trim()) return;
+  await runDraft("Requesting changes…", () => requestChanges(state.repo!.full_name, number, note.trim()));
+  await refreshPr();
+  void refreshPulls();
+}
+
+// Close a PR without merging: a review whose threads are settled, or a branch given up on. The branch goes too; if
+// it's the open one, the tab moves to the PR's base.
+export async function closePullRequest(pr: { number: number; head: string; base: string }) {
+  if (!state.repo) return;
+  const full = state.repo.full_name;
+  const ok = await runDraft("Closing…", async (s) => {
+    await closePr(full, pr.number, pr.head);
+    if (pr.head === state.branch) await s.dropBranch();
+    return true;
+  });
+  if (!ok) return;
+  void listBranches(full, true).then((bs) => set("branches", bs), () => {});
+  void refreshPulls();
+  void refreshComments();
+  if (pr.head === state.branch) {
+    endReview();
+    localStorage.removeItem(tabsKey(full, state.branch));
+    navigateTo(blobUrl(full, pr.base, state.path));
+  }
 }
 
 let current = 0;

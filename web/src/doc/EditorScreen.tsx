@@ -11,12 +11,14 @@ import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
 import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, PullRequestIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
 import { PullsPanel } from "../pulls/PullsPanel.tsx";
+import { pulls } from "../pulls/pullsStore.ts";
+import { isReviewBranch } from "../repo/pulls.ts";
 import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
 import { Outline } from "./Outline.tsx";
-import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab, selectWords } from "./docSelectors.ts";
+import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab, selectTextChanges, selectWords } from "./docSelectors.ts";
 import { commentThreads } from "./commentMarks.ts";
 import { doc, editorState, isReading, showFavicon, showTab, toggleChanges, toggleReading, updateDraft } from "./docStore.ts";
 
@@ -39,7 +41,10 @@ export function EditorScreen() {
   });
   const changes = createMemo(() => {
     doc.version;
-    return doc.showChanges && doc.session ? selectDraftChanges(doc.session) : [];
+    const s = doc.session;
+    if (!doc.showChanges || !s) return [];
+    if (s.doc.base) return selectDraftChanges(s);
+    return doc.reviewBase !== null ? selectTextChanges(doc.reviewBase, s.doc.text) : [];
   });
   const icon = createMemo(() => {
     doc.version;
@@ -183,6 +188,28 @@ export function EditorScreen() {
             >
               <SidebarIcon closed={repo.panelHidden} right />
             </button>
+            <span class="mt-2.5 flex items-center gap-1.5" role="status">
+              <Show when={!doc.status.saving} fallback="Saving…">
+                <Show when={!doc.status.dirty} fallback="Edited">
+                  Saved ·
+                  <a class="underline" href={`https://github.com/${full()}/commit/${doc.status.commit}`} target="_blank" title={`Last commit on ${repo.branch}`}>
+                    {doc.status.commit.slice(0, 7)}
+                  </a>
+                </Show>
+              </Show>
+              <Show when={doc.session?.canWrite && !doc.status.online}>
+                <span class="text-[#d9730d]" title="Live sync is reconnecting; edits are kept and saved to git">
+                  offline
+                </span>
+              </Show>
+              <Show when={doc.status.error}>
+                {(err) => (
+                  <span class="text-red" title={err()}>
+                    error
+                  </span>
+                )}
+              </Show>
+            </span>
           </Show>
           <span class="flex-1" />
           <span class="mt-[5.5px] mr-3 inline-flex" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
@@ -250,7 +277,7 @@ export function EditorScreen() {
                           <For each={branches()}>
                             {(b) => (
                               <option value={b} selected={b === repo.branch}>
-                                {b}
+                                {isReviewBranch(b) ? "review" : b}
                               </option>
                             )}
                           </For>
@@ -264,47 +291,28 @@ export function EditorScreen() {
                           protected
                         </span>
                       </Show>
-                      <Show when={draft()}>
-                        {(b) => (
-                          <>
-                            <button
-                              class={`${badge} cursor-pointer px-1.5 hover:text-fg ${doc.showChanges ? "bg-on text-fg" : ""}`}
-                              aria-pressed={doc.showChanges}
-                              title={`Highlight what this branch changed from ${b().branch}`}
-                              onClick={toggleChanges}
-                            >
-                              Changes
-                            </button>
-                            <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
-                              <button class={`${badge} cursor-pointer px-1.5 hover:text-fg disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} title={`${b().branch} has new edits: merge them into this branch`} onClick={() => void updateDraft()}>
-                                Update from {b().branch}
-                              </button>
-                            </Show>
-                          </>
+                      {/* the branch's changes: against its recorded base, or, reviewing a PR, against the PR's base */}
+                      <Show when={draft()?.branch ?? (doc.reviewBase !== null && pulls.reviewing?.base)}>
+                        {(base) => (
+                          <button
+                            class={`${badge} cursor-pointer px-1.5 hover:text-fg ${doc.showChanges ? "bg-on text-fg" : ""}`}
+                            aria-pressed={doc.showChanges}
+                            title={`Highlight what this branch changed from ${base()}`}
+                            onClick={toggleChanges}
+                          >
+                            Changes
+                          </button>
                         )}
                       </Show>
-                      <span class="flex items-center gap-1.5" role="status">
-                        <Show when={!doc.status.saving} fallback="Saving…">
-                          <Show when={!doc.status.dirty} fallback={<span class="text-fg">Edited</span>}>
-                            Saved ·
-                            <a class="underline" href={`https://github.com/${full()}/commit/${doc.status.commit}`} target="_blank" title={`Last commit on ${repo.branch}`}>
-                              {doc.status.commit.slice(0, 7)}
-                            </a>
+                      <Show when={draft()}>
+                        {(b) => (
+                          <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
+                            <button class={`${badge} cursor-pointer px-1.5 hover:text-fg disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} title={`${b().branch} has new edits: merge them into this branch`} onClick={() => void updateDraft()}>
+                              Update from {b().branch}
+                            </button>
                           </Show>
-                        </Show>
-                        <Show when={s.canWrite && !doc.status.online}>
-                          <span class="text-[#d9730d]" title="Live sync is reconnecting; edits are kept and saved to git">
-                            offline
-                          </span>
-                        </Show>
-                        <Show when={doc.status.error}>
-                          {(err) => (
-                            <span class="text-red" title={err()}>
-                              error
-                            </span>
-                          )}
-                        </Show>
-                      </span>
+                        )}
+                      </Show>
                       <span class="h-3 w-px bg-rule" />
                       <button
                         class={`cursor-pointer rounded hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent ${isReading() ? "opacity-40" : ""}`}

@@ -148,21 +148,26 @@ export async function prThreads(repo: string, branch: string, path: string): Pro
   return { threads, prs };
 }
 
-// ---- the repo's open pull requests, for the panel's Pull requests tab ----
+// ---- the repo's open pull requests, for the panel's PRs tab ----
+export type PrDoc = { path: string; additions: number; deletions: number };
 export type RepoPr = PrLink & {
   author: string;
   draft: boolean;
   decision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
   reviewers: string[]; // review requested from
-  docs: string[]; // the markdown files it changes (first 100 files looked at)
+  docs: PrDoc[]; // the markdown files it changes (first 100 files looked at)
+  open: number; // review threads still open, across the PR
+  resolved: number;
+  review: boolean; // one of our review branches: the PR is the comments, the diff is one newline
   updatedAt: string;
 };
-// ponytail: the 50 most recently updated open PRs, no paging
+// ponytail: the 50 most recently updated open PRs, 50 threads each, no paging
 const OPEN_PRS = `query($owner:String!,$name:String!){
   repository(owner:$owner,name:$name){ pullRequests(states:OPEN,first:50,orderBy:{field:UPDATED_AT,direction:DESC}){ nodes{
     number url title isDraft reviewDecision updatedAt author{ login } headRefName baseRefName
     reviewRequests(first:10){ nodes{ requestedReviewer{ ... on User{ login } } } }
-    files(first:100){ nodes{ path } } } } } }`;
+    reviewThreads(first:50){ nodes{ isResolved } }
+    files(first:100){ nodes{ path additions deletions } } } } } }`;
 type OpenPrsJson = {
   repository: {
     pullRequests: {
@@ -177,12 +182,14 @@ type OpenPrsJson = {
         headRefName: string;
         baseRefName: string;
         reviewRequests: { nodes: { requestedReviewer: { login?: string } | null }[] }; // teams need read:org: left out
-        files: { nodes: { path: string }[] };
+        reviewThreads: { nodes: { isResolved: boolean }[] };
+        files: { nodes: PrDoc[] };
       }[];
     };
   };
 };
 const isDoc = (p: string) => /\.(md|markdown|mdx|txt)$/i.test(p);
+export const isReviewBranch = (head: string) => head.startsWith("red-letter/review/");
 export async function listPulls(repo: string): Promise<RepoPr[]> {
   const [owner, name] = repo.split("/");
   const d = await graphql<OpenPrsJson>(OPEN_PRS, { owner, name });
@@ -196,9 +203,25 @@ export async function listPulls(repo: string): Promise<RepoPr[]> {
     draft: p.isDraft,
     decision: p.reviewDecision,
     reviewers: p.reviewRequests.nodes.flatMap((r) => (r.requestedReviewer?.login ? [r.requestedReviewer.login] : [])),
-    docs: p.files.nodes.map((f) => f.path).filter(isDoc),
+    docs: p.files.nodes.filter((f) => isDoc(f.path)),
+    open: p.reviewThreads.nodes.filter((t) => !t.isResolved).length,
+    resolved: p.reviewThreads.nodes.filter((t) => t.isResolved).length,
+    review: isReviewBranch(p.headRefName),
     updatedAt: p.updatedAt,
   }));
+}
+
+// A "request changes" review with a note; GitHub refuses it on your own PR (422).
+export async function requestChanges(repo: string, number: number, body: string): Promise<void> {
+  await post(`/repos/${repo}/pulls/${number}/reviews`, { event: "REQUEST_CHANGES", body });
+}
+
+// Closes the PR without merging and deletes its branch (a review branch is recreated by the next review; its snapshot
+// ref is keyed by the branch name and reused). 404/422 on the branch: already gone.
+export async function closePr(repo: string, number: number, head: string): Promise<void> {
+  await ghJson(`/repos/${repo}/pulls/${number}`, { method: "PATCH", body: JSON.stringify({ state: "closed" }) });
+  const res = await gh(`/repos/${repo}/git/refs/heads/${encPath(head)}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 404 && res.status !== 422) throw new HttpError(res.status, `deleting ${head}: ${res.status} ${await res.text()}`);
 }
 
 // The branch a review of `path` on `base` happens on: shared by everyone reviewing that doc, so one PR holds the

@@ -10,6 +10,8 @@ import { encPath } from "../github.ts";
 import { blobUrl } from "./repoService.ts";
 import { selectMatches, selectTree, type Dir } from "./repoSelectors.ts";
 import { createFile, repo } from "./repoStore.ts";
+import { pulls } from "../pulls/pullsStore.ts";
+import { ReviewSidebar } from "../pulls/ReviewSidebar.tsx";
 
 const href = (path: string) => blobUrl(repo.repo!.full_name, repo.branch, path);
 // Figma 129:1342: icons at 12px, 16px deeper per level, 4px from their label
@@ -79,14 +81,16 @@ export function FileSidebar() {
         hidden={repo.filesHidden}
         class="relative w-80 shrink-0 bg-side after:pointer-events-none after:absolute after:inset-0 after:z-[2] after:border-[.5px] after:border-t-0 after:border-line"
       >
-        <div ref={nav} class="h-full overflow-auto pb-6">
+        <div ref={nav} class="flex h-full flex-col overflow-auto pb-6">
           {/* Figma 129:1325 */}
-          <div class="flex h-9 items-center gap-2 px-3 py-1 shadow-figma">
+          <div class="flex h-9 shrink-0 items-center gap-2 px-3 py-1 shadow-figma">
             <Avatar login={repo.user!.login} size={28} />
             <a href={`/${repo.repo!.full_name}/tree/${encPath(repo.branch)}`} class="truncate hover:underline" title={`Signed in as ${repo.user!.login}`}>
               {repo.repo!.full_name}
             </a>
           </div>
+          {/* reviewing a pull request: its changed docs and actions take the tree's place (pulls/ReviewSidebar.tsx) */}
+          <Show when={!pulls.reviewing} fallback={<ReviewSidebar />}>
           <div class="sticky top-0 z-[1] flex items-center gap-2 bg-side px-3 py-1">
             <label class={`${field} flex min-w-0 flex-1 items-center gap-2`}>
               <SearchIcon />
@@ -131,6 +135,7 @@ export function FileSidebar() {
               </For>
             </Show>
           </div>
+          </Show>
         </div>
       </nav>
     </>

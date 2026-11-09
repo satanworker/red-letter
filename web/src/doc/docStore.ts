@@ -6,17 +6,17 @@ import { createStore, reconcile } from "solid-js/store";
 import { clearComments, commentViaPr, comments, commentsOnPr, loadComments, refreshComments, targetPr, writeOnPr } from "../comments/commentsStore.ts";
 import { withPrMark } from "../comments/commentsSelectors.ts";
 import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
-import { HttpError, type User } from "../github.ts";
-import { NotInDiff, commentOnPr, deletePrComment, prState, replyOnPr, setThreadResolved, touchFile, type PrState, type PrThread } from "../repo/pulls.ts";
-import { blobUrl, branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
+import { HttpError, cachedGet, encPath, type User } from "../github.ts";
+import { NotInDiff, commentOnPr, deletePrComment, isReviewBranch, prState, replyOnPr, setThreadResolved, touchFile, type PrState, type PrThread } from "../repo/pulls.ts";
+import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 // repoStore imports this store too; each uses the other only inside functions
-import { ensurePullRequest, navigateTo } from "../repo/repoStore.ts";
+import { ensurePullRequest } from "../repo/repoStore.ts";
 import { inCode } from "./commentMarks.ts";
 import { flash } from "./flash.ts";
 import { selectIcon, type Heading } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection, flashInTable, selectInTable } from "./tables.ts";
-import { refreshPulls } from "../pulls/pullsStore.ts";
+import { pulls, refreshPulls, setReviewing } from "../pulls/pullsStore.ts";
 
 type Tab = "comments" | "history" | "outline" | "pulls";
 type DocState = {
@@ -36,6 +36,7 @@ type DocState = {
   drafting: string; // the draft action under way ("Merging…"), one at a time
   draftNote: string; // what the last draft action ended with, if it needs saying
   pr: PrState | null; // the open pull request from this branch, as of the last poll (null: none, or the default branch)
+  reviewBase: string | null; // reviewing a PR: the base branch's text of this file ("" when the file is new there)
   icons: Record<string, string>; // path -> the doc's icon ("": none), for the branch's docs as last synced or closed
   reading: boolean; // reading mode chosen (the footer's pencil); read-only docs are always read
 };
@@ -59,12 +60,15 @@ const [state, set] = createStore<DocState>({
   drafting: "",
   draftNote: "",
   pr: null,
+  reviewBase: null,
   icons: {},
   reading: localStorage.getItem("rl_mode") === "reading",
 });
 export const doc = state;
 // The /__figma dev page (src/dev/figma.tsx).
 export const fixtureDoc = (s: Partial<DocState>) => set(s);
+// Review mode over (pullsStore.reviewing cleared by the caller): the highlights go, the doc stays.
+export const clearReview = () => set({ reviewBase: null, showChanges: false });
 
 let view: EditorView | undefined;
 // The editor's state (its text is the CRDT's): read after `version` ticks, which a new editor also does.
@@ -145,11 +149,21 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
     loadComments(repo.full_name, branch, path, viaPr); // before the editor mounts: it reads comments.viaPr
     prOf = branch === repo.default_branch ? null : { repo: repo.full_name, branch };
     // the panel tab stays as it was: a tab picked on one page is still open on the next
-    set({ session, opening: "", history: [], shown: null, activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "", pr: null });
+    set({ session, opening: "", history: [], shown: null, activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "", pr: null, reviewBase: null });
     pushStatus();
   });
   ticker = window.setInterval(tick, 15_000);
   void refreshPr();
+  // reviewing a PR: its doc on its branch, with the changes against the base highlighted (reviewBase holds the base's
+  // text; selectTextChanges diffs). Opening another branch ends the review.
+  const rv = pulls.reviewing;
+  if (rv && rv.head === branch) {
+    cachedGet(`/repos/${repo.full_name}/contents/${encPath(path)}?ref=${encodeURIComponent(rv.base)}`, { raw: true, fresh: true })
+      // a review branch (comments only) shows no changes by itself: its diff from a base that moved on is the base's
+      // drift, not the review; the Changes toggle is there if wanted
+      .then((t) => state.session === session && set({ reviewBase: t.replaceAll("\r\n", "\n"), showChanges: !isReviewBranch(branch) }))
+      .catch((e: unknown) => state.session === session && set({ reviewBase: "", showChanges: true, draftNote: e instanceof HttpError && e.status === 404 ? `${path} is new in this pull request` : `Couldn't read ${rv.base}'s copy: ${String(e)}` }));
+  } else if (rv) setReviewing(null);
   void navigator.storage?.persist?.(); // ask the browser not to evict this origin's copies under disk pressure
   session.synced.catch((e) => {
     if (e instanceof DocReset && state.session === session) {

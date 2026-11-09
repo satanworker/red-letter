@@ -29,6 +29,17 @@ export function selectHistory(history: Commit[], marks: AgentMark[]): HistoryEnt
 // A draft's edits against its base branch (as last merged in): ranges in the current text, deleted text in `before`.
 export const selectDraftChanges = (s: Session): Region[] => (s.doc.base ? editRegions(s.doc, s.doc.base.heads, A.getHeads(s.doc)) : []);
 
+// What `text` changed from `base`, as regions in `text`: a scratch Automerge doc holding `base` is brought to `text`
+// with updateText (Myers, like an agent replay), and editRegions reads the result. For reviewing a PR whose branch
+// records no base (made by git, by an agent, or the review branch itself).
+// ponytail: a whole-doc diff per call; the review's `changes` memo runs it per version tick while Changes is on
+export function selectTextChanges(base: string, text: string): Region[] {
+  let d = A.from<{ text: string }>({ text: base });
+  const from = A.getHeads(d);
+  d = A.change(d, (x) => A.updateText(x, ["text"], text));
+  return editRegions(d, from, A.getHeads(d));
+}
+
 // The chosen tab (kept across files); until one is chosen, History when conflicts wait to be settled and no comments are open.
 export const selectTab = (s: PanelState, openThreads: number, marks: number) => (!s.picked && !openThreads && marks ? "history" : s.tab);
 

@@ -62,7 +62,7 @@ export function PullRequests() {
                   </Show>
                 </div>
                 <div class="truncate text-muted" title={`${pr.head} → ${pr.base}`}>
-                  {pr.head} → {pr.base}
+                  {pr.head.startsWith("red-letter/review/") ? "review" : pr.head} → {pr.base}
                 </div>
                 <div class="flex items-center gap-2">
                   <Show
@@ -104,7 +104,7 @@ export function PullRequests() {
             );
           }}
         </For>
-        <Show when={canWrite() && repo.repo && repo.branch !== repo.repo.default_branch && !comments.prs.some((p) => p.head === repo.branch)}>
+        <Show when={canWrite() && doc.session?.doc.base && !comments.prs.some((p) => p.head === repo.branch)}>
           <button
             class={`${linkBtn} self-start`}
             onClick={() => {

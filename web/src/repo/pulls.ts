@@ -92,7 +92,7 @@ const PRS = `query($owner:String!,$name:String!,$branch:String!){
   repository(owner:$owner,name:$name){
     from: pullRequests(headRefName:$branch,states:OPEN,first:5){ nodes{ ...pr } }
     into: pullRequests(baseRefName:$branch,states:OPEN,first:30,orderBy:{field:UPDATED_AT,direction:DESC}){ nodes{ ...pr } } } }
-fragment pr on PullRequest { number url title headRefName baseRefName reviewThreads(first:50){ nodes{ id path line startLine subjectType isResolved isOutdated
+fragment pr on PullRequest { number url title headRefName baseRefName files(first:100){ nodes{ path } } reviewThreads(first:50){ nodes{ id path line startLine subjectType isResolved isOutdated
   comments(first:50){ nodes{ databaseId id author{ login } createdAt body } } } } }`;
 type PrNode = {
   number: number;
@@ -100,6 +100,7 @@ type PrNode = {
   title: string;
   headRefName: string;
   baseRefName: string;
+  files: { nodes: { path: string }[] };
   reviewThreads: {
     nodes: {
       id: string;
@@ -116,14 +117,15 @@ type PrNode = {
 type PrsJson = { repository: { from: { nodes: PrNode[] }; into: { nodes: PrNode[] } } };
 
 // The review threads on `path` across the open PRs from `branch` and into it, oldest PR first, GitHub's order within.
-// Also the PRs themselves (threads or not), the one from the branch first.
+// Also those PRs (threads or not): the one from the branch, then the ones into it that change the file (the first
+// 100 files of each are looked at).
 export async function prThreads(repo: string, branch: string, path: string): Promise<{ threads: PrThread[]; prs: PrLink[] }> {
   const [owner, name] = repo.split("/");
   const d = await graphql<PrsJson>(PRS, { owner, name, branch });
   const seen = new Set<number>();
   const prs: PrLink[] = [];
   const threads: PrThread[] = [];
-  for (const p of [...d.repository.from.nodes, ...d.repository.into.nodes]) {
+  for (const p of [...d.repository.from.nodes, ...d.repository.into.nodes.filter((p) => p.files.nodes.some((f) => f.path === path))]) {
     if (seen.has(p.number)) continue;
     seen.add(p.number);
     const pr: PrLink = { number: p.number, url: p.url, title: p.title, head: p.headRefName, base: p.baseRefName };

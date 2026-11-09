@@ -80,6 +80,7 @@ emoji-picker {
 
 /* DOM that CodeMirror owns (decorations, the tooltip box): CodeMirror's own styles are unlayered, so these are too. */
 .rl-del { background: var(--red-bg); color: var(--del); text-decoration: line-through; border-radius: 2px; opacity: .8; }
+.rl-del-block { display: block; margin-bottom: 12px; font-size: 12px; line-height: 16px; font-weight: 400; white-space: pre-wrap; }
 .rl-conflict { background: var(--red-bg); box-shadow: 0 2px 0 var(--red); }
 .rl-draft { background: rgba(35, 131, 226, .12); box-shadow: 0 2px 0 rgba(35, 131, 226, .45); border-radius: 2px; }
 .rl-comment { background: var(--hl); border-radius: 4px; cursor: pointer; }

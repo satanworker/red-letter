@@ -33,7 +33,9 @@ class DelWidget extends WidgetType {
   }
   toDOM() {
     const el = document.createElement("del");
-    el.className = "rl-del";
+    // a removed paragraph sits at the start of the next line, which may be a heading: shown as its own block of body
+    // text instead of in the heading's size
+    el.className = this.text.includes("\n") ? "rl-del rl-del-block" : "rl-del";
     el.textContent = this.text;
     el.title = `removed ${this.by}`;
     return el;

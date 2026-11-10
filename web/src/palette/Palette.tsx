@@ -39,7 +39,7 @@ export function Palette() {
   ];
   const items = createMemo(() => {
     const q = query().trim().toLowerCase();
-    const files: Item[] = repo.docs.map((p) => ({ label: p, file: true, run: () => navigateTo(blobUrl(repo.repo!.full_name, repo.branch, p), palette.newTab) }));
+    const files: Item[] = repo.docs.map((p) => ({ label: p, file: true, run: () => navigateTo(blobUrl(repo.repo!.full_name, repo.branch, p)) }));
     const all = [...actions(), ...files];
     if (!q) return all;
     return all

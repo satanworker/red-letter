@@ -6,13 +6,13 @@ import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments, targetPr } from "../comments/commentsStore.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { blobUrl } from "../repo/repoService.ts";
-import { closeTab, navigateTo, repo, toggleFiles, togglePanel } from "../repo/repoStore.ts";
+import { activeTab, closeTab, navigateTo, repo, sameTab, tabUrl, toggleFiles, togglePanel, type Tab } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
 import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
 import { PrOverview } from "../pulls/PrOverview.tsx";
-import { closeOverview, pulls } from "../pulls/pullsStore.ts";
-import { isReviewBranch } from "../repo/pulls.ts";
+import { pulls } from "../pulls/pullsStore.ts";
+import { isReviewBranch, prTitle } from "../repo/pulls.ts";
 import { rate, resetTime } from "../rate.ts";
 import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
@@ -47,10 +47,12 @@ export function EditorScreen() {
     if (s.doc.base) return selectDraftChanges(s);
     return doc.reviewBase !== null ? selectTextChanges(doc.reviewBase, s.doc.text) : [];
   });
-  // the PR picked in the tree, while the doc and branch it was picked over are still the open ones
-  const overview = createMemo(() => {
-    const o = pulls.overview;
-    return o && o.path === repo.path && o.branch === repo.branch ? pulls.list.find((p) => p.number === o.number) : undefined;
+  // the open tab is a pull request's description: the doc stays mounted under it, hidden, with its chrome
+  const pr = createMemo(() => (repo.pull ? pulls.list.find((p) => p.number === repo.pull) : undefined));
+  const onDoc = () => !!doc.session && !repo.pull;
+  createEffect(() => {
+    if (repo.pull) document.title = `#${repo.pull} ${pr() ? prTitle(pr()!) : ""} · Red Letter`;
+    else if (repo.path) document.title = `${repo.path.split("/").pop()} · Red Letter`;
   });
   const icon = createMemo(() => {
     doc.version;
@@ -69,7 +71,7 @@ export function EditorScreen() {
   const pickBranch = (sel: HTMLSelectElement) => {
     const branch = sel.value;
     sel.value = repo.branch; // the route decides which branch shows
-    navigateTo(blobUrl(full(), branch, repo.path));
+    navigateTo(blobUrl(full(), branch, repo.path), true); // the same doc on another branch: in its tab
   };
   const openCount = () => threads().filter((t) => !t.resolved).length;
   const tab = () => selectTab(doc, openCount(), marks().length);
@@ -166,7 +168,7 @@ export function EditorScreen() {
         {/* the branch, its state and the pull requests moved to the doc's bottom-right corner and the panel */}
         <span class="min-w-0 flex-1" />
         <div class="flex w-80 shrink-0 items-start px-3">
-          <Show when={doc.session}>
+          <Show when={onDoc()}>
             {/* Figma 140:2607 / 140:2799: the comments panel's toggle, 12px before the status */}
             <button
               class="mt-[10px] mr-3 cursor-pointer rounded hover:bg-hover"
@@ -219,7 +221,7 @@ export function EditorScreen() {
           <button class="mt-2.5 cursor-pointer hover:underline" onClick={() => void share()}>
             {copied() ? "Link copied" : "Share"}
           </button>
-          <Show when={doc.session}>{(s) => <PageMenu canWrite={s().canWrite} />}</Show>
+          <Show when={onDoc() && doc.session}>{(s) => <PageMenu canWrite={s().canWrite} />}</Show>
         </div>
       </header>
       <main class="relative flex min-h-0 flex-1">
@@ -227,15 +229,28 @@ export function EditorScreen() {
         {/* over the header's shadow: the tab strip sits there, so the shadow never lands on the white page */}
         <div class="relative z-[4] flex min-w-0 flex-1 flex-col">
           <Tabs />
-          <Show when={overview()}>
-            {(pr) => (
-              <div class="min-h-0 flex-1 overflow-auto bg-bg">
-                <PrOverview pr={pr()} />
-              </div>
-            )}
+          <Show when={repo.pull}>
+            <div class="min-h-0 flex-1 overflow-auto bg-bg">
+              <Show
+                when={pr()}
+                fallback={
+                  <div class="mx-auto my-[20vh] max-w-[440px] px-6 text-[14px] text-muted">
+                    {pulls.loaded ? `Pull request #${repo.pull} isn't open.` : "Loading…"}
+                    <Show when={pulls.loaded}>
+                      {" "}
+                      <a class="underline" href={`https://github.com/${full()}/pull/${repo.pull}`} target="_blank" rel="noopener">
+                        See it on GitHub
+                      </a>
+                    </Show>
+                  </div>
+                }
+              >
+                {(p) => <PrOverview pr={p()} />}
+              </Show>
+            </div>
           </Show>
-          {/* hidden, not unmounted, under a PR's description: CodeMirror and the doc's scroll stay as they were */}
-          <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg" hidden={!!overview()}>
+          {/* hidden, not unmounted, under a PR's tab: CodeMirror and the doc's scroll stay as they were */}
+          <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg" hidden={!!repo.pull}>
             <Show
               when={doc.session}
               keyed
@@ -336,7 +351,7 @@ export function EditorScreen() {
           </div>
         </div>
         {/* no top edge: the header's bottom line is this frame's top too (Figma's centred strokes overlap) */}
-        <aside id="panel" aria-label="Side panel" hidden={!doc.session || repo.panelHidden} class="w-80 shrink-0 overflow-auto border-[.5px] border-t-0 border-line bg-side px-3 py-4">
+        <aside id="panel" aria-label="Side panel" hidden={!onDoc() || repo.panelHidden} class="w-80 shrink-0 overflow-auto border-[.5px] border-t-0 border-line bg-side px-3 py-4">
           <div class="mb-4">{tabs()}</div>
           <Show when={doc.session} keyed>
             {(s) => (
@@ -365,49 +380,64 @@ export function EditorScreen() {
   );
 }
 
-// Figma 140:2830: the open files as tabs over the doc. The open one is the page's white, 3px wider on each side and
-// running into the doc; a hovered one is a grey pill; a 1px rule parts two tabs unless either is open or hovered.
+// Figma 140:2830: the open tabs over the doc: files on any branch (the branch named after the file when it isn't the
+// default one) and pull requests' descriptions. The open one is the page's white, 3px wider on each side and running
+// into the doc; a hovered one is a grey pill; a 1px rule parts two tabs unless either is open or hovered.
 // Like Chrome's and Obsidian's, tabs are up to 200px and shrink to share the strip; only past their 56px minimum do
 // they scroll sideways, without a scrollbar (trackpad, wheel; the open tab scrolls into view). "+" stays in sight.
 function Tabs() {
-  const href = (path: string) => blobUrl(repo.repo!.full_name, repo.branch, path);
   let nav!: HTMLElement;
   createEffect(() => {
-    repo.path;
+    activeTab();
     nav.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   });
+  const label = (t: Tab) => {
+    if ("pull" in t) {
+      const p = pulls.list.find((x) => x.number === t.pull);
+      return { name: `#${t.pull}${p ? ` ${prTitle(p)}` : ""}`, branch: "", title: p ? `#${t.pull} ${p.title}` : `Pull request #${t.pull}` };
+    }
+    const branch = t.branch === repo.repo?.default_branch ? "" : isReviewBranch(t.branch) ? "review" : t.branch;
+    return { name: t.path.split("/").pop()!, branch, title: `${t.path} on ${t.branch}` };
+  };
   return (
     <div class="flex h-[35px] shrink-0 items-center bg-side">
       <nav
         ref={nav}
-        aria-label="Open files"
+        aria-label="Open tabs"
         class="flex h-full min-w-0 items-center gap-[5px] overflow-x-auto px-[3px] [scrollbar-width:none]"
         onWheel={(e) => !e.deltaX && (nav.scrollLeft += e.deltaY)}
       >
         <For each={repo.tabs}>
-          {(path) => (
-            <div
-              class={`group/tab relative flex h-full w-[200px] min-w-14 shrink items-center after:absolute after:top-1/2 after:-right-[3px] after:h-[18px] after:w-px after:-translate-y-1/2 after:rounded-[1px] after:bg-rule hover:after:hidden has-[+:hover]:after:hidden has-[+[data-open]]:after:hidden ${path === repo.path ? "after:hidden" : ""}`}
-              data-open={path === repo.path ? "" : undefined}
-              title={path}
-            >
-              <span
-                class={`pointer-events-none absolute ${path === repo.path ? "-inset-x-[3px] top-[3px] bottom-0 rounded-t-lg bg-bg" : "inset-x-0 top-1/2 h-[26px] -translate-y-1/2 rounded-lg group-hover/tab:bg-rule"}`}
-              />
-              <a href={href(path)} aria-current={path === repo.path ? "page" : undefined} class="relative flex h-6 min-w-0 flex-1 items-center px-2" onClick={closeOverview}>
-                <span class="truncate">{path.split("/").pop()}</span>
-              </a>
-              <Show when={repo.tabs.length > 1}>
-                <button
-                  class={`relative mr-[3px] shrink-0 cursor-pointer rounded hover:bg-hover focus-visible:opacity-100 ${path === repo.path ? "" : "opacity-0 group-hover/tab:opacity-100"}`}
-                  aria-label={`Close ${path}`}
-                  onClick={() => closeTab(path)}
-                >
-                  <CloseIcon />
-                </button>
-              </Show>
-            </div>
-          )}
+          {(t) => {
+            const on = () => sameTab(t, activeTab());
+            const l = () => label(t);
+            return (
+              <div
+                class={`group/tab relative flex h-full w-[200px] min-w-14 shrink items-center after:absolute after:top-1/2 after:-right-[3px] after:h-[18px] after:w-px after:-translate-y-1/2 after:rounded-[1px] after:bg-rule hover:after:hidden has-[+:hover]:after:hidden has-[+[data-open]]:after:hidden ${on() ? "after:hidden" : ""}`}
+                data-open={on() ? "" : undefined}
+                title={l().title}
+              >
+                <span
+                  class={`pointer-events-none absolute ${on() ? "-inset-x-[3px] top-[3px] bottom-0 rounded-t-lg bg-bg" : "inset-x-0 top-1/2 h-[26px] -translate-y-1/2 rounded-lg group-hover/tab:bg-rule"}`}
+                />
+                <a href={tabUrl(repo.repo!.full_name, t)} aria-current={on() ? "page" : undefined} class="relative flex h-6 min-w-0 flex-1 items-center gap-1.5 px-2">
+                  <span class="truncate">{l().name}</span>
+                  <Show when={l().branch}>
+                    <span class="min-w-0 shrink-[2] truncate text-[11px] text-muted">{l().branch}</span>
+                  </Show>
+                </a>
+                <Show when={repo.tabs.length > 1}>
+                  <button
+                    class={`relative mr-[3px] shrink-0 cursor-pointer rounded hover:bg-hover focus-visible:opacity-100 ${on() ? "" : "opacity-0 group-hover/tab:opacity-100"}`}
+                    aria-label={`Close ${l().name}`}
+                    onClick={() => closeTab(t)}
+                  >
+                    <CloseIcon />
+                  </button>
+                </Show>
+              </div>
+            );
+          }}
         </For>
       </nav>
       <button class="ml-[5px] grid size-6 shrink-0 cursor-pointer place-items-center rounded-lg hover:bg-rule" title="Open a file in a new tab" aria-label="Open a file in a new tab" onClick={openInNewTab}>

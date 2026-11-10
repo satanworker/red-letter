@@ -4,7 +4,8 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 
 ## 2026-11-10: Pull request descriptions
 
-- **A pull request opens on its description**, as in VS Code: clicking a PR in the left sidebar shows its title, branches, state, description and the comments on the PR itself (conversation comments and review notes) in place of the doc, with a box to comment on the PR and the review actions; the chevron only folds, a file or tab brings the doc back. The tree's Comments are now those PR comments; comments on a file show as a comment icon and count on the file's row (their threads stay in the doc's margin). The details query asks for the description, conversation and reviews too (still one GraphQL call, cached per `updated_at`).
+- **Every file opens in a tab of its own, or goes to the tab it has**, and a pull request's description is a tab too (`/<repo>/pull/<n>`, as on GitHub). Tabs are per repo instead of per branch, so a PR's file opened from the tree sits next to `demo.md` on `demo` instead of swapping the whole strip; a tab on another branch than the default names its branch. Only the branch picker and New branch replace the open tab (the same doc on another branch). Merging or closing a PR closes its tab and its branch's tabs; the open file's tab moves to the base.
+- **A pull request opens on its description**, as in VS Code: clicking a PR in the left sidebar shows its title, branches, state, description and the comments on the PR itself (conversation comments and review notes), with a box to comment on the PR and the review actions; the chevron only folds. The tree's Comments are now those PR comments; comments on a file show as a comment icon and count on the file's row (their threads stay in the doc's margin). The details query asks for the description, conversation and reviews too (still one GraphQL call, cached per `updated_at`).
 
 ## 2026-11-09: Branches and pull requests
 

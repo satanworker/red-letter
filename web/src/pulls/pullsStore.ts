@@ -7,8 +7,6 @@ import { createStore } from "solid-js/store";
 import { commentOnConversation, listPulls, openPulls, type RepoPr } from "../repo/pulls.ts";
 
 export type Reviewing = { number: number; head: string; base: string };
-// The PR whose description shows in place of the doc (VS Code's PR overview); opening another doc or branch hides it.
-export type Overview = { number: number; path: string; branch: string };
 type View = "files" | "pulls";
 const [state, set] = createStore({
   repo: "",
@@ -18,7 +16,6 @@ const [state, set] = createStore({
   reviewing: null as Reviewing | null,
   view: (localStorage.getItem("rl_sidebar") === "pulls" ? "pulls" : "files") as View, // the left sidebar: the branch's files or the open PRs
   open: [] as number[], // PRs unfolded in the tree
-  overview: null as Overview | null,
   posting: false,
   postError: "",
 });
@@ -28,14 +25,14 @@ let stamp = "";
 export function loadPulls(repo: string) {
   if (state.repo !== repo) {
     stamp = "";
-    set({ repo, list: [], loaded: false, error: "", reviewing: null, open: [], overview: null });
+    set({ repo, list: [], loaded: false, error: "", reviewing: null, open: [] });
   }
   void refreshPulls();
 }
 
 export function clearPulls() {
   stamp = "";
-  set({ repo: "", list: [], loaded: false, error: "", reviewing: null, open: [], overview: null });
+  set({ repo: "", list: [], loaded: false, error: "", reviewing: null, open: [] });
 }
 
 export async function refreshPulls(force = false) {
@@ -66,12 +63,10 @@ export function showView(view: View) {
 }
 export const togglePr = (n: number) => set("open", state.open.includes(n) ? state.open.filter((x) => x !== n) : [...state.open, n]);
 
-// A PR picked in the tree: unfolded, its description shown over the doc that's open
-export function showOverview(n: number, path: string, branch: string) {
+export const unfoldPr = (n: number) => {
   if (!state.open.includes(n)) set("open", [...state.open, n]);
-  set({ overview: { number: n, path, branch }, postError: "" });
-}
-export const closeOverview = () => set("overview", null);
+  set("postError", "");
+};
 
 // A comment on the PR itself; the list is asked again for it (GraphQL, the PR's updated_at moved)
 export async function commentOnPullRequest(n: number, body: string): Promise<boolean> {

@@ -1,13 +1,13 @@
 // The left sidebar's Pull requests view, after VS Code's GitHub Pull Requests tree: the repo's open PRs (title, author,
-// number, state). A click shows the PR's description in place of the doc (PrOverview) and unfolds it into the files it
+// number, state). A click opens the PR's description in a tab of its own (PrOverview) and unfolds it into the files it
 // changes as a folder tree with M / A / D / R, line counts and how many comments each file has, then the comments on
 // the PR itself. A markdown file opens on the PR's branch with the PR's changes against its base lit in the text
 // (review mode); other files link to GitHub.
 import { For, Show, createEffect, createMemo } from "solid-js";
 import { isDoc, prHead, prMark, prTitle, type PrDoc, type RepoPr } from "../repo/pulls.ts";
-import { repo, reviewPullRequest } from "../repo/repoStore.ts";
+import { repo, reviewPullRequest, showPullRequest } from "../repo/repoStore.ts";
 import { ArrowDownIcon, ArrowUpIcon, Avatar, CommentIcon, FileIcon, FolderIcon, ago, badge } from "../ui.tsx";
-import { closeOverview, pulls, showOverview, togglePr } from "./pullsStore.ts";
+import { pulls, togglePr } from "./pullsStore.ts";
 
 // Figma sidebar rows, as the file tree's
 const row = "mx-1 flex h-[25px] items-center gap-1 whitespace-nowrap rounded pr-2 hover:shadow-[inset_0_0_0_.5px_var(--line),var(--shadow)]";
@@ -70,7 +70,7 @@ function PrNode(props: { pr: RepoPr }) {
     }
   });
   const reviewing = () => pulls.reviewing?.number === props.pr.number || here();
-  const shown = () => pulls.overview?.number === props.pr.number && pulls.overview.path === repo.path && pulls.overview.branch === repo.branch;
+  const shown = () => repo.pull === props.pr.number;
   const files = createMemo(() => tree(props.pr.files));
   return (
     <div class="mb-1">
@@ -80,8 +80,8 @@ function PrNode(props: { pr: RepoPr }) {
         class={`${row} w-[calc(100%-8px)] cursor-pointer gap-1.5 pl-2 text-left ${shown() ? "bg-on shadow-figma" : reviewing() ? "bg-on" : ""}`}
         aria-expanded={open()}
         title={`#${props.pr.number} ${props.pr.title}\n${props.pr.head} → ${props.pr.base}`}
-        onClick={() => showOverview(props.pr.number, repo.path, repo.branch)}
-        onKeyDown={(e) => e.key === "Enter" && showOverview(props.pr.number, repo.path, repo.branch)}
+        onClick={() => showPullRequest(props.pr.number)}
+        onKeyDown={(e) => e.key === "Enter" && showPullRequest(props.pr.number)}
       >
         {/* the chevron only folds; the row shows the description */}
         <button
@@ -143,7 +143,7 @@ function Dir(props: { dir: Tree; pr: RepoPr; depth: number }) {
 function File(props: { f: PrDoc; pr: RepoPr; depth: number }) {
   const [letter, color] = STATUS[props.f.changeType] ?? ["M", "text-muted"];
   const doc = () => isDoc(props.f.path) && props.f.changeType !== "DELETED";
-  const here = () => (pulls.reviewing?.number === props.pr.number || props.pr.head === repo.branch) && repo.path === props.f.path && !pulls.overview;
+  const here = () => (pulls.reviewing?.number === props.pr.number || props.pr.head === repo.branch) && repo.path === props.f.path && !repo.pull;
   const threads = createMemo(() => props.pr.threads.filter((t) => t.path === props.f.path));
   const said = () => threads().reduce((n, t) => n + t.comments.length, 0);
   const body = () => (
@@ -183,7 +183,7 @@ function File(props: { f: PrDoc; pr: RepoPr; depth: number }) {
         style={indent(props.depth)}
         title={props.f.path}
         aria-current={here() ? "page" : undefined}
-        onClick={() => (closeOverview(), reviewPullRequest(props.pr, [props.f.path], props.f.path))}
+        onClick={() => reviewPullRequest(props.pr, [props.f.path], props.f.path)}
       >
         {body()}
       </button>
@@ -204,7 +204,7 @@ function Conversation(props: { pr: RepoPr }) {
             class={`${row} w-[calc(100%-8px)] cursor-pointer gap-1.5 text-left`}
             style={indent(2)}
             title={`${c.author}, ${ago(c.at)}\n${c.body}`}
-            onClick={() => showOverview(props.pr.number, repo.path, repo.branch)}
+            onClick={() => showPullRequest(props.pr.number)}
           >
             <Avatar login={c.author} size={14} />
             <span class="shrink-0">{c.author}</span>

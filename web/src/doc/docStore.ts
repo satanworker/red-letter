@@ -124,7 +124,6 @@ export async function refreshPr() {
 // unmounts the editor's surroundings (panel, header status) or flashes an empty doc.
 export async function openFile(repo: RepoInfo, branch: string, path: string, user: User, create?: string, draftOf?: string): Promise<boolean> {
   set({ opening: path, login: user.login });
-  document.title = `${path.split("/").pop()} · Red Letter`;
   // a protected branch takes no direct edits; its comments go through a pull request (commentsStore)
   const push = repo.permissions?.push === true;
   const viaPr = push && (await branchProtected(repo.full_name, branch).catch(() => false));

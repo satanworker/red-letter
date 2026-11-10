@@ -10,7 +10,7 @@ import { btn } from "../ui.tsx";
 const disabled = "disabled:cursor-default disabled:opacity-50";
 
 export function ReviewActions(props: { pr: PrLink; docs: string[]; openThreads: number }) {
-  const here = () => props.pr.head === repo.branch;
+  const here = () => doc.session?.branch === props.pr.head; // doc.pr (state, mergeable) is the open doc's branch's PR
   const review = () => isReviewBranch(props.pr.head);
   const requestChanges = () => {
     const note = prompt("What should change?");

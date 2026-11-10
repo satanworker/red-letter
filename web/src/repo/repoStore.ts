@@ -424,17 +424,22 @@ export async function openRoute(url: URL, replace = false): Promise<void> {
       }
     }
     const full = info.full_name;
-    // a pull request's description: a tab of its own over the open file (kept, hidden); a first load is on the default
-    // branch with no file open
+    // a pull request's description: a tab of its own. The sidebar's Files list the PR's branch (a review branch's base:
+    // its hashed branch is nobody's to browse); the open file stays, hidden, when it's on that branch, else it closes
     if (rest[0] === "pull" && /^\d+$/.test(rest[1] ?? "")) {
       const n = Number(rest[1]);
-      const branch = same ? state.branch : info.default_branch;
-      const docs = same ? state.docs : await listDocs(full, branch, true);
+      const pr = pulls.repo === full ? pulls.list.find((p) => p.number === n) : undefined;
+      const branch = pr ? (pr.review ? pr.base : pr.head) : same ? state.branch : info.default_branch;
+      const keep = same && branch === state.branch;
+      const docs = keep ? state.docs : await listDocs(full, branch, true);
       const user = state.user ?? (await currentUser());
       if (stale() || !user) return;
       const tabs = withTab(same ? state.tabs : savedTabs(full, branch, docs), { pull: n }, same ? activeTab() : null, replace);
-      if (!same) closeFile();
-      set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path: same ? state.path : "", pull: n, message: "" });
+      if (!keep) {
+        closeFile();
+        endReview();
+      }
+      set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path: keep ? state.path : "", pull: n, message: "" });
       setTabs(tabs);
       if (!same) loadBranches(full, branch, stale);
       loadPulls(full);
@@ -480,6 +485,9 @@ export async function openRoute(url: URL, replace = false): Promise<void> {
     creating.delete(path);
     const draftOf = drafting.get(branch);
     drafting.delete(branch);
+    // a file a PR from this branch changes, however it was opened (a tab, back, a link): reviewed against its base
+    const prHere = pulls.list.find((p) => p.head === branch && p.files.some((f) => f.path === path));
+    if (prHere && pulls.reviewing?.number !== prHere.number) setReviewing({ number: prHere.number, head: prHere.head, base: prHere.base });
     if (!(await openFile(info, branch, path, user, create, draftOf)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
     // background sync reads every doc of the branch (≈4 calls a doc with a snapshot, 1 without; cached for good after):
     // worth it on the default branch, where people live; a review or feature branch opens its docs on demand instead

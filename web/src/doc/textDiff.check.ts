@@ -34,6 +34,8 @@ ok(textChanges("The cat sat.", "The dog sat.").length === 1, "one word, one regi
   ok(!rs.some((r) => r.before.includes("Here") && r.before.includes("agent")), `removed paragraph kept apart: ${JSON.stringify(rs)}`);
   ok(rs.some((r) => r.before === "for it" || r.before === " for it"), `the rewrite is diffed by word: ${JSON.stringify(rs)}`);
   ok(textChanges("That turned out to be exactly right, and now there are two.", "That is exactly right and Red Letter has two.").length >= 3, "a word apart stays apart");
+  const swap = textChanges("# T\n\n*Draft for the blog, first draft.*\n\nEnd\n", "# T\n\n*Launch post. Edited.*\n\nEnd\n");
+  ok(swap.length === 2 && swap[0]!.before.startsWith("*Draft") && swap[1]!.before === "", `the old line comes before the new: ${JSON.stringify(swap)}`);
 }
 // random edits
 let seed = 1;

@@ -421,9 +421,10 @@ function Tabs() {
                   class={`pointer-events-none absolute ${on() ? "-inset-x-[3px] top-[3px] bottom-0 rounded-t-lg bg-bg" : "inset-x-0 top-1/2 h-[26px] -translate-y-1/2 rounded-lg group-hover/tab:bg-rule"}`}
                 />
                 <a href={tabUrl(repo.repo!.full_name, t)} aria-current={on() ? "page" : undefined} class="relative flex h-6 min-w-0 flex-1 items-center gap-1.5 px-2">
-                  <span class="truncate">{l().name}</span>
+                  <span class="max-w-full shrink-0 truncate">{l().name}</span>
                   <Show when={l().branch}>
-                    <span class="min-w-0 shrink-[2] truncate text-[11px] text-muted">{l().branch}</span>
+                    {/* gives way first: the file name stays readable as long as it fits the tab */}
+                    <span class="min-w-0 shrink-[100] truncate text-[11px] text-muted">{l().branch}</span>
                   </Show>
                 </a>
                 <Show when={repo.tabs.length > 1}>

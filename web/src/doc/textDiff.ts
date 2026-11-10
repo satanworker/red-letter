@@ -81,8 +81,16 @@ export function textChanges(base: string, text: string): Region[] {
   }
   for (const h of hunks) {
     // each new line takes the most alike old line still ahead of it (40% of words in common at least): the old
-    // lines skipped were removed, a new line with no match was added, a matched pair has its words diffed
+    // lines skipped were removed, a new line with no match was added, a matched pair has its words diffed. Removed
+    // lines go before the added ones between the same two pairs, as a diff reads (old, then new).
     let i = h.a0;
+    let adds = -1; // the first new line with no match since the last pair
+    const flush = (k: number, j: number) => {
+      const b = bo[adds < 0 ? j : adds]!;
+      if (k > i) raw.push({ a0: ao[i]!, a1: ao[k]!, b0: b, b1: b });
+      if (adds >= 0) raw.push({ a0: ao[k]!, a1: ao[k]!, b0: b, b1: bo[j]! });
+      adds = -1;
+    };
     for (let j = h.b0; j < h.b1; j++) {
       let best = -1, score = 0.4;
       for (let k = i; k < h.a1; k++) {
@@ -91,14 +99,14 @@ export function textChanges(base: string, text: string): Region[] {
         if (s === 1) break;
       }
       if (best < 0) {
-        raw.push({ a0: ao[i]!, a1: ao[i]!, b0: bo[j]!, b1: bo[j + 1]! });
+        if (adds < 0) adds = j;
         continue;
       }
-      if (best > i) raw.push({ a0: ao[i]!, a1: ao[best]!, b0: bo[j]!, b1: bo[j]! });
+      flush(best, j);
       wordsOf(ao[best]!, ao[best + 1]!, bo[j]!, bo[j + 1]!);
       i = best + 1;
     }
-    if (i < h.a1) raw.push({ a0: ao[i]!, a1: ao[h.a1]!, b0: bo[h.b1]!, b1: bo[h.b1]! });
+    flush(h.a1, h.b1);
   }
   // hunks a few characters apart read as one edit
   const merged: Hunk[] = [];

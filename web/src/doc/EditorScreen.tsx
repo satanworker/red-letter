@@ -10,7 +10,8 @@ import { closeTab, navigateTo, repo, toggleFiles, togglePanel } from "../repo/re
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
 import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
-import { pulls } from "../pulls/pullsStore.ts";
+import { PrOverview } from "../pulls/PrOverview.tsx";
+import { closeOverview, pulls } from "../pulls/pullsStore.ts";
 import { isReviewBranch } from "../repo/pulls.ts";
 import { rate, resetTime } from "../rate.ts";
 import { Editor } from "./Editor.tsx";
@@ -45,6 +46,11 @@ export function EditorScreen() {
     if (!doc.showChanges || !s) return [];
     if (s.doc.base) return selectDraftChanges(s);
     return doc.reviewBase !== null ? selectTextChanges(doc.reviewBase, s.doc.text) : [];
+  });
+  // the PR picked in the tree, while the doc and branch it was picked over are still the open ones
+  const overview = createMemo(() => {
+    const o = pulls.overview;
+    return o && o.path === repo.path && o.branch === repo.branch ? pulls.list.find((p) => p.number === o.number) : undefined;
   });
   const icon = createMemo(() => {
     doc.version;
@@ -221,7 +227,15 @@ export function EditorScreen() {
         {/* over the header's shadow: the tab strip sits there, so the shadow never lands on the white page */}
         <div class="relative z-[4] flex min-w-0 flex-1 flex-col">
           <Tabs />
-          <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg">
+          <Show when={overview()}>
+            {(pr) => (
+              <div class="min-h-0 flex-1 overflow-auto bg-bg">
+                <PrOverview pr={pr()} />
+              </div>
+            )}
+          </Show>
+          {/* hidden, not unmounted, under a PR's description: CodeMirror and the doc's scroll stay as they were */}
+          <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg" hidden={!!overview()}>
             <Show
               when={doc.session}
               keyed
@@ -380,7 +394,7 @@ function Tabs() {
               <span
                 class={`pointer-events-none absolute ${path === repo.path ? "-inset-x-[3px] top-[3px] bottom-0 rounded-t-lg bg-bg" : "inset-x-0 top-1/2 h-[26px] -translate-y-1/2 rounded-lg group-hover/tab:bg-rule"}`}
               />
-              <a href={href(path)} aria-current={path === repo.path ? "page" : undefined} class="relative flex h-6 min-w-0 flex-1 items-center px-2">
+              <a href={href(path)} aria-current={path === repo.path ? "page" : undefined} class="relative flex h-6 min-w-0 flex-1 items-center px-2" onClick={closeOverview}>
                 <span class="truncate">{path.split("/").pop()}</span>
               </a>
               <Show when={repo.tabs.length > 1}>

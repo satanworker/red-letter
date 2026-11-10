@@ -1,15 +1,13 @@
 // The left sidebar's Pull requests view, after VS Code's GitHub Pull Requests tree: the repo's open PRs (title, author,
-// number, state); one unfolds into the files it changes as a folder tree with M / A / D / R and line counts. A
-// markdown file opens on the PR's branch with the PR's changes against its base lit in the text (review mode); other
-// files link to GitHub. Under the files: the PR's comments across all of them, then its actions.
+// number, state). A click shows the PR's description in place of the doc (PrOverview) and unfolds it into the files it
+// changes as a folder tree with M / A / D / R, line counts and how many comments each file has, then the comments on
+// the PR itself. A markdown file opens on the PR's branch with the PR's changes against its base lit in the text
+// (review mode); other files link to GitHub.
 import { For, Show, createEffect, createMemo } from "solid-js";
-import { splitPrMark } from "../comments/commentsSelectors.ts";
-import { openThread } from "../doc/docStore.ts";
-import { isDoc, type PrDoc, type PrThread, type RepoPr } from "../repo/pulls.ts";
+import { isDoc, prHead, prMark, prTitle, type PrDoc, type RepoPr } from "../repo/pulls.ts";
 import { repo, reviewPullRequest } from "../repo/repoStore.ts";
-import { ArrowDownIcon, ArrowUpIcon, Avatar, FileIcon, FolderIcon, ago, badge } from "../ui.tsx";
-import { pulls, setFocusThread, togglePr } from "./pullsStore.ts";
-import { ReviewActions } from "./ReviewActions.tsx";
+import { ArrowDownIcon, ArrowUpIcon, Avatar, CommentIcon, FileIcon, FolderIcon, ago, badge } from "../ui.tsx";
+import { closeOverview, pulls, showOverview, togglePr } from "./pullsStore.ts";
 
 // Figma sidebar rows, as the file tree's
 const row = "mx-1 flex h-[25px] items-center gap-1 whitespace-nowrap rounded pr-2 hover:shadow-[inset_0_0_0_.5px_var(--line),var(--shadow)]";
@@ -72,43 +70,46 @@ function PrNode(props: { pr: RepoPr }) {
     }
   });
   const reviewing = () => pulls.reviewing?.number === props.pr.number || here();
+  const shown = () => pulls.overview?.number === props.pr.number && pulls.overview.path === repo.path && pulls.overview.branch === repo.branch;
   const files = createMemo(() => tree(props.pr.files));
-  const title = () => (props.pr.review ? `Review of ${props.pr.docs[0]?.path.split("/").pop() ?? "a doc"}` : props.pr.title);
-  const mark = () => (props.pr.draft ? "draft" : props.pr.decision === "APPROVED" ? "approved" : props.pr.decision === "CHANGES_REQUESTED" ? "changes requested" : "");
   return (
     <div class="mb-1">
-      <button
-        class={`${row} w-[calc(100%-8px)] cursor-pointer gap-1.5 pl-2 text-left ${reviewing() ? "bg-on shadow-figma" : ""}`}
+      <div
+        role="button"
+        tabindex="0"
+        class={`${row} w-[calc(100%-8px)] cursor-pointer gap-1.5 pl-2 text-left ${shown() ? "bg-on shadow-figma" : reviewing() ? "bg-on" : ""}`}
         aria-expanded={open()}
         title={`#${props.pr.number} ${props.pr.title}\n${props.pr.head} → ${props.pr.base}`}
-        onClick={() => togglePr(props.pr.number)}
+        onClick={() => showOverview(props.pr.number, repo.path, repo.branch)}
+        onKeyDown={(e) => e.key === "Enter" && showOverview(props.pr.number, repo.path, repo.branch)}
       >
-        <span class="w-2 shrink-0 text-muted">{open() ? "▾" : "▸"}</span>
+        {/* the chevron only folds; the row shows the description */}
+        <button
+          class="-ml-1 w-4 shrink-0 cursor-pointer text-muted hover:text-fg"
+          aria-label={open() ? "Fold" : "Unfold"}
+          onClick={(e) => (e.stopPropagation(), togglePr(props.pr.number))}
+        >
+          {open() ? "▾" : "▸"}
+        </button>
         <Avatar login={props.pr.author} size={16} />
-        <span class={`min-w-0 flex-1 truncate ${props.pr.draft ? "italic" : ""}`}>{title()}</span>
+        <span class={`min-w-0 flex-1 truncate ${props.pr.draft ? "italic" : ""}`}>{prTitle(props.pr)}</span>
         <Show when={props.pr.open}>
           <span class="shrink-0 rounded-full bg-yellow-bg px-1.5 text-[11px]" title={`${props.pr.open} open thread${props.pr.open === 1 ? "" : "s"}`}>
             {props.pr.open}
           </span>
         </Show>
         <span class="shrink-0 text-muted">#{props.pr.number}</span>
-      </button>
+      </div>
       <Show when={open()}>
         <div class="mb-2">
           <div class="truncate pr-3 text-muted" style={indent(1)} title={`${props.pr.head} → ${props.pr.base}`}>
-            by {props.pr.author} · {ago(props.pr.updatedAt)} · {props.pr.review ? "review" : props.pr.head} → {props.pr.base}
-            <Show when={mark()}> · <span class={`${badge} px-1`}>{mark()}</span></Show>
+            by {props.pr.author} · {ago(props.pr.updatedAt)} · {prHead(props.pr)} → {props.pr.base}
+            <Show when={prMark(props.pr)}> · <span class={`${badge} px-1`}>{prMark(props.pr)}</span></Show>
           </div>
           <Show when={props.pr.files.length} fallback={<p class="text-muted" style={indent(1)}>No files changed.</p>}>
             <Dir dir={files()} pr={props.pr} depth={1} />
           </Show>
-          <Comments pr={props.pr} />
-          <div class="mt-1 flex flex-wrap items-center gap-2 pr-3" style={indent(1)}>
-            <ReviewActions pr={props.pr} docs={props.pr.docs.map((d) => d.path)} openThreads={props.pr.open} />
-            <a class="ml-auto text-muted hover:text-fg" href={props.pr.url} target="_blank" rel="noopener">
-              GitHub ↗
-            </a>
-          </div>
+          <Conversation pr={props.pr} />
         </div>
       </Show>
     </div>
@@ -142,11 +143,24 @@ function Dir(props: { dir: Tree; pr: RepoPr; depth: number }) {
 function File(props: { f: PrDoc; pr: RepoPr; depth: number }) {
   const [letter, color] = STATUS[props.f.changeType] ?? ["M", "text-muted"];
   const doc = () => isDoc(props.f.path) && props.f.changeType !== "DELETED";
-  const here = () => (pulls.reviewing?.number === props.pr.number || props.pr.head === repo.branch) && repo.path === props.f.path;
+  const here = () => (pulls.reviewing?.number === props.pr.number || props.pr.head === repo.branch) && repo.path === props.f.path && !pulls.overview;
+  const threads = createMemo(() => props.pr.threads.filter((t) => t.path === props.f.path));
+  const said = () => threads().reduce((n, t) => n + t.comments.length, 0);
   const body = () => (
     <>
       <FileIcon />
       <span class={`min-w-0 flex-1 truncate ${color}`}>{props.f.path.split("/").pop()}</span>
+      <Show when={said()}>
+        <span
+          class={`inline-flex shrink-0 items-center gap-0.5 text-[11px] ${threads().some((t) => !t.resolved) ? "" : "text-muted opacity-60"}`}
+          title={`${said()} comment${said() === 1 ? "" : "s"} in ${threads().length} thread${threads().length === 1 ? "" : "s"}, ${threads().filter((t) => !t.resolved).length} open`}
+        >
+          <span class="scale-75">
+            <CommentIcon />
+          </span>
+          {said()}
+        </span>
+      </Show>
       <Show when={!props.pr.review && props.f.additions + props.f.deletions}>
         <span class="shrink-0 text-[11px] text-muted">
           <span class="text-green">+{props.f.additions}</span> <span class="text-del">−{props.f.deletions}</span>
@@ -169,7 +183,7 @@ function File(props: { f: PrDoc; pr: RepoPr; depth: number }) {
         style={indent(props.depth)}
         title={props.f.path}
         aria-current={here() ? "page" : undefined}
-        onClick={() => reviewPullRequest(props.pr, [props.f.path], props.f.path)}
+        onClick={() => (closeOverview(), reviewPullRequest(props.pr, [props.f.path], props.f.path))}
       >
         {body()}
       </button>
@@ -177,39 +191,25 @@ function File(props: { f: PrDoc; pr: RepoPr; depth: number }) {
   );
 }
 
-// Every comment thread on the PR, whatever file it's on; a click opens that file on the PR's branch with the thread lit
-function Comments(props: { pr: RepoPr }) {
-  const byFile = createMemo((): [string, PrThread[]][] => {
-    const groups = new Map<string, PrThread[]>();
-    for (const t of props.pr.threads) groups.set(t.path, [...(groups.get(t.path) ?? []), t]);
-    return [...groups];
-  });
-  const go = (path: string, id: string) => {
-    if (pulls.reviewing?.number === props.pr.number && path === repo.path && repo.branch === props.pr.head) return openThread(id);
-    setFocusThread(id);
-    reviewPullRequest(props.pr, [path], path);
-  };
+// The comments on the PR itself (its conversation and the reviews' notes), not on a file; a click shows the description
+function Conversation(props: { pr: RepoPr }) {
   return (
-    <Show when={props.pr.threads.length}>
+    <Show when={props.pr.conversation.length}>
       <div class="mt-2 text-muted" style={indent(1)}>
         Comments
       </div>
-      <For each={byFile()}>
-        {([path, threads]) => (
-          <For each={threads}>
-            {(t) => (
-              <button
-                class={`${row} w-[calc(100%-8px)] cursor-pointer gap-1.5 text-left ${t.resolved ? "text-muted" : ""}`}
-                style={indent(2)}
-                title={`${path}\n${splitPrMark(t.comments[0]?.body ?? "").body}`}
-                onClick={() => go(path, t.id)}
-              >
-                <span class={`size-[7px] shrink-0 rounded-full ${t.resolved ? "border border-line" : "bg-yellow"}`} />
-                <span class="shrink-0">{t.comments[0]?.author}</span>
-                <span class="min-w-0 flex-1 truncate">{splitPrMark(t.comments[0]?.body ?? "").body.split("\n")[0]}</span>
-              </button>
-            )}
-          </For>
+      <For each={props.pr.conversation}>
+        {(c) => (
+          <button
+            class={`${row} w-[calc(100%-8px)] cursor-pointer gap-1.5 text-left`}
+            style={indent(2)}
+            title={`${c.author}, ${ago(c.at)}\n${c.body}`}
+            onClick={() => showOverview(props.pr.number, repo.path, repo.branch)}
+          >
+            <Avatar login={c.author} size={14} />
+            <span class="shrink-0">{c.author}</span>
+            <span class="min-w-0 flex-1 truncate text-muted">{c.body.split("\n")[0]}</span>
+          </button>
         )}
       </For>
     </Show>

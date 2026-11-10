@@ -2,6 +2,10 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-10: Pull request descriptions
+
+- **A pull request opens on its description**, as in VS Code: clicking a PR in the left sidebar shows its title, branches, state, description and the comments on the PR itself (conversation comments and review notes) in place of the doc, with a box to comment on the PR and the review actions; the chevron only folds, a file or tab brings the doc back. The tree's Comments are now those PR comments; comments on a file show as a comment icon and count on the file's row (their threads stay in the doc's margin). The details query asks for the description, conversation and reviews too (still one GraphQL call, cached per `updated_at`).
+
 ## 2026-11-09: Branches and pull requests
 
 - **Branches**: "New branch" in the page menu forks the open file onto `<login>/<slug>` (the name is editable). The branch moved to the doc's bottom-right corner: the picker (every branch of the repo except Red Letter's own `red-letter/*`), read-only / protected, Changes and "Update from <base>", then the reading pencil and the word count. Saved · sha stays in the header.

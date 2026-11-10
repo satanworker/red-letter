@@ -102,7 +102,9 @@ export type PrThread = {
   outdated: boolean; // the commented lines changed since; GitHub keeps the thread but can't place it
   comments: PrComment[]; // the first is the thread's own comment; replies follow
 };
-export type PrDetail = { pr: PrLink; files: PrDoc[]; threads: PrThread[]; decision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null };
+export type PrDetail = { pr: PrLink; files: PrDoc[]; threads: PrThread[]; decision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null; body: string; conversation: PrNote[] };
+// A comment on the pull request itself, not on a file: the conversation's comments and the reviews' notes
+export type PrNote = PrComment & { review: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | null };
 export type PrDoc = { path: string; additions: number; deletions: number; changeType: "ADDED" | "MODIFIED" | "DELETED" | "RENAMED" | "COPIED" | "CHANGED" };
 
 type ThreadNode = {
@@ -115,22 +117,31 @@ type ThreadNode = {
   isOutdated: boolean;
   comments: { nodes: { databaseId: number; id: string; author: { login: string } | null; createdAt: string; body: string }[] };
 };
-type DetailNode = { reviewDecision: PrDetail["decision"]; files: { nodes: PrDoc[] }; reviewThreads: { nodes: ThreadNode[] } };
+type NoteNode = { databaseId: number; id: string; author: { login: string } | null; createdAt: string; body: string; state?: PrNote["review"] };
+type DetailNode = {
+  reviewDecision: PrDetail["decision"];
+  body: string;
+  files: { nodes: PrDoc[] };
+  reviewThreads: { nodes: ThreadNode[] };
+  comments: { nodes: NoteNode[] };
+  reviews: { nodes: NoteNode[] };
+};
 
-// The given PRs' changed files and review threads, in one GraphQL call with one alias per PR. Each PR's answer is
+// The given PRs' description, conversation, changed files and review threads, in one GraphQL call with one alias per PR. Each PR's answer is
 // kept in this browser under its updated_at, so a reload or another tab asks only for PRs that moved since (`fresh`:
 // ask anyway, after a write of ours: a resolve doesn't always bump updated_at).
-// ponytail: 50 files, 30 threads and 30 comments each, no paging; cost ≈ 10 points a PR
+// ponytail: 50 files, 30 threads and 30 comments each, 30 conversation comments and reviews, no paging; cost ≈ 10 points a PR
 export async function prDetails(repo: string, prs: OpenPr[], fresh = false): Promise<PrDetail[]> {
-  const key = (p: OpenPr) => `gql pr2 ${repo}#${p.number}@${p.updatedAt}`;
+  const key = (p: OpenPr) => `gql pr3 ${repo}#${p.number}@${p.updatedAt}`;
   const kept = new Map<number, DetailNode>();
   if (!fresh) for (const p of prs) { const c = await idbGet<{ body: string }>("http", key(p)); if (c) kept.set(p.number, JSON.parse(c.body)); }
   const ask = prs.filter((p) => !kept.has(p.number));
   if (ask.length) {
     const [owner, name] = repo.split("/");
     const q = `query($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ ${ask.map((p, i) => `p${i}: pullRequest(number:${p.number}){ ...d }`).join(" ")} } }
-fragment d on PullRequest { reviewDecision files(first:100){ nodes{ path additions deletions changeType } } reviewThreads(first:30){ nodes{ id path line startLine subjectType isResolved isOutdated
-  comments(first:30){ nodes{ databaseId id author{ login } createdAt body } } } } }`;
+fragment d on PullRequest { reviewDecision body files(first:100){ nodes{ path additions deletions changeType } } reviewThreads(first:30){ nodes{ id path line startLine subjectType isResolved isOutdated
+  comments(first:30){ nodes{ databaseId id author{ login } createdAt body } } } }
+  comments(first:30){ nodes{ databaseId id author{ login } createdAt body } } reviews(first:30){ nodes{ databaseId id author{ login } createdAt body state } } }`;
     const r = await graphql<{ repository: Record<string, DetailNode | null> }>(q, { owner, name });
     await Promise.all(ask.map((p, i) => { const n = r.repository[`p${i}`]; if (!n) return; kept.set(p.number, n); return idbPut("http", key(p), { etag: "", body: JSON.stringify(n) }); }));
   }
@@ -151,7 +162,10 @@ fragment d on PullRequest { reviewDecision files(first:100){ nodes{ path additio
         comments: t.comments.nodes.map((c) => ({ id: c.databaseId, nodeId: c.id, author: c.author?.login ?? "ghost", at: c.createdAt, body: c.body })),
       };
     });
-    return [{ pr, files: n.files.nodes, threads, decision: n.reviewDecision }];
+    // a review with no note (an approval click, the review that carried line comments) says nothing here
+    const note = (c: NoteNode): PrNote => ({ id: c.databaseId, nodeId: c.id, author: c.author?.login ?? "ghost", at: c.createdAt, body: c.body, review: c.state ?? null });
+    const conversation = [...n.comments.nodes.map(note), ...n.reviews.nodes.filter((r) => r.body.trim()).map(note)].sort((a, b) => a.at.localeCompare(b.at));
+    return [{ pr, files: n.files.nodes, threads, decision: n.reviewDecision, body: n.body, conversation }];
   });
 }
 
@@ -164,8 +178,14 @@ export type RepoPr = OpenPr & {
   resolved: number;
   review: boolean; // one of our review branches: the PR is the comments, the diff is one newline
   threads: PrThread[]; // across all its files
+  body: string; // the description
+  conversation: PrNote[]; // comments on the PR itself, oldest first
 };
 export const isDoc = (p: string) => /\.(md|markdown|mdx|txt)$/i.test(p);
+// How a PR is named on screen: a review branch's PR by its doc, its hashed branch as "review"
+export const prTitle = (pr: RepoPr) => (pr.review ? `Review of ${pr.docs[0]?.path.split("/").pop() ?? "a doc"}` : pr.title);
+export const prHead = (pr: RepoPr) => (pr.review ? "review" : pr.head);
+export const prMark = (pr: RepoPr) => (pr.draft ? "draft" : pr.decision === "APPROVED" ? "approved" : pr.decision === "CHANGES_REQUESTED" ? "changes requested" : "");
 export const isReviewBranch = (head: string) => head.startsWith("red-letter/review/");
 
 // The open PRs with their details (ponytail: the 30 most recently updated; one GraphQL call).
@@ -184,6 +204,8 @@ export async function listPulls(repo: string, prs: OpenPr[], fresh = false): Pro
       resolved: threads.filter((t) => t.resolved).length,
       review: isReviewBranch(p.head),
       threads,
+      body: d?.body ?? "",
+      conversation: d?.conversation ?? [],
     };
   });
 }
@@ -191,6 +213,11 @@ export async function listPulls(repo: string, prs: OpenPr[], fresh = false): Pro
 // A "request changes" review with a note; GitHub refuses it on your own PR (422).
 export async function requestChanges(repo: string, number: number, body: string): Promise<void> {
   await post(`/repos/${repo}/pulls/${number}/reviews`, { event: "REQUEST_CHANGES", body });
+}
+
+// A comment on the pull request itself (GitHub's conversation tab): the issues API, as PRs are issues.
+export async function commentOnConversation(repo: string, number: number, body: string): Promise<void> {
+  await post(`/repos/${repo}/issues/${number}/comments`, { body });
 }
 
 // Closes the PR without merging and deletes its branch (a review branch is recreated by the next review; its snapshot

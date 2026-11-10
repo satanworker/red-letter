@@ -122,7 +122,7 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
 }
 
 // Figma 15:440: avatar 24 + name / time, the body 12px below
-const Message = (props: { m: Msg }) => (
+export const Message = (props: { m: Msg }) => (
   <div class="flex flex-col gap-3">
     <div class="flex items-center gap-2">
       <Avatar login={props.m.author} size={24} />

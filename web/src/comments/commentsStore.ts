@@ -5,8 +5,7 @@
 // file: this store holds the PR's review threads on it (refreshed on the tick and after each write) and `mode`, where
 // new comments go, remembered per repo.
 import { createStore } from "solid-js/store";
-import { doc, openThread } from "../doc/docStore.ts";
-import { pulls, setFocusThread } from "../pulls/pullsStore.ts";
+import { doc } from "../doc/docStore.ts";
 import { openPulls, prDetails, reviewBranch, type PrLink, type PrThread } from "../repo/pulls.ts";
 import { commitToPr, readPr, type Pr } from "./commentsPr.ts";
 
@@ -88,10 +87,6 @@ async function refreshPrThreads(force = false) {
     // the PR from the branch first, then the PRs into it that change this file
     const kept = details.filter((d) => d.pr.head === t.branch || d.files.some((f) => f.path === t.path)).sort((a, b) => Number(b.pr.head === t.branch) - Number(a.pr.head === t.branch));
     set({ prs: kept.map((d) => d.pr), prThreads: kept.flatMap((d) => d.threads.filter((th) => th.path === t.path)) });
-    if (pulls.focusThread && state.prThreads.some((th) => th.id === pulls.focusThread)) {
-      openThread(pulls.focusThread);
-      setFocusThread("");
-    }
   } catch (e) {
     console.warn("[rl] reading the pull requests' comments:", e);
   }

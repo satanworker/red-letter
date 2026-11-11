@@ -4,7 +4,7 @@
 import { For, Show, createEffect, createMemo, createSignal, onMount, untrack } from "solid-js";
 import { selectIcon } from "../doc/docSelectors.ts";
 import { doc, editorState } from "../doc/docStore.ts";
-import { ArrowDownIcon, ArrowUpIcon, Avatar, FileIcon, FindIcon, FolderIcon, SearchIcon, field, fine } from "../ui.tsx";
+import { ArrowDownIcon, ArrowUpIcon, Avatar, FileIcon, FindIcon, FolderIcon, NewFileIcon, SearchIcon, field, fine } from "../ui.tsx";
 import { togglePalette } from "../palette/paletteStore.ts";
 import { encPath } from "../github.ts";
 import { blobUrl } from "./repoService.ts";
@@ -49,7 +49,7 @@ function DocIcon(props: { path: string }) {
 
 export function FileSidebar() {
   const [query, setQuery] = createSignal("");
-  // The "New file" button is out of the Nov 5 design for now; the form stays for when it comes back.
+  // the header's "New file" (Figma 129:1325's "document 6") opens a path form under the Files tab's search
   const [adding, setAdding] = createSignal(false);
   const [error, setError] = createSignal("");
   const tree = createMemo(() => selectTree(repo.docs));
@@ -88,6 +88,17 @@ export function FileSidebar() {
             <a href={`/${repo.repo!.full_name}/tree/${encPath(repo.branch)}`} class="truncate hover:underline" title={`Signed in as ${repo.user!.login}`}>
               {repo.repo!.full_name}
             </a>
+            <Show when={repo.repo!.permissions?.push}>
+              <button
+                class="ml-auto shrink-0 cursor-pointer rounded hover:bg-hover"
+                title="New file"
+                aria-label="New file"
+                aria-expanded={adding()}
+                onClick={() => (setError(""), setAdding(pulls.view !== "files" || !adding()), showView("files"))}
+              >
+                <NewFileIcon />
+              </button>
+            </Show>
           </div>
           {/* the branch's files, or the repo's open pull requests (pulls/PullsTree.tsx), VS Code's GitHub view style */}
           <div class="flex shrink-0 gap-1 px-3 pt-2 pb-1" role="tablist" aria-label="Sidebar">

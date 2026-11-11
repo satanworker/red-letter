@@ -11,6 +11,7 @@ import searchSvg from "./icons/search.svg";
 import tipArrowSvg from "./icons/tip-arrow.svg";
 import atSignSvg from "./icons/at-sign.svg";
 import editSvg from "./icons/edit.svg";
+import newFileSvg from "./icons/new-file.svg";
 import findSvg from "./icons/find.svg";
 import closeSvg from "./icons/close.svg";
 import plusSvg from "./icons/plus.svg";
@@ -96,6 +97,8 @@ export const CommentIcon = () => <Img src={commentSvg} w={16} />;
 export const TipArrow = () => <Img src={tipArrowSvg} w={10} h={8} />;
 export const AtIcon = () => <Img src={atSignSvg} w={14} />;
 export const EditIcon = () => <Img src={editSvg} w={15} />;
+// Figma 129:1325's "document 6": the sidebar header's New file, edit.svg's pencil in Onyx
+export const NewFileIcon = () => <Img src={newFileSvg} w={15} />;
 // Figma 140:2835 / 140:2846: a tab's close and the tab strip's "+"
 export const CloseIcon = () => <Img src={closeSvg} w={15} />;
 export const PlusIcon = () => <Img src={plusSvg} w={15} />;

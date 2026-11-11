@@ -167,7 +167,8 @@ export function EditorScreen() {
         </span>
         {/* the branch, its state and the pull requests moved to the doc's bottom-right corner and the panel */}
         <span class="min-w-0 flex-1" />
-        <div class="flex w-80 shrink-0 items-start px-3">
+        {/* at least the panel's 320px; a long status (offline, error, the rate limit) widens it leftwards instead of pushing "…" off-screen */}
+        <div class="flex min-w-80 shrink-0 items-start px-3">
           <Show when={onDoc()}>
             {/* Figma 140:2607 / 140:2799: the comments panel's toggle, 12px before the status */}
             <button

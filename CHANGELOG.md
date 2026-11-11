@@ -2,6 +2,11 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-11: New file
+
+- **New file is back** in the left sidebar's header (Figma `129:1325`, the pencil right of the repo name, with push access): it opens the path form under the Files search; Enter creates, Esc cancels.
+- The window no longer scrolls sideways when the header's status runs long ("Saved · sha offline error"): the header's right block was a fixed 320 px, so "…" stuck out past the edge and the page grew scrollbars both ways. It now widens leftwards.
+
 ## 2026-11-10: Pull request descriptions
 
 - **Every file opens in a tab of its own, or goes to the tab it has**, and a pull request's description is a tab too (`/<repo>/pull/<n>`, as on GitHub). Tabs are per repo instead of per branch, so a PR's file opened from the tree sits next to `demo.md` on `demo` instead of swapping the whole strip; a tab on another branch than the default names its branch. Only the branch picker and New branch replace the open tab (the same doc on another branch). Merging or closing a PR closes its tab and its branch's tabs; the open file's tab moves to the base.

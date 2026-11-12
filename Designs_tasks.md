@@ -15,5 +15,5 @@
    
   
    
-   4. When you hover the file or the folder the three dots appear in the right side of the frame. Then you push it there is  window with buttons "delete page", "
-   5. Let's add the spelling cheching. Can you use standart one from big company? Like apple 
+   4. When you hover the file or the folder the three dots appear in the right side of the frame. Then you push it there is dropdown menu appear. Use this design 
+   5. Let's add the spelling cheching. Can you use standart one from big company? Like apple or google 

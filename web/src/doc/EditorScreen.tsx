@@ -8,7 +8,7 @@ import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { activeTab, closeTab, repo, sameTab, tabUrl, toggleFiles, togglePanel, type Tab } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
-import { keyLabel } from "../palette/commands.ts";
+import { focusPanel, keyLabel } from "../palette/commands.ts";
 import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine, listKeys } from "../ui.tsx";
 import { PrOverview } from "../pulls/PrOverview.tsx";
 import { pulls } from "../pulls/pullsStore.ts";
@@ -77,8 +77,9 @@ export function EditorScreen() {
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
-  // Arrow keys move between the tabs (WAI-ARIA tabs pattern); Tab goes into the panel.
+  // Left/Right move between the tabs (WAI-ARIA tabs pattern); Down or Tab goes into the chosen tab's list.
   const tabKeys = (e: KeyboardEvent) => {
+    if (e.key === "ArrowDown") return (e.preventDefault(), focusPanel()); // into the chosen tab's list
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
     const order = ["outline", "comments", "history"] as const;

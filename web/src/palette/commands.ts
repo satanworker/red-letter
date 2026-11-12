@@ -53,12 +53,25 @@ function focusFileTree() {
   requestAnimationFrame(() => document.querySelector<HTMLElement>('#files [tabindex="0"]')?.focus());
 }
 
-// the open comment's card, else the chosen tab
-function focusPanel() {
+// Into the side panel, where its keys work: the chosen tab's row to start from (the lit comment's card, else the
+// first; the reader's section in the outline; the newest history row), else the tab itself. A panel just shown or a
+// tab just picked mounts its rows the frame after.
+export function focusPanel() {
   if (!onDoc()) return;
   showPanel();
-  const card = doc.activeThread ? document.querySelector(`#comments:not([hidden]) [data-card="${CSS.escape(doc.activeThread)}"] button`) : null;
-  (shown(card) ? card : document.querySelector<HTMLElement>('#panel [role="tab"][aria-selected="true"]'))?.focus();
+  requestAnimationFrame(() => {
+    const list = document.querySelector(`#${doc.tab}:not([hidden])`);
+    const lit = doc.activeThread ? `[data-card="${CSS.escape(doc.activeThread)}"] button` : "";
+    const order = { comments: [lit, "[data-card] button"], outline: ['[aria-current="location"]', "button"], history: ["li :is(button, a)"] }[doc.tab];
+    const row = order.map((sel) => (sel && list?.querySelector(sel)) || null).find(shown);
+    (row ?? document.querySelector<HTMLElement>('#panel [role="tab"][aria-selected="true"]'))?.focus();
+  });
+}
+// ⌘⌥3 and ⌘⇧O: into the panel (⌘⇧O on the outline, VS Code's "go to symbol"); pressed again there, back to the doc
+function togglePanelFocus(tab?: "outline") {
+  if (document.querySelector("#panel")?.contains(document.activeElement)) return focusEditor();
+  if (tab) showTab(tab);
+  focusPanel();
 }
 
 const areas: [string, () => void][] = [
@@ -98,7 +111,8 @@ export const commands = (): Command[] => [
   { label: "Go to files", keys: "Mod-Alt-1", run: focusFiles },
   { label: "File tree / back to the doc", keys: "Mod-Shift-e", run: focusFileTree },
   { label: "Go to the doc", keys: "Mod-Alt-2", run: focusEditor },
-  { label: "Go to the side panel", keys: "Mod-Alt-3", run: focusPanel },
+  { label: "Side panel / back to the doc", keys: "Mod-Alt-3", run: () => togglePanelFocus() },
+  { label: "Outline / back to the doc", keys: "Mod-Shift-o", run: () => togglePanelFocus("outline") },
   { label: "Next area", keys: "F6", run: () => cycleArea(1) },
   { label: "Previous area", keys: "Shift-F6", run: () => cycleArea(-1) },
   { label: "Next tab", keys: "Mod-Alt-]", run: () => stepTab(1) },

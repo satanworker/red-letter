@@ -2,7 +2,8 @@
 // a hollow circle before its words (in full on hover), indented by level; the reader's section sits on a grey pill; a
 // click glides the doc to that heading. Links (when there are any), under a rule: one row per `[text](url)` with a blue
 // circle, its text and url on hover; a click brings it to the middle of the view. Either way the target flashes (flash.ts).
-// Keyboard: Up/Down/Home/End move between rows, Enter jumps, Esc goes back to the doc (the panel's).
+// Keyboard: one Tab stop, the reader's section (else the first row); Up/Down/Home/End move between rows, Enter jumps,
+// Esc goes back to the doc (the panel's). ⌘⇧O comes here from anywhere.
 import { For, Show, createEffect, createMemo, createSelector, createSignal, onCleanup, onMount } from "solid-js";
 import { selectHeadings } from "./docSelectors.ts";
 import { doc, editorState, headingInView, scrollToHeading, showLink } from "./docStore.ts";
@@ -51,6 +52,7 @@ export function Outline() {
               style={{ "padding-left": `${6 + h.depth * 16}px` }}
               title={h.text}
               aria-current={isActive(i()) ? "location" : undefined}
+              tabindex={isActive(i()) ? 0 : -1}
               onClick={() => scrollToHeading(headings()[i()]!, scroller)}
             >
               <span class="size-[7px] shrink-0 rounded-full border border-muted" />
@@ -66,6 +68,7 @@ export function Outline() {
             <button
               class="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-fg hover:bg-hover"
               title={`${l.text}\n${l.url}`}
+              tabindex={!outline().length && i() === 0 ? 0 : -1}
               onClick={() => {
                 const at = found()?.links[i()];
                 if (at) showLink(at.from, at.to);

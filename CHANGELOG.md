@@ -2,6 +2,11 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-12: Panel by keyboard
+
+- **⌘⇧O / Ctrl+Shift+O goes to the outline**, on the reader's section; arrows walk the headings, Enter jumps there and focus stays; pressed again, back to the doc with the caret at the top of the view. ⌘⌥3 does the same for whichever panel tab is chosen (the lit comment's card, the outline's section, the newest history row), and Down from the panel's tabs goes into their list.
+- The outline is one Tab stop (its rows were each one).
+
 ## 2026-11-12: Space between list items
 
 - **List items sit 6 px apart** instead of on consecutive lines: long items that wrap no longer run together into one block. The gap is `.cm-lp-li-next` in `livePreview.ts`.

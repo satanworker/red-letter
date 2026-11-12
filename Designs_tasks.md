@@ -1,7 +1,6 @@
 # 🍐 Designs_tasks
 # TO redo
 1. Change the appernce of the  dropdown menu, use this for design 
-   https://www.figma.com/design/O3BbnNENlU3fMgOGuYqIkh/Red-Letter?node-id=140-2781&t=fY2jtLY6YELzAzV4-1
   + Add a search in the slash menu when you type "/"
 
    
@@ -15,5 +14,8 @@
    
   
    
-   4. When you hover the file or the folder the three dots appear in the right side of the frame. Then you push it there is dropdown menu appear. Use this design 
+   4. When you hover the file or the folder the three dots appear in the right side of the frame. Then you push it there is dropdown menu appear. ![Screenshot 2026-11-12 at 23.59.54](images/screenshot-2026-11-12-at-23-59-54-a4e2575.png) Use this design 
    5. Let's add the spelling cheching. Can you use standart one from big company? Like apple or google 
+
+Use this is as a guideline for design. You can find the design for dropdown menus
+https://www.figma.com/design/O3BbnNENlU3fMgOGuYqIkh/Red-Letter?node-id=183-849&t=fY2jtLY6YELzAzV4-1

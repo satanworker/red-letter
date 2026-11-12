@@ -9,12 +9,11 @@
 ![Screenshot 2026-11-12 at 18.26.16](images/screenshot-2026-11-12-at-18-26-16-8170320.png)
 
 3. This is how it should work. 
-   You have this button. You push and dropdown menu appear with selectiob beetween 
-   This menu open when you push the button. Then you select the mode and the menu will be closed
+   You have this button. You push and dropdown menu appear with selection beetween two mode (read and edit). You choose and the dropdown menu is closing. And the icon will be accorind to selected mode
    Plus fix the position. Now it's flying. 
    ![Screenshot 2026-11-12 at 18.23.13](images/screenshot-2026-11-12-at-18-23-13-e97f069.png)
    
   
    
-   4. When you hover the file or the folder the three dots appear in the right side of the frame. Then you push it there is pop-up window with buttons "delete page", "
+   4. When you hover the file or the folder the three dots appear in the right side of the frame. Then you push it there is  window with buttons "delete page", "
    5. Let's add the spelling cheching.

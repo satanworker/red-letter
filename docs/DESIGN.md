@@ -186,7 +186,7 @@ Not built yet:
 - strip the wasm's 687 KB name section (−19% raw, −6% brotli);
 - presence cursors inside the text (avatars only today);
 - notifications for mentions; the comment PR doesn't mention anyone either;
-- comments: a protected-branch comment that fails isn't queued (the error shows its text to copy); admins who could bypass a branch's protection still comment through the PR (`refUpdateRule.viewerCanPush` would tell them apart); text in fenced code takes no comments (the pill doesn't show there);
+- comments: a protected-branch comment that fails isn't queued (the error shows its text to copy); admins who could bypass a branch's protection still comment through the PR (`refUpdateRule.viewerCanPush` would tell them apart); text in fenced code takes PR comments only (in-file markup there would be code, so the pill shows only in PR mode);
 - branches: retroactive branches (move unsaved edits off main into a new branch); other tabs still open on a merged branch get save errors (the branch is gone); a base commit merged into a branch outside Red Letter isn't recorded in `base`, so the next Update would duplicate its text; a branch pushed from elsewhere opens its PR into the default branch (no base recorded); Request changes and suggested changes (` ```suggestion `) stay on GitHub; PR comments inside a table cell aren't highlighted (the table is one widget); the picker shows the first 100 branches.
 - read-only viewing without signing in;
 - git authors (agents) get a GitHub avatar by name, which can be a stranger's account; show an initial instead.

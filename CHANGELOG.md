@@ -2,6 +2,10 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-12: Comments on code
+
+- **Text in a code block takes comments** when they go to the pull request (the default): the "Add a comment" pill and ⌘⌥M work there. A review comment never touches the file, so it can't turn into code; in-file comments still skip fenced code.
+
 ## 2026-11-11: New file
 
 - **New file is back** in the left sidebar's header (Figma `129:1325`, the pencil right of the repo name, with push access): it opens the path form under the Files search; Enter creates, Esc cancels.

@@ -8,8 +8,8 @@ import { comments, targetPr } from "../comments/commentsStore.ts";
 import type { Thread } from "../comments/inline.ts";
 import { createMentions } from "../comments/Mentions.tsx";
 import { AtIcon, TipArrow, btn } from "../ui.tsx";
-import { cancelComment, closeThread, doc, insertImages, isReading, openThread, setView, startComment, submitComment } from "./docStore.ts";
-import { commentMarks, commentParses, inCode } from "./commentMarks.ts";
+import { cancelComment, closeThread, commentable, doc, insertImages, isReading, openThread, setView, startComment, submitComment } from "./docStore.ts";
+import { commentMarks, commentParses } from "./commentMarks.ts";
 import { headingField } from "./headings.ts";
 import { flashField } from "./flash.ts";
 import { keepPlace } from "./keepPlace.ts";
@@ -89,7 +89,7 @@ function commentTooltip() {
   };
   const make = (state: EditorState): Tooltip | null => {
     const sel = state.field(cellSelection) ?? state.selection.main;
-    return sel.from === sel.to || inCode(state, sel.from) || inCode(state, sel.to) ? null : { pos: sel.from, end: sel.to, above: true, create };
+    return commentable(state, sel) ? { pos: sel.from, end: sel.to, above: true, create } : null;
   };
   return StateField.define<Tooltip | null>({
     create: make,

@@ -1,5 +1,6 @@
 // The open file: its Session, status, history, and the editor's UI intent (panel tab, active thread, draft comment).
 // The CRDT doc isn't copied into the store: `version` ticks (once per frame) when it changes, selectors re-read it.
+import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { batch } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
@@ -240,10 +241,14 @@ export function leavingWithUnsaved(): boolean {
 }
 
 // ---- editor UI ----
+// The selection can take a comment: not empty, and not in fenced code unless the comment goes to the PR (markup in
+// code would be code: commentMarks.inCode); a review comment never touches the text.
+export const commentable = (es: EditorState, sel: { from: number; to: number }) =>
+  sel.from !== sel.to && (commentsOnPr() || (!inCode(es, sel.from) && !inCode(es, sel.to)));
 export function startComment() {
   const s = state.session;
   const sel = view && (view.state.field(cellSelection) ?? view.state.selection.main);
-  if (!s || !(s.canWrite || comments.viaPr || targetPr()) || !view || !sel || sel.from === sel.to || inCode(view.state, sel.from) || inCode(view.state, sel.to)) return;
+  if (!s || !(s.canWrite || comments.viaPr || targetPr()) || !view || !sel || !commentable(view.state, sel)) return;
   set("composing", { anchor: s.anchor(sel.from, sel.to), quote: view.state.sliceDoc(sel.from, sel.to) });
 }
 export const cancelComment = () => set("composing", null);

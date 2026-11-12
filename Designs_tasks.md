@@ -16,7 +16,8 @@
    
    4. When you hover the file or the folder the three dots appear in the right side of the frame. Then you push it there is dropdown menu appear. ![Screenshot 2026-11-12 at 23.59.54](images/screenshot-2026-11-12-at-23-59-54-a4e2575.png) Use this design 
    5. Let's add the spelling cheching. Can you use standart one from big company? Like apple or google
-   6. 
+   6. Use optimistic UI for process of loading and edits comments
+   7. Let's use 
 
 Use this is as a guideline for design. You can find the design for dropdown menus
 https://www.figma.com/design/O3BbnNENlU3fMgOGuYqIkh/Red-Letter?node-id=183-849&t=fY2jtLY6YELzAzV4-1

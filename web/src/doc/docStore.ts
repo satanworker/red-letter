@@ -4,7 +4,7 @@ import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { batch } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { clearComments, commentViaPr, comments, commentsOnPr, loadComments, refreshComments, targetPr, writeOnPr } from "../comments/commentsStore.ts";
+import { clearComments, commentViaPr, comments, commentsOnPr, commentsShown, loadComments, refreshComments, targetPr, writeOnPr } from "../comments/commentsStore.ts";
 import { selectThreads, withPrMark } from "../comments/commentsSelectors.ts";
 import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, cachedGet, encPath, type User } from "../github.ts";
@@ -287,8 +287,9 @@ export function goToThread(t: Thread) {
 export function stepComment(dir: 1 | -1) {
   const s = state.session;
   if (!view || !s) return;
+  const shown = commentsShown();
   const open = selectThreads(commentThreads(view.state), s.doc.text, comments.text, comments.prThreads)
-    .filter((t) => !t.resolved && t.range && t.range.from < t.range.to)
+    .filter((t) => !t.resolved && t.range && t.range.from < t.range.to && (!shown || t.source === shown))
     .sort((a, b) => a.range!.from - b.range!.from);
   if (!open.length) return;
   const at = open.find((t) => t.id === state.activeThread)?.range!.from ?? view.state.selection.main.head;

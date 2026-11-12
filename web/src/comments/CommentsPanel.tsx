@@ -38,8 +38,9 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
   const cards = (list: Accessor<string[]>) => (
     <For each={list()}>{(id) => <Show when={byId().get(id)}>{(t) => <ThreadCard thread={t} canComment={props.canComment} select={() => select(id)} />}</Show>}</For>
   );
-  // On a branch with a pull request, new comments go to it or into the file (remembered per repo). Without edit
-  // rights only the PR takes them. Styled like the panel's tabs: the chosen one white, the other a grey outline.
+  // On a branch with a pull request, the toggle picks the PR's comments or the file's: the ones shown (in the panel and
+  // the text, commentsStore.commentsShown) and where new ones go (remembered per repo). Without edit rights only the
+  // PR's. Styled like the panel's tabs: the chosen one white, the other a grey outline.
   const fileLocked = () => !(doc.session?.canWrite || comments.viaPr);
   const modeBtn = (mode: Mode, label: string) => (
     <button
@@ -66,7 +67,7 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
     // contents: the cards stay items of the panel's column
     <div class="contents" onKeyDown={keys}>
       <Show when={targetPr() || doc.session?.canWrite}>
-        <div class="flex gap-2 px-0.5" role="group" aria-label="Where new comments go">
+        <div class="flex gap-2 px-0.5" role="group" aria-label="Comments on the pull request or in the file">
           {modeBtn("pr", "On the pull request")}
           {modeBtn("file", "In the file")}
         </div>

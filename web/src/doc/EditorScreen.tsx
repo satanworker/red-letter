@@ -3,7 +3,7 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { CommentsPanel } from "../comments/CommentsPanel.tsx";
 import { selectThreads } from "../comments/commentsSelectors.ts";
-import { comments, targetPr } from "../comments/commentsStore.ts";
+import { comments, commentsShown, targetPr } from "../comments/commentsStore.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { activeTab, closeTab, repo, sameTab, tabUrl, toggleFiles, togglePanel, type Tab } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
@@ -28,7 +28,8 @@ export function EditorScreen() {
   const threads = createMemo(() => {
     doc.version;
     const state = editorState();
-    return doc.session && state ? selectThreads(commentThreads(state), doc.session.doc.text, comments.text, comments.prThreads) : [];
+    const shown = commentsShown(); // the toggle: the PR's threads or the file's
+    return doc.session && state ? selectThreads(commentThreads(state), doc.session.doc.text, comments.text, comments.prThreads).filter((t) => !shown || t.source === shown) : [];
   });
   // the same array while no mark or count of conflicts changed: History's rows (and focus in them) survive typing
   const marks = createMemo(

@@ -2,6 +2,10 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-12: The comments toggle filters
+
+- **"On the pull request" / "In the file" now picks which comments show**, in the panel, its count and the highlights in the text (⌘⌥N / P too), not only where new ones go. Without edit rights it's the PR's; with no PR and no edit rights, every thread shows.
+
 ## 2026-11-12: The whole app by keyboard
 
 - **Keys from anywhere** (⌘ on a Mac, Ctrl elsewhere), the editor included: ⌘⌥1 / 2 / 3 go to the files, the doc and the side panel; F6 / Shift+F6 cycle header, files, tabs, doc and panel; ⌘\ and ⌘⇧\ show or hide the files and the panel; ⌘⌥] / [ switch tabs; ⌘⌥N / P go to the next / previous comment in the text; ⌘S saves outside the editor too.

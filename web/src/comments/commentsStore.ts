@@ -48,6 +48,10 @@ export const targetPr = () => state.prs.find((p) => p.head === cur?.branch) ?? s
 // can push (a PR is made for the first one if there's none), and for someone who can't edit the branch (a reviewer
 // with read access) whenever a PR is open, whatever the mode says.
 export const commentsOnPr = () => (state.mode === "pr" && doc.session?.canWrite === true) || (targetPr() !== null && !(doc.session?.canWrite || state.viaPr));
+// Which threads the panel and the text show: the toggle's side, the PR's or the file's (the PR's when the file's is
+// locked: no edit rights). No toggle (no PR, no edit rights): null, every thread.
+export const commentsShown = (): Mode | null =>
+  !(targetPr() || doc.session?.canWrite) ? null : !(doc.session?.canWrite || state.viaPr) ? "pr" : state.mode;
 export function setCommentsMode(mode: Mode) {
   set("mode", mode);
   if (cur) localStorage.setItem(modeKey(cur.repo), mode);

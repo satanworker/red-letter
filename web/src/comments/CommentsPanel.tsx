@@ -1,11 +1,14 @@
 // Comment threads beside the doc. Rows are keyed by thread id, so a reply being typed survives updates.
 // New comments are written in the editor (Editor.tsx) and show here once sent.
-// Keyboard: each thread's quote is a button that jumps to the text; Reply / Resolve / Reopen / Delete are buttons;
-// Esc closes inputs. Resolved threads wait, collapsed, under "N resolved"; hovering one's card lights up its text.
+// Keyboard: Up/Down/Home/End move between cards (each card's quote is a button that brings its text into view); Esc on a
+// card puts the caret at its text; Reply / Resolve / Reopen / Delete are buttons, and a card that leaves the list hands
+// focus to its neighbour. Esc closes inputs. Resolved threads wait, collapsed, under "N resolved"; hovering or focusing
+// one's card lights up its text.
 import { For, Show, createMemo, createSignal, type Accessor } from "solid-js";
-import { deleteThread, doc, hoverThread, reopenThread, resolveThread, selectThread, submitReply } from "../doc/docStore.ts";
+import { deleteThread, doc, goToThread, hoverThread, reopenThread, resolveThread, selectThread, submitReply } from "../doc/docStore.ts";
 import { repo } from "../repo/repoStore.ts";
-import { Avatar, ago, badge, btn, card, linkBtn } from "../ui.tsx";
+import { keyLabel } from "../palette/commands.ts";
+import { Avatar, ago, badge, btn, card, linkBtn, listKeys } from "../ui.tsx";
 import type { Message as Msg, Thread } from "./inline.ts";
 import { MentionText, createMentions } from "./Mentions.tsx";
 import { comments, setCommentsMode, targetPr, type Mode } from "./commentsStore.ts";
@@ -50,8 +53,18 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
       {label}
     </button>
   );
+  // Up/Down between cards; Esc on a card (outside its reply box): the caret to its text
+  const keys = (e: KeyboardEvent) => {
+    listKeys(e, "[data-card]");
+    const el = e.target as Element, id = el.closest<HTMLElement>("[data-card]")?.dataset.card;
+    const t = id && e.key === "Escape" && !e.defaultPrevented && !el.matches("input, textarea") && props.threads().find((t) => t.id === id);
+    if (!t) return;
+    e.preventDefault();
+    goToThread(t);
+  };
   return (
-    <>
+    // contents: the cards stay items of the panel's column
+    <div class="contents" onKeyDown={keys}>
       <Show when={targetPr() || doc.session?.canWrite}>
         <div class="flex gap-2 px-0.5" role="group" aria-label="Where new comments go">
           {modeBtn("pr", "On the pull request")}
@@ -60,7 +73,7 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
       </Show>
       <Show when={!open().length}>
         <p class="px-0.5 py-3 text-muted">
-          Select text and click <b>Add a comment</b> to start a discussion.
+          Select text and click <b>Add a comment</b> (or press {keyLabel("Mod-Alt-m")}) to start a discussion.
         </p>
       </Show>
       {cards(open)}
@@ -117,7 +130,7 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
           </span>
         </Show>
       </p>
-    </>
+    </div>
   );
 }
 
@@ -141,18 +154,32 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
   const t = props.thread;
   const removed = () => !t().range || t().range!.from === t().range!.to;
   const [replying, setReplying] = createSignal(false);
-  let input!: HTMLInputElement;
+  let input!: HTMLInputElement, el!: HTMLDivElement;
   const mentions = createMentions(() => input, () => {});
+  // the reply box closes onto the Reply button, so focus stays on the card
+  const closeReply = () => {
+    setReplying(false);
+    el.querySelector<HTMLElement>("[data-reply]")?.focus();
+  };
   const reply = (e: Submit) => {
     e.preventDefault();
     const body = input.value.trim();
     if (!body) return;
     input.value = "";
-    setReplying(false);
+    closeReply();
     submitReply(t().id, body);
+  };
+  // a card leaving its list (resolved, reopened, deleted) hands focus to the next card, else the one before, else the tab
+  const handOff = () => {
+    if (!el.contains(document.activeElement)) return;
+    const cards = [...el.parentElement!.querySelectorAll<HTMLElement>(":scope > [data-card]")], i = cards.indexOf(el);
+    const next = (cards[i + 1] ?? cards[i - 1])?.querySelector("button");
+    (next ?? document.getElementById("tab-comments"))?.focus();
   };
   return (
     <div
+      ref={el}
+      data-card={t().id}
       // content-visibility: a card outside the panel's view skips layout and paint (a long doc has hundreds; drawing
       // them all cost the doc's scrolling 25 ms of paint bookkeeping a jump)
       class={`${card} cursor-pointer gap-6 [contain-intrinsic-size:auto_160px] [content-visibility:auto] ${t().id === doc.activeThread ? "shadow-[0_0_0_2px_rgba(223,171,1,.55),var(--shadow)]" : ""}`}
@@ -161,6 +188,8 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
       }}
       onMouseEnter={() => t().resolved && hoverThread(t().id)}
       onMouseLeave={() => hoverThread("")}
+      onFocusIn={() => t().resolved && hoverThread(t().id)}
+      onFocusOut={(e) => !el.contains(e.relatedTarget as Node) && hoverThread("")}
     >
       <div>
         <button type="button" class={`${quote} cursor-pointer`} title="Go to the text" onClick={() => props.select()}>
@@ -197,22 +226,22 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
               <Show
                 when={!t().resolved}
                 fallback={
-                  <button type="button" class={btn} onClick={() => reopenThread(t().id)}>
+                  <button type="button" class={btn} onClick={() => (handOff(), reopenThread(t().id))}>
                     Reopen
                   </button>
                 }
               >
-                <button type="button" class={btn} onClick={() => setReplying(true)}>
+                <button type="button" class={btn} data-reply onClick={() => setReplying(true)}>
                   Reply
                 </button>
-                <button type="button" class={btn} onClick={() => resolveThread(t().id)}>
+                <button type="button" class={btn} onClick={() => (handOff(), resolveThread(t().id))}>
                   Resolve
                 </button>
               </Show>
               <button
                 type="button"
                 class={`${linkBtn} ml-auto`}
-                onClick={() => confirm(`Delete this comment and its replies?${t().source === "pr" ? " GitHub deletes them for good." : " Git history keeps them."}`) && deleteThread(t().id)}
+                onClick={() => confirm(`Delete this comment and its replies?${t().source === "pr" ? " GitHub deletes them for good." : " Git history keeps them."}`) && (handOff(), deleteThread(t().id))}
               >
                 Delete
               </button>
@@ -228,13 +257,13 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
                 class="h-7 w-full rounded-lg border-[.4px] border-line px-2 outline-none placeholder:text-muted"
                 onInput={mentions.update}
                 onClick={mentions.update}
-                onKeyDown={(e) => mentions.onKey(e) || (e.key === "Escape" && setReplying(false))}
+                onKeyDown={(e) => mentions.onKey(e) || (e.key === "Escape" && closeReply())}
               />
               <mentions.List />
             </div>
             <div class="flex items-center gap-1">
               <button class={btn}>Comment</button>
-              <button type="button" class="h-6 cursor-pointer rounded-[14px] px-3 hover:bg-hover" onClick={() => setReplying(false)}>
+              <button type="button" class="h-6 cursor-pointer rounded-[14px] px-3 hover:bg-hover" onClick={closeReply}>
                 Cancel
               </button>
             </div>

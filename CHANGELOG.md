@@ -2,6 +2,16 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-12: The whole app by keyboard
+
+- **Keys from anywhere** (⌘ on a Mac, Ctrl elsewhere), the editor included: ⌘⌥1 / 2 / 3 go to the files, the doc and the side panel; F6 / Shift+F6 cycle header, files, tabs, doc and panel; ⌘\ and ⌘⇧\ show or hide the files and the panel; ⌘⌥] / [ switch tabs; ⌘⌥N / P go to the next / previous comment in the text; ⌘S saves outside the editor too.
+- **The ⌘K palette lists every command** with its keys: the above plus close tab, show comments / history / outline / pull requests, reading or editing, switch branch (focuses the sidebar's picker), and the page menu. One table (`web/src/palette/commands.ts`) feeds both.
+- **Arrow keys in every list.** The file tree is one Tab stop: Up/Down/Home/End, Right / Left open, enter, close and leave folders, typing searches, Down / Enter from the search box take the first match. The PR tree, tabs (Left/Right, Delete closes), comment cards, outline and history rows and the page menu take arrows too.
+- **Comments without a mouse:** ⌘⌥3 lands on the lit comment's card, Esc on a card puts the caret at its text, closing a reply returns to Reply, and resolving, reopening or deleting hands focus to the next card.
+- **Focus never falls to the page** after closing a tab, settling a conflict, closing the emoji picker or a table menu, or switching files with the caret in the doc. History rows no longer rebuild on every edit.
+- **In the editor:** Alt+Enter opens the link at the caret (in table cells too); Shift+F10 or the context-menu key opens a cell's row / column menu. The save error's message opens on click.
+- Ported from a worktree left uncommitted on 2026-11-09, onto the tabs, PR tree and sidebar that landed since.
+
 ## 2026-11-12: One branch, tabs that open at once
 
 - **The branch moved to the file sidebar's foot**, as in VS Code's status bar: the picker, read-only / protected, Changes and Update from <base>. The doc's pill keeps the pencil and the counts.
@@ -9,6 +19,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **Clicking a file opens its tab at once**, with a spinner in the tab and "Opening …" in the doc, instead of leaving the previous file on screen until the new one loaded.
 - **First open of a file 3.8 s → 0.9 s**: the snapshot ref and the branch head are asked for together, and a first opener's snapshot is written in the background while the doc already shows (saves wait for it). A file with a snapshot no longer waits on reading its EOL style either.
 - **Each tab keeps its scroll position**: back to a tab, the doc is where you left it; a tab not opened before starts at the top.
+- A file new in a pull request no longer says so in a yellow note over the doc; its text shows as added, as before.
 
 ## 2026-11-12: Comments on code
 

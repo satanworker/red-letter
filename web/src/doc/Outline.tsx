@@ -2,10 +2,12 @@
 // a hollow circle before its words (in full on hover), indented by level; the reader's section sits on a grey pill; a
 // click glides the doc to that heading. Links (when there are any), under a rule: one row per `[text](url)` with a blue
 // circle, its text and url on hover; a click brings it to the middle of the view. Either way the target flashes (flash.ts).
+// Keyboard: Up/Down/Home/End move between rows, Enter jumps, Esc goes back to the doc (the panel's).
 import { For, Show, createEffect, createMemo, createSelector, createSignal, onCleanup, onMount } from "solid-js";
 import { selectHeadings } from "./docSelectors.ts";
 import { doc, editorState, headingInView, scrollToHeading, showLink } from "./docStore.ts";
 import { headingField } from "./headings.ts";
+import { listKeys } from "../ui.tsx";
 
 export function Outline() {
   const found = createMemo(() => {
@@ -39,7 +41,7 @@ export function Outline() {
     });
   });
   return (
-    <nav aria-label="Outline">
+    <nav aria-label="Outline" onKeyDown={(e) => listKeys(e, "button")}>
       <h2 class="mb-2 px-0.5 font-medium text-muted">Outline</h2>
       <Show when={outline().length} fallback={<p class="px-0.5 py-1 text-muted">No headings yet. Lines starting with # show up here.</p>}>
         <For each={outline()}>

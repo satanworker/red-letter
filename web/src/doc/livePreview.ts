@@ -344,21 +344,27 @@ const preview = ViewPlugin.fromClass(
         }
         if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return false;
         const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
-        if (pos == null) return false;
-        for (let n: SyntaxNode | null = syntaxTree(view.state).resolveInner(pos, 1); n; n = n.parent) {
-          const url = n.name === "URL" ? n : n.name === "Link" ? n.getChild("URL") : null;
-          if (!url) continue;
-          const href = view.state.doc.sliceString(url.from, url.to);
-          if (!/^(https?:|mailto:)/i.test(href)) return false;
-          window.open(href, "_blank", "noopener");
-          e.preventDefault();
-          return true;
-        }
-        return false;
+        if (pos == null || !openLink(view, pos)) return false;
+        e.preventDefault();
+        return true;
       },
     },
   },
 );
+
+// Open the http(s) or mailto link at `pos` in a new tab (⌘/Ctrl-click; Alt-Enter at the caret, as in Google Docs);
+// false: no link there.
+function openLink(view: EditorView, pos: number): boolean {
+  for (let n: SyntaxNode | null = syntaxTree(view.state).resolveInner(pos, 1); n; n = n.parent) {
+    const url = n.name === "URL" ? n : n.name === "Link" ? n.getChild("URL") : null;
+    if (!url) continue;
+    const href = view.state.doc.sliceString(url.from, url.to);
+    if (!/^(https?:|mailto:)/i.test(href)) return false;
+    window.open(href, "_blank", "noopener");
+    return true;
+  }
+  return false;
+}
 
 // Shift-Enter in a list item: a new line inside the same item, indented to its text, instead of a new bullet.
 // (GitHub renders such a line as part of the same paragraph.) Elsewhere: a plain line break.
@@ -408,7 +414,15 @@ export function editorExtensions(): Extension[] {
     history(),
     drawSelection(),
     dropCursor(),
-    keymap.of([{ key: "Shift-Enter", run: lineInItem }, { key: "Mod-b", run: emphasis(2) }, { key: "Mod-i", run: emphasis(1) }, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+    keymap.of([
+      { key: "Shift-Enter", run: lineInItem },
+      { key: "Alt-Enter", run: (v) => openLink(v, v.state.selection.main.head) },
+      { key: "Mod-b", run: emphasis(2) },
+      { key: "Mod-i", run: emphasis(1) },
+      ...defaultKeymap,
+      ...historyKeymap,
+      indentWithTab,
+    ]),
     slashCommands,
     // lang-markdown's markdown() minus what this editor never uses: it wraps the parser to parse HTML inside the doc
     // (comment markup included) as HTML, which walked the whole tree again on every keystroke, and adds HTML tag

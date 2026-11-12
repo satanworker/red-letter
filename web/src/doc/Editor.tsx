@@ -1,14 +1,15 @@
 // CodeMirror 6 (live preview) bound to the Automerge text. CodeMirror owns its DOM; Solid only mounts it and
 // pushes decorations (a draft's changes, conflicts, comment highlights) when the doc or the comments change.
 import { Compartment, EditorState, StateEffect, StateField, Transaction, type Range } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, keymap, showTooltip, type DecorationSet, type Tooltip, type TooltipView } from "@codemirror/view";
+import { Decoration, EditorView, WidgetType, showTooltip, type DecorationSet, type Tooltip, type TooltipView } from "@codemirror/view";
 import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js";
 import { render } from "solid-js/web";
 import { comments, targetPr } from "../comments/commentsStore.ts";
 import type { Thread } from "../comments/inline.ts";
 import { createMentions } from "../comments/Mentions.tsx";
+import { keyLabel } from "../palette/commands.ts";
 import { AtIcon, TipArrow, btn } from "../ui.tsx";
-import { cancelComment, closeThread, commentable, doc, insertImages, isReading, openThread, setView, startComment, submitComment } from "./docStore.ts";
+import { cancelComment, closeThread, commentable, doc, focusEditor, insertImages, isReading, openThread, setView, startComment, submitComment } from "./docStore.ts";
 import { commentMarks, commentParses } from "./commentMarks.ts";
 import { headingField } from "./headings.ts";
 import { flashField } from "./flash.ts";
@@ -105,9 +106,10 @@ function SelectionTip() {
         when={doc.composing}
         fallback={
           // Figma 129:1318 "Add a comment"; pushed (140:2587) shows a grey pill inset 3px. The press opens the box on
-          // mousedown, so hover carries the pushed look.
+          // mousedown, so hover carries the pushed look. Keyboard: the shortcut in its title (Tab can't reach it: Esc,
+          // which lets Tab out of the editor, drops the selection).
           <button
-            title="Add a comment (⌘⌥M / Ctrl+Alt+M)"
+            title={`Add a comment (${keyLabel("Mod-Alt-m")})`}
             class="group relative cursor-pointer rounded-xl bg-card px-5 py-2 font-sans text-[12px] leading-4 text-fg shadow-figma backdrop-blur-[2px]"
             onMouseDown={(e) => {
               e.preventDefault(); // keep the editor selection
@@ -155,6 +157,7 @@ function CommentBox() {
             if (e.key === "Escape") {
               e.preventDefault();
               cancelComment();
+              focusEditor();
             } else if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
               e.preventDefault();
               send();
@@ -266,10 +269,6 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
             })
           : [],
         imageUrl.of((src) => s.imageUrl(src)),
-        keymap.of([
-          { key: "Mod-s", preventDefault: true, run: () => (void s.save(), true) },
-          { key: "Mod-Alt-m", preventDefault: true, run: () => (startComment(), true) },
-        ]),
         automergeSync(s),
       ],
       parent: host,

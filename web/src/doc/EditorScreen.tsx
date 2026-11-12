@@ -8,7 +8,8 @@ import { FileSidebar } from "../repo/FileSidebar.tsx";
 import { activeTab, closeTab, repo, sameTab, tabUrl, toggleFiles, togglePanel, type Tab } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
-import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
+import { keyLabel } from "../palette/commands.ts";
+import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine, listKeys } from "../ui.tsx";
 import { PrOverview } from "../pulls/PrOverview.tsx";
 import { pulls } from "../pulls/pullsStore.ts";
 import { prTitle } from "../repo/pulls.ts";
@@ -20,7 +21,7 @@ import { IconPicker } from "./IconPicker.tsx";
 import { Outline } from "./Outline.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab, selectTextChanges, selectWords } from "./docSelectors.ts";
 import { commentThreads } from "./commentMarks.ts";
-import { doc, editorState, isReading, showFavicon, showTab, toggleReading } from "./docStore.ts";
+import { doc, editorState, focusEditor, isReading, showFavicon, showTab, toggleReading } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
@@ -29,10 +30,15 @@ export function EditorScreen() {
     const state = editorState();
     return doc.session && state ? selectThreads(commentThreads(state), doc.session.doc.text, comments.text, comments.prThreads) : [];
   });
-  const marks = createMemo(() => {
-    doc.version;
-    return doc.session ? selectMarks(doc.session) : [];
-  });
+  // the same array while no mark or count of conflicts changed: History's rows (and focus in them) survive typing
+  const marks = createMemo(
+    () => {
+      doc.version;
+      return doc.session ? selectMarks(doc.session) : [];
+    },
+    [],
+    { equals: (a, b) => a.length === b.length && a.every((m, i) => m.sha === b[i]!.sha && m.conflicts.length === b[i]!.conflicts.length) },
+  );
   const history = createMemo(() => selectHistory(doc.history, marks()));
   const changes = createMemo(() => {
     doc.version;
@@ -140,7 +146,7 @@ export function EditorScreen() {
           <Logo />
           <button
             class="absolute top-1/2 right-3 -translate-y-1/2 cursor-pointer rounded hover:bg-hover"
-            title={repo.filesHidden ? "Show files" : "Hide files"}
+            title={`${repo.filesHidden ? "Show files" : "Hide files"} (${keyLabel("Mod-\\")})`}
             aria-label={repo.filesHidden ? "Show files" : "Hide files"}
             onClick={toggleFiles}
           >
@@ -155,7 +161,7 @@ export function EditorScreen() {
             {/* Figma 140:2607 / 140:2799: the comments panel's toggle, 12px before the status */}
             <button
               class="mt-[10px] mr-3 cursor-pointer rounded hover:bg-hover"
-              title={repo.panelHidden ? "Show comments" : "Hide comments"}
+              title={`${repo.panelHidden ? "Show comments" : "Hide comments"} (${keyLabel("Mod-Shift-\\")})`}
               aria-label={repo.panelHidden ? "Show comments" : "Hide comments"}
               aria-controls="panel"
               aria-expanded={!repo.panelHidden}
@@ -179,9 +185,9 @@ export function EditorScreen() {
               </Show>
               <Show when={doc.status.error}>
                 {(err) => (
-                  <span class="text-red" title={err()}>
+                  <button class="cursor-pointer text-red" title={err()} onClick={() => alert(err())}>
                     error
-                  </span>
+                  </button>
                 )}
               </Show>
               <Show when={rate.blockedUntil > Date.now()}>
@@ -291,7 +297,14 @@ export function EditorScreen() {
           </div>
         </div>
         {/* no top edge: the header's bottom line is this frame's top too (Figma's centred strokes overlap) */}
-        <aside id="panel" aria-label="Side panel" hidden={!onDoc() || repo.panelHidden} class="w-80 shrink-0 overflow-auto border-[.5px] border-t-0 border-line bg-side px-3 py-4">
+        {/* Esc in the panel (outside a field, which keeps its own Esc) goes back to the doc */}
+        <aside
+          id="panel"
+          aria-label="Side panel"
+          hidden={!onDoc() || repo.panelHidden}
+          class="w-80 shrink-0 overflow-auto border-[.5px] border-t-0 border-line bg-side px-3 py-4"
+          onKeyDown={(e) => e.key === "Escape" && !e.defaultPrevented && !(e.target as Element).matches("input, textarea, select") && focusEditor()}
+        >
           <div class="mb-4">{tabs()}</div>
           <Show when={doc.session} keyed>
             {(s) => (
@@ -325,8 +338,15 @@ export function EditorScreen() {
 // 1px rule parts two tabs unless either is open or hovered. A file still opening shows a spinner.
 // Like Chrome's and Obsidian's, tabs are up to 200px and shrink to share the strip; only past their 56px minimum do
 // they scroll sideways, without a scrollbar (trackpad, wheel; the open tab scrolls into view). "+" stays in sight.
+// Keyboard: Left/Right/Home/End move between tabs, Delete or Backspace closes the focused one.
 function Tabs() {
   let nav!: HTMLElement;
+  // closing the focused tab (or its ×) focuses the tab that takes its place
+  const close = (t: Tab) => {
+    const i = repo.tabs.findIndex((x) => sameTab(x, t)), focused = nav.contains(document.activeElement);
+    closeTab(t);
+    if (focused) nav.querySelectorAll("a")[Math.min(i, repo.tabs.length - 1)]?.focus();
+  };
   createEffect(() => {
     activeTab();
     nav.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -342,9 +362,11 @@ function Tabs() {
     <div class="flex h-[35px] shrink-0 items-center bg-side">
       <nav
         ref={nav}
+        id="tabs"
         aria-label="Open tabs"
         class="flex h-full min-w-0 items-center gap-[5px] overflow-x-auto px-[3px] [scrollbar-width:none]"
         onWheel={(e) => !e.deltaX && (nav.scrollLeft += e.deltaY)}
+        onKeyDown={(e) => listKeys(e, "a", true)}
       >
         <For each={repo.tabs}>
           {(t) => {
@@ -359,7 +381,12 @@ function Tabs() {
                 <span
                   class={`pointer-events-none absolute ${on() ? "-inset-x-[3px] top-[3px] bottom-0 rounded-t-lg bg-bg" : "inset-x-0 top-1/2 h-[26px] -translate-y-1/2 rounded-lg group-hover/tab:bg-rule"}`}
                 />
-                <a href={tabUrl(repo.repo!.full_name, t)} aria-current={on() ? "page" : undefined} class="relative flex h-6 min-w-0 flex-1 items-center gap-1.5 px-2">
+                <a
+                  href={tabUrl(repo.repo!.full_name, t)}
+                  aria-current={on() ? "page" : undefined}
+                  class="relative flex h-6 min-w-0 flex-1 items-center gap-1.5 px-2"
+                  onKeyDown={(e) => (e.key === "Delete" || e.key === "Backspace") && (e.preventDefault(), close(t))}
+                >
                   <Show when={"path" in t && t.path === doc.opening}>
                     <span class="shrink-0 scale-75">
                       <Spinner />
@@ -371,7 +398,7 @@ function Tabs() {
                   <button
                     class={`relative mr-[3px] shrink-0 cursor-pointer rounded hover:bg-hover focus-visible:opacity-100 ${on() ? "" : "opacity-0 group-hover/tab:opacity-100"}`}
                     aria-label={`Close ${l().name}`}
-                    onClick={() => closeTab(t)}
+                    onClick={() => close(t)}
                   >
                     <CloseIcon />
                   </button>

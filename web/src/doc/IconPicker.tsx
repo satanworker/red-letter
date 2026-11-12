@@ -9,9 +9,15 @@ import { setIcon } from "./docStore.ts";
 
 export function IconPicker(props: { icon: string }) {
   const [open, setOpen] = createSignal(false);
+  let toggle!: HTMLButtonElement;
+  // closing (a pick, Esc, a click outside) puts focus back on the button: it was in the picker, which goes away
+  const close = () => {
+    setOpen(false);
+    toggle.focus();
+  };
   const pick = (icon: string) => {
     setIcon(icon);
-    setOpen(false);
+    close();
   };
   const mount = async (el: HTMLElement) => {
     const { Picker } = await import("emoji-picker-element");
@@ -25,8 +31,9 @@ export function IconPicker(props: { icon: string }) {
     // h-0: floats in the editor's top padding, over the title, without moving the text. Width and padding are
     // .cm-content's (684px, 30px + the line's 2px), so the label starts where the title's first letter does.
     <div class="relative z-[4] mx-auto h-0 max-w-[684px] px-8">
-      <div class="relative inline-block pt-12" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+      <div class="relative inline-block pt-12" onKeyDown={(e) => e.key === "Escape" && close()}>
         <button
+          ref={toggle}
           class={`${ghostBtn} -ml-1 h-6 ${open() ? "" : "opacity-0 group-hover/doc:opacity-100 focus-visible:opacity-100"}`}
           aria-expanded={open()}
           onClick={() => setOpen((v) => !v)}
@@ -34,7 +41,7 @@ export function IconPicker(props: { icon: string }) {
           {props.icon ? "Change icon" : "☺ Add icon"}
         </button>
         <Show when={open()}>
-          <div class="fixed inset-0" onClick={() => setOpen(false)} />
+          <div class="fixed inset-0" onClick={close} />
           <div role="dialog" aria-label="Doc icon" class="absolute top-full left-0 mt-1 overflow-hidden rounded-lg bg-card shadow-pop">
             <div ref={(el) => void mount(el)} />
             <Show when={props.icon}>

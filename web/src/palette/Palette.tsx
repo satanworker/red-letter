@@ -1,14 +1,13 @@
-// Notion-style Cmd/Ctrl+K palette: type to filter files and actions, Up/Down to move, Enter to run, Esc to close.
-// Focus returns to wherever it was when the palette opened.
+// Notion-style Cmd/Ctrl+K palette: type to filter files and every workspace command (commands.ts, keys shown), Up/Down
+// to move, Enter to run, Esc to close. Focus returns to wherever it was when the palette opened.
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { showTab, startComment } from "../doc/docStore.ts";
 import { blobUrl } from "../repo/repoService.ts";
-import { navigateTo, repo, showPanel, toggleFiles, togglePanel } from "../repo/repoStore.ts";
+import { navigateTo, repo } from "../repo/repoStore.ts";
 import { FileIcon, card } from "../ui.tsx";
-import { showView } from "../pulls/pullsStore.ts";
+import { commands, keyLabel } from "./commands.ts";
 import { closePalette, palette } from "./paletteStore.ts";
 
-type Item = { label: string; hint?: string; file?: boolean; run: () => void };
+type Item = { label: string; keys?: string; file?: boolean; run: () => unknown };
 
 // Every character of the query, in order (case-insensitive); earlier and tighter matches rank first.
 function score(label: string, q: string): number | null {
@@ -27,20 +26,10 @@ function score(label: string, q: string): number | null {
 export function Palette() {
   const [query, setQuery] = createSignal("");
   const [active, setActive] = createSignal(0);
-  const actions = (): Item[] => [
-    { label: "Comment on selection", hint: "⌘⌥M", run: startComment },
-    { label: "Show comments", run: () => (showTab("comments"), showPanel()) },
-    { label: "Show history", run: () => (showTab("history"), showPanel()) },
-    { label: "Show outline", run: () => (showTab("outline"), showPanel()) },
-    { label: "Show pull requests", run: () => showView("pulls") },
-    { label: repo.filesHidden ? "Show files" : "Hide files", run: toggleFiles },
-    { label: repo.panelHidden ? "Show comments panel" : "Hide comments panel", run: togglePanel },
-    { label: "Copy link to this file", run: () => void navigator.clipboard.writeText(location.href) },
-  ];
   const items = createMemo(() => {
     const q = query().trim().toLowerCase();
     const files: Item[] = repo.docs.map((p) => ({ label: p, file: true, run: () => navigateTo(blobUrl(repo.repo!.full_name, repo.branch, p)) }));
-    const all = [...actions(), ...files];
+    const all: Item[] = [...commands(), ...files];
     if (!q) return all;
     return all
       .map((it) => ({ it, s: score(it.label, q) }))
@@ -51,7 +40,7 @@ export function Palette() {
   const run = (it: Item | undefined) => {
     if (!it) return;
     closePalette();
-    it.run();
+    void it.run();
   };
   const keys = (e: KeyboardEvent) => {
     const n = items().length;
@@ -101,9 +90,7 @@ export function Palette() {
                   <FileIcon />
                 </Show>
                 <span class="flex-1 truncate">{it.label}</span>
-                <Show when={it.hint}>
-                  <span class="text-muted">{it.hint}</span>
-                </Show>
+                <Show when={it.keys}>{(k) => <kbd class="font-[inherit] text-muted">{keyLabel(k())}</kbd>}</Show>
               </li>
             )}
           </For>

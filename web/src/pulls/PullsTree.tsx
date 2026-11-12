@@ -2,11 +2,11 @@
 // number, state). A click opens the PR's description in a tab of its own (PrOverview) and unfolds it into the files it
 // changes as a folder tree with M / A / D / R, line counts and how many comments each file has, then the comments on
 // the PR itself. A markdown file opens on the PR's branch with the PR's changes against its base lit in the text
-// (review mode); other files link to GitHub.
+// (review mode); other files link to GitHub. Keyboard: Up/Down/Home/End move between the rows showing.
 import { For, Show, createEffect, createMemo } from "solid-js";
 import { isDoc, prHead, prMark, prTitle, type PrDoc, type RepoPr } from "../repo/pulls.ts";
 import { repo, reviewPullRequest, showPullRequest } from "../repo/repoStore.ts";
-import { ArrowDownIcon, ArrowUpIcon, Avatar, CommentIcon, FileIcon, FolderIcon, ago, badge } from "../ui.tsx";
+import { ArrowDownIcon, ArrowUpIcon, Avatar, CommentIcon, FileIcon, FolderIcon, ago, badge, listKeys } from "../ui.tsx";
 import { pulls, togglePr } from "./pullsStore.ts";
 
 // Figma sidebar rows, as the file tree's
@@ -23,7 +23,8 @@ const STATUS: Record<PrDoc["changeType"], [string, string]> = {
 
 export function PullsTree() {
   return (
-    <div class="min-h-0 flex-1 overflow-auto pt-1">
+    // rows: the PRs (role=button, holding the fold button), folders, files, comments
+    <div class="min-h-0 flex-1 overflow-auto pt-1" onKeyDown={(e) => listKeys(e, ':is([role="button"], summary, a, button):not([role="button"] *)')}>
       <Show when={pulls.error}>
         <p class="px-3 py-2 text-red [overflow-wrap:anywhere]">{pulls.error}</p>
       </Show>

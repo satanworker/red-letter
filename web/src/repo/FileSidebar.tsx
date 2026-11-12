@@ -1,10 +1,13 @@
 // Collapsible tree of the branch's markdown files; opening a file opens its folders, and nothing closes them but the reader.
 // Links are plain <a href>: main.tsx's navigate handler turns them into in-page file switches.
-// Keyboard: Tab reaches the rows, Up/Down move between visible rows, Enter opens a file or toggles a folder.
+// Keyboard: the list is one Tab stop (roving tabindex: the open file's row, then the last one focused). Up/Down/Home/End
+// move between shown rows; Right opens a folder, then enters it; Left closes it, or goes up to the row's folder; Enter
+// opens a file or toggles a folder; typing goes to the search box; Esc goes back to the doc. In the search box Down
+// goes to the first result and Enter opens it.
 import { For, Show, createEffect, createMemo, createSignal, onMount, untrack } from "solid-js";
 import { comments } from "../comments/commentsStore.ts";
 import { selectIcon } from "../doc/docSelectors.ts";
-import { doc, editorState, toggleChanges, updateDraft } from "../doc/docStore.ts";
+import { doc, editorState, focusEditor, toggleChanges, updateDraft } from "../doc/docStore.ts";
 import { ArrowDownIcon, ArrowUpIcon, Avatar, BranchIcon, FileIcon, FindIcon, FolderIcon, NewFileIcon, SearchIcon, badge, field, fine } from "../ui.tsx";
 import { togglePalette } from "../palette/paletteStore.ts";
 import { encPath } from "../github.ts";
@@ -22,15 +25,6 @@ const indent = (depth: number) => ({ "padding-left": `${8 + depth * 16}px` });
 const row =
   "mx-1 mb-[7px] flex h-[25px] cursor-pointer items-center gap-1 whitespace-nowrap rounded pr-3 hover:shadow-[inset_0_0_0_.5px_var(--line),var(--shadow)]";
 
-// Up/Down between the rows the tree shows (summaries and file links whose folders are open)
-function moveFocus(e: KeyboardEvent) {
-  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-  const rows = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>("summary, a")].filter((r) => r.offsetParent);
-  const i = rows.indexOf(document.activeElement as HTMLElement);
-  if (i < 0) return;
-  e.preventDefault();
-  rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]?.focus();
-}
 const byName = (a: string, b: string) => a.localeCompare(b);
 
 // The doc's emoji icon (the start of its first `# ` heading), else the file icon. The open doc's follows its text.
@@ -58,8 +52,57 @@ export function FileSidebar() {
   const matches = createMemo(() => selectMatches(repo.docs, query()));
   // the open file's folder, so "+" in docs/research/x.md suggests docs/research/
   const folder = () => repo.path.split("/").slice(0, -1).map((s) => `${s}/`).join("");
-  let nav!: HTMLDivElement;
+  let nav!: HTMLDivElement, lists: HTMLDivElement | undefined, search!: HTMLInputElement;
   onMount(() => nav.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "center" }));
+  // the list's one Tab stop: `to`, else the open file's row, else the first row of the list showing (tree or matches).
+  // The Files view mounts afresh each time it's picked: pulls.view brings the stop back.
+  const rove = (to?: EventTarget | null) => {
+    if (!lists?.isConnected) return;
+    const pool = [...lists.querySelectorAll<HTMLElement>(":scope > :not([hidden]) :is(summary, a)")];
+    const at = pool.find((r) => r === to) ?? pool.find((r) => r.ariaCurrent === "page") ?? pool[0];
+    for (const r of lists.querySelectorAll<HTMLElement>("summary, a")) r.tabIndex = r === at ? 0 : -1;
+  };
+  createEffect(() => (repo.path, tree(), matches(), pulls.view, rove()));
+  const rowKeys = (e: KeyboardEvent) => {
+    const row = e.target as HTMLElement;
+    if (!lists || !row.matches("summary, a") || e.ctrlKey || e.metaKey || e.altKey) return;
+    const shown = [...lists.querySelectorAll<HTMLElement>("summary, a")].filter((r) => r.checkVisibility()); // not in closed folders
+    const i = shown.indexOf(row);
+    const folder = row.tagName === "SUMMARY" ? (row.parentElement as HTMLDetailsElement) : null;
+    const up = (folder ?? row).parentElement?.closest("details")?.querySelector("summary");
+    const to =
+      e.key === "ArrowDown" ? shown[i + 1]
+      : e.key === "ArrowUp" ? shown[i - 1]
+      : e.key === "Home" ? shown[0]
+      : e.key === "End" ? shown.at(-1)
+      : e.key === "ArrowRight" && folder?.open ? shown[i + 1]
+      : e.key === "ArrowLeft" && !folder?.open ? up
+      : undefined;
+    if (to) {
+      e.preventDefault();
+      to.focus(); // focusin moves the Tab stop
+    } else if (folder && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+      e.preventDefault();
+      folder.open = e.key === "ArrowRight";
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      focusEditor();
+    } else if (e.key.length === 1 && e.key !== " ") search.focus(); // the key lands in the box
+  };
+  // Down: the list's Tab stop (the first match while searching); Enter opens the first match
+  const searchKeys = (e: KeyboardEvent & { currentTarget: HTMLInputElement }) => {
+    const stop = lists?.querySelector<HTMLElement>('[tabindex="0"]');
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (!e.currentTarget.value) return focusEditor();
+      e.currentTarget.value = "";
+      setQuery("");
+    } else if (stop?.checkVisibility() && (e.key === "ArrowDown" || (e.key === "Enter" && query().trim()))) {
+      e.preventDefault();
+      if (e.key === "Enter") stop.click();
+      else stop.focus();
+    }
+  };
   const submit = (e: SubmitEvent & { currentTarget: HTMLFormElement }) => {
     e.preventDefault();
     const err = createFile(new FormData(e.currentTarget).get("path")?.toString() ?? "");
@@ -120,12 +163,13 @@ export function FileSidebar() {
             <label class={`${field} flex min-w-0 flex-1 items-center gap-2`}>
               <SearchIcon />
               <input
+                ref={search}
                 type="search"
                 aria-label="Find a file"
                 placeholder="Find a file"
                 class="min-w-0 flex-1 bg-transparent outline-none placeholder:text-mark"
                 onInput={(e) => setQuery(e.currentTarget.value)}
-                onKeyDown={(e) => e.key === "Escape" && ((e.currentTarget.value = ""), setQuery(""))}
+                onKeyDown={searchKeys}
               />
             </label>
             <span class="text-muted">{repo.docs.length} docs</span>
@@ -145,10 +189,11 @@ export function FileSidebar() {
               <p class={`${fine} mb-0`}>{error() || "Enter to create · Esc to cancel"}</p>
             </form>
           </Show>
-          <div class="mt-1" hidden={!!query().trim()} onKeyDown={moveFocus}>
+          <div ref={lists} onKeyDown={rowKeys} onFocusIn={(e) => rove(e.target)}>
+          <div class="mt-1" hidden={!!query().trim()}>
             <DirView dir={tree()} prefix="" depth={0} />
           </div>
-          <div class="mt-1" hidden={!query().trim()} onKeyDown={moveFocus}>
+          <div class="mt-1" hidden={!query().trim()}>
             <Show when={matches().length} fallback={<p class="px-3 py-3 text-muted">No files match.</p>}>
               <For each={matches()}>
                 {(p) => (
@@ -159,6 +204,7 @@ export function FileSidebar() {
                 )}
               </For>
             </Show>
+          </div>
           </div>
           </Show>
         </div>

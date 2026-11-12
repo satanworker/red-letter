@@ -70,6 +70,22 @@ export function ago(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
 
+// Arrow keys in a list whose rows hold buttons or links (Up/Down, or Left/Right `across`; Home/End): focus moves to the
+// next of the container's shown `items` (itself, if focusable, else the first button or link in it). Keys typed in a
+// field are the field's.
+export function listKeys(e: KeyboardEvent, items: string, across = false) {
+  const [back, next] = across ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"];
+  if (![back, next, "Home", "End"].includes(e.key) || e.altKey || e.ctrlKey || e.metaKey || (e.target as Element).matches("input, textarea, select")) return;
+  // checkVisibility: rows in a closed <details> keep an offsetParent in Chrome (content-visibility: hidden)
+  const list = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>(items)].filter((el) => el.checkVisibility());
+  const i = list.findIndex((el) => el.contains(document.activeElement));
+  const to = e.key === "Home" ? list[0] : e.key === "End" ? list.at(-1) : list[i < 0 ? 0 : i + (e.key === next ? 1 : -1)];
+  const target = to?.matches("a, button, summary, [tabindex]") ? to : to?.querySelector<HTMLElement>("a, button");
+  if (!target) return;
+  e.preventDefault();
+  target.focus();
+}
+
 // Exported icons are dark fills drawn for a light background: inverted in dark mode. (Preflight makes <img> block.)
 const Img = (props: { src: string; w: number; h?: number; class?: string }) => (
   <img class={`shrink-0 dark:invert ${props.class ?? ""}`} src={props.src} width={props.w} height={props.h ?? props.w} alt="" />

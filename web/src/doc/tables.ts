@@ -420,10 +420,24 @@ function wire(wrap: HTMLElement, view: EditorView) {
     const el = cellOf(e.target);
     const t = tableNow();
     if (!el || !t) return;
-    // Undo/redo/save are the editor's (one history with the rest of the doc), not the cell's native undo.
-    if ((e.ctrlKey || e.metaKey) && /^[zys]$/i.test(e.key)) {
+    // Undo/redo are the editor's (one history with the rest of the doc), not the cell's native undo.
+    if ((e.ctrlKey || e.metaKey) && /^[zy]$/i.test(e.key)) {
       e.preventDefault();
       runScopeHandlers(view, e, "editor");
+      return;
+    }
+    // the row / column menu without a mouse: the context-menu key or Shift-F10, its first item focused
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault();
+      if (view.state.readOnly) return;
+      const box = el.getBoundingClientRect();
+      return menu(view, t, Number(el.dataset.r), Number(el.dataset.c), box.left, box.bottom, el);
+    }
+    // Alt-Enter opens the link at the caret, as in the rest of the doc
+    if (e.altKey && e.key === "Enter") {
+      const sel = getSelection(), href = linkAt(el.textContent ?? "", sel && el.contains(sel.focusNode) ? sel.focusOffset : 0);
+      e.preventDefault();
+      if (href && /^(https?:|mailto:)/i.test(href)) window.open(href, "_blank", "noopener");
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -491,7 +505,9 @@ function columns(view: EditorView, t: Table, edit: (texts: string[], r: number) 
   view.dispatch({ changes, userEvent: "input" });
 }
 
-function menu(view: EditorView, t: Table, r: number, c: number, x: number, y: number) {
+// The row / column menu at (x, y). Opened from the keyboard (`cell`: the cell it's for), its first item takes focus,
+// Up/Down/Home/End move, Esc or Tab away closes it and Esc puts the caret back in the cell.
+function menu(view: EditorView, t: Table, r: number, c: number, x: number, y: number, cell?: HTMLElement) {
   const width = t.rows[0]!.cells.length;
   const items: [string, boolean, () => void][] = [
     ["Insert row above", r > 1, () => addRow(view, t, r === 2 ? 0 : r - 1, c)],
@@ -513,26 +529,47 @@ function menu(view: EditorView, t: Table, r: number, c: number, x: number, y: nu
   box.className = "cm-lp-menu";
   box.style.left = `${x}px`;
   box.style.top = `${y}px`;
+  // once: removing the box with focus in it fires its focusout, which closes it too (a second remove throws)
+  let open = true;
   const close = () => {
-    box.remove();
+    if (!open) return;
+    open = false;
     removeEventListener("mousedown", outside, true);
     removeEventListener("keydown", onKey, true);
+    box.remove();
   };
   const outside = (e: MouseEvent) => !box.contains(e.target as Node) && close();
-  const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+  const buttons = () => [...box.querySelectorAll<HTMLButtonElement>("button:enabled")];
+  const onKey = (e: KeyboardEvent) => {
+    const inside = box.contains(document.activeElement), list = buttons(), i = list.indexOf(document.activeElement as HTMLButtonElement);
+    const to = { ArrowDown: list[i + 1] ?? list[0], ArrowUp: list[i - 1] ?? list.at(-1), Home: list[0], End: list.at(-1) }[e.key];
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation(); // the menu's, not the cell's (which leaves the table)
+      close();
+      if (inside) cell?.focus();
+    } else if (inside && to) {
+      e.preventDefault();
+      to.focus();
+    }
+  };
   for (const [label, enabled, run] of items) {
     const b = box.appendChild(document.createElement("button"));
     b.textContent = label;
     b.disabled = !enabled;
     b.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus in the cell
     b.addEventListener("click", () => {
+      const inside = box.contains(document.activeElement);
       close();
+      if (inside) cell?.focus(); // as after a mouse pick: the caret in the cell, then the edit moves it
       run();
     });
   }
+  box.addEventListener("focusout", (e) => !box.contains(e.relatedTarget as Node) && close());
   view.dom.appendChild(box);
   addEventListener("mousedown", outside, true);
   addEventListener("keydown", onKey, true);
+  if (cell) buttons()[0]?.focus();
 }
 
 // Block widgets can't come from a view plugin, so tables live in a state field (blocks.ts: a change rescans only the

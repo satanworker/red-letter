@@ -5,7 +5,7 @@ import { EditorView } from "@codemirror/view";
 import { batch } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { clearComments, commentViaPr, comments, commentsOnPr, loadComments, refreshComments, targetPr, writeOnPr } from "../comments/commentsStore.ts";
-import { withPrMark } from "../comments/commentsSelectors.ts";
+import { selectThreads, withPrMark } from "../comments/commentsSelectors.ts";
 import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, cachedGet, encPath, type User } from "../github.ts";
 import { blocked, low } from "../rate.ts";
@@ -13,7 +13,7 @@ import { NotInDiff, commentOnPr, deletePrComment, isReviewBranch, prState, reply
 import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 // repoStore imports this store too; each uses the other only inside functions
 import { ensurePullRequest } from "../repo/repoStore.ts";
-import { inCode } from "./commentMarks.ts";
+import { commentThreads, inCode } from "./commentMarks.ts";
 import { flash } from "./flash.ts";
 import { selectIcon, type Heading } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
@@ -76,7 +76,12 @@ let view: EditorView | undefined;
 // The editor's state (its text is the CRDT's): read after `version` ticks, which a new editor also does.
 export const editorState = () => view?.state;
 export const editorView = () => view;
+// Switching files with the caret in the doc (a tab shortcut, the palette) keeps the caret in the doc: the next editor
+// takes the focus the last one had.
+let hadFocus = false;
 export function setView(v: EditorView | undefined) {
+  if (!v) hadFocus = !!view?.hasFocus;
+  else if (hadFocus) v.focus();
   view = v;
   docChanged();
 }
@@ -169,7 +174,8 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
       // a review branch (comments only) shows no changes by itself: its diff from a base that moved on is the base's
       // drift, not the review; the Changes toggle is there if wanted
       .then((t) => state.session === session && set({ reviewBase: t.replaceAll("\r\n", "\n"), showChanges: !isReviewBranch(branch) }))
-      .catch((e: unknown) => state.session === session && set({ reviewBase: "", showChanges: true, draftNote: e instanceof HttpError && e.status === 404 ? `${path} is new in this pull request` : `Couldn't read ${rv.base}'s copy: ${String(e)}` }));
+      // a file new in the PR (404 on the base) shows all its text as added, nothing more; other failures say so
+      .catch((e: unknown) => state.session === session && set({ reviewBase: "", showChanges: true, draftNote: e instanceof HttpError && e.status === 404 ? "" : `Couldn't read ${rv.base}'s copy: ${String(e)}` }));
   } else if (rv) setReviewing(null);
   void navigator.storage?.persist?.(); // ask the browser not to evict this origin's copies under disk pressure
   session.synced.catch((e) => {
@@ -255,6 +261,40 @@ export const cancelComment = () => set("composing", null);
 export const showTab = (tab: Tab) => set({ tab, picked: true });
 export const openThread = (id: string) => set({ activeThread: id, tab: "comments", picked: true });
 export const closeThread = () => set("activeThread", "");
+
+// ⌘⌥2, Esc in a side list: back to the doc (none while a file is opening). A caret scrolled out of sight (an outline
+// jump, reading) comes to the first line in view, so typing doesn't jump back.
+export function focusEditor() {
+  const scroller = view?.dom.closest("#doc");
+  if (!view || !scroller) return;
+  const box = scroller.getBoundingClientRect(), at = view.coordsAtPos(view.state.selection.main.head);
+  if (!at || at.bottom < box.top || at.top > box.bottom) {
+    const pos = view.posAtCoords({ x: view.contentDOM.getBoundingClientRect().left + 40, y: box.top + 60 }, false);
+    view.dispatch({ selection: { anchor: view.state.doc.lineAt(pos).from } });
+  }
+  view.focus();
+}
+
+// The caret to the start of a comment's text (selected in its cell, in a table), its card lit: Esc from the card.
+export function goToThread(t: Thread) {
+  set({ activeThread: t.id, tab: "comments", picked: true });
+  if (!view || !t.range || selectInTable(view, t.range.from, t.range.to)) return;
+  view.dispatch({ selection: { anchor: t.range.from }, effects: EditorView.scrollIntoView(t.range.from, { y: "center" }) });
+  view.focus();
+}
+
+// ⌘⌥N / ⌘⌥P: the next / previous open comment after the lit one (else the caret), round the end of the doc.
+export function stepComment(dir: 1 | -1) {
+  const s = state.session;
+  if (!view || !s) return;
+  const open = selectThreads(commentThreads(view.state), s.doc.text, comments.text, comments.prThreads)
+    .filter((t) => !t.resolved && t.range && t.range.from < t.range.to)
+    .sort((a, b) => a.range!.from - b.range!.from);
+  if (!open.length) return;
+  const at = open.find((t) => t.id === state.activeThread)?.range!.from ?? view.state.selection.main.head;
+  const next = dir > 0 ? (open.find((t) => t.range!.from > at) ?? open[0]) : (open.findLast((t) => t.range!.from < at) ?? open.at(-1));
+  goToThread(next!);
+}
 export const hoverThread = (id: string) => set("hoveredThread", id);
 // Reading mode: the markdown rendered and the doc read-only; comments still work.
 export const isReading = () => !state.session?.canWrite || state.reading;

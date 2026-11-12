@@ -9,7 +9,8 @@ import { comments } from "./comments/commentsStore.ts";
 import { doc, editorView, leavingWithUnsaved, tick } from "./doc/docStore.ts";
 import { showFigmaFixture } from "./dev/figma.tsx";
 import { openInBackground, openRoute, repo } from "./repo/repoStore.ts";
-import { togglePalette } from "./palette/paletteStore.ts";
+import { palette, togglePalette } from "./palette/paletteStore.ts";
+import { keysOf, runKeys } from "./palette/commands.ts";
 import { rate } from "./rate.ts";
 
 await initializeWasm(wasmUrl);
@@ -37,13 +38,17 @@ else if (location.pathname === "/__stress") void import("./dev/stress.ts").then(
 else void openRoute(new URL(location.href));
 
 addEventListener("focus", () => tick());
-// Cmd/Ctrl+K: the palette (also from inside the editor, which would otherwise take the key)
+// The workspace's keys (palette/commands.ts), from anywhere: captured before the editor, which would otherwise take
+// them. While the palette is open only ⌘K (closing it) is global; its other keys are its own.
 addEventListener(
   "keydown",
   (e) => {
-    if (e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || repo.screen !== "workspace") return;
+    if (repo.screen !== "workspace" || !(e.ctrlKey || e.metaKey || e.altKey || e.key === "F6")) return; // typing: none of ours
+    const keys = keysOf(e);
+    if (keys === "Mod-k") togglePalette();
+    else if (palette.open || !runKeys(keys)) return;
     e.preventDefault();
-    togglePalette();
+    e.stopPropagation();
   },
   { capture: true },
 );

@@ -9,4 +9,4 @@
    
    Plus fix the position. Now it's flying. 
    
-   4. 
+   4. When you hover the file or the

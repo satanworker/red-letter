@@ -9,4 +9,4 @@
    
    Plus fix the position. Now it's flying. 
    
-   4. When you hover the file or the folder the three dots appear. Then you push it there is 
+   4. When you hover the file or the folder the three dots appear in the right side of the frame. Then you push it there is pop-up window with buttons "delete page", ""

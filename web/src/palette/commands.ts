@@ -44,9 +44,10 @@ function focusFiles() {
   (shown(row) ? row : document.querySelector<HTMLElement>("#files input"))?.focus();
 }
 
-// ⌘⇧E, VS Code's Explorer: the Files view (not Pull requests) with the open file's row focused, for the tree's keys.
-// Picking the view mounts the tree afresh: its rows are there the frame after.
+// ⌘⇧E, VS Code's Explorer: the Files view (not Pull requests) with the open file's row focused, for the tree's keys;
+// pressed again in the sidebar, back to the doc. Picking the view mounts the tree afresh: its rows are there the frame after.
 function focusFileTree() {
+  if (document.querySelector("#files")?.contains(document.activeElement)) return focusEditor();
   showFiles();
   showView("files");
   requestAnimationFrame(() => document.querySelector<HTMLElement>('#files [tabindex="0"]')?.focus());
@@ -95,7 +96,7 @@ export const commands = (): Command[] => [
   { label: "Next comment", keys: "Mod-Alt-n", run: () => (showPanel(), stepComment(1)) },
   { label: "Previous comment", keys: "Mod-Alt-p", run: () => (showPanel(), stepComment(-1)) },
   { label: "Go to files", keys: "Mod-Alt-1", run: focusFiles },
-  { label: "Show the file tree", keys: "Mod-Shift-e", run: focusFileTree },
+  { label: "File tree / back to the doc", keys: "Mod-Shift-e", run: focusFileTree },
   { label: "Go to the doc", keys: "Mod-Alt-2", run: focusEditor },
   { label: "Go to the side panel", keys: "Mod-Alt-3", run: focusPanel },
   { label: "Next area", keys: "F6", run: () => cycleArea(1) },

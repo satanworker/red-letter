@@ -66,9 +66,11 @@ const theme = EditorView.theme({
   // List items keep their raw marker ("- ", "1. ", "- [ ] "), in the text colour (Figma 140:2782 "Mark down"
   // columns). The font is monospace, so the indent is the marker's length in ch: wrapped lines hang under the item's
   // text, as do continuation lines indented to it.
-  // Figma 140:2782: a list's items on consecutive 18px lines (bullet and task lists; numbered ones too, which the
-  // guideline draws at 16px but then sit cramped beside them)
+  // Figma 140:2782: a list's items on 18px lines (bullet and task lists; numbered ones too, which the guideline draws
+  // at 16px but then sit cramped beside them). The guideline puts items on consecutive lines; items that wrap then
+  // run together into one block, so each item after the first starts 6px lower.
   ".cm-lp-li": { paddingLeft: "calc(var(--lp-in) + 2px) !important", textIndent: "calc(-1 * var(--lp-in))", lineHeight: "18px" },
+  ".cm-lp-li-next": { paddingTop: "6px" },
   ".cm-lp-taskmark": { cursor: "pointer" },
   // Figma 140:2943: a 2px Shadows bar, 12px gap, muted text, 4px above and below the quote
   ".cm-lp-quote": { borderLeft: "2px solid var(--muted)", paddingLeft: "12px !important", color: "var(--muted)" },
@@ -201,13 +203,14 @@ function build(view: EditorView): DecorationSet {
     }
     const style = `--lp-in:${width}`;
     const indent = Decoration.line({ class: "cm-lp-li", attributes: { style } });
-    const indentLine = (from: number) => {
+    const indentLine = (from: number, deco = indent) => {
       if (from < vfrom || from > vto || listed.has(from)) return;
       listed.add(from);
-      out.push(indent.range(from));
+      out.push(deco.range(from));
       tall(from);
     };
-    indentLine(first.from);
+    // an item after another of the same list starts lower: the gap between items
+    indentLine(first.from, item.prevSibling?.name === "ListItem" ? Decoration.line({ class: "cm-lp-li cm-lp-li-next", attributes: { style } }) : indent);
     for (let c = item.firstChild; c; c = c.nextSibling) {
       if (c.name !== "Paragraph" && c.name !== "Task") continue;
       for (let l = doc.lineAt(c.from).number; l <= doc.lineAt(c.to).number; l++) indentLine(doc.line(l).from);

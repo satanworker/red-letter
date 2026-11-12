@@ -2,6 +2,10 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-12: Space between list items
+
+- **List items sit 6 px apart** instead of on consecutive lines: long items that wrap no longer run together into one block. The gap is `.cm-lp-li-next` in `livePreview.ts`.
+
 ## 2026-11-12: The comments toggle filters
 
 - **"On the pull request" / "In the file" now picks which comments show**, in the panel, its count and the highlights in the text (⌘⌥N / P too), not only where new ones go. Without edit rights it's the PR's; with no PR and no edit rights, every thread shows.
@@ -14,7 +18,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **Comments without a mouse:** ⌘⌥3 lands on the lit comment's card, Esc on a card puts the caret at its text, closing a reply returns to Reply, and resolving, reopening or deleting hands focus to the next card.
 - **Focus never falls to the page** after closing a tab, settling a conflict, closing the emoji picker or a table menu, or switching files with the caret in the doc. History rows no longer rebuild on every edit.
 - **In the editor:** Alt+Enter opens the link at the caret (in table cells too); Shift+F10 or the context-menu key opens a cell's row / column menu. The save error's message opens on click.
-- **⌘⇧E / Ctrl+Shift+E focuses the file tree** (VS Code's Explorer): the Files view, on the open file's row; arrows walk it, Enter opens a file and focus stays in the tree. Opening a file used to drop focus to the page (the Navigation API's default focus reset).
+- **⌘⇧E / Ctrl+Shift+E focuses the file tree** (VS Code's Explorer): the Files view, on the open file's row; arrows walk it, Enter opens a file and focus stays in the tree; pressed again in the sidebar, it goes back to the doc. Opening a file used to drop focus to the page (the Navigation API's default focus reset).
 - Ported from a worktree left uncommitted on 2026-11-09, onto the tabs, PR tree and sidebar that landed since.
 
 ## 2026-11-12: One branch, tabs that open at once

@@ -21,7 +21,9 @@ render(() => <App />, document.getElementById("app")!);
 window.navigation?.addEventListener("navigate", (e) => {
   const url = new URL(e.destination.url);
   if (!e.canIntercept || e.hashChange || e.downloadRequest !== null || url.pathname === "/auth/callback") return;
-  e.intercept({ handler: () => openRoute(url) });
+  // focusReset manual: the browser's default puts focus on <body> once the file has opened, out of the file tree a
+  // keyboard user opened it from (or the doc, switching tabs by key: setView hands focus to the next editor)
+  e.intercept({ handler: () => openRoute(url), focusReset: "manual" });
 });
 // ⌘/Ctrl+click on a link into a repo: a background tab here, not a new browser tab. A plain click opens its tab.
 addEventListener("click", (e) => {

@@ -20,7 +20,7 @@ render(() => <App />, document.getElementById("app")!);
 window.navigation?.addEventListener("navigate", (e) => {
   const url = new URL(e.destination.url);
   if (!e.canIntercept || e.hashChange || e.downloadRequest !== null || url.pathname === "/auth/callback") return;
-  e.intercept({ handler: () => openRoute(url, (e.info as { replace?: boolean } | undefined)?.replace === true) });
+  e.intercept({ handler: () => openRoute(url) });
 });
 // ⌘/Ctrl+click on a link into a repo: a background tab here, not a new browser tab. A plain click opens its tab.
 addEventListener("click", (e) => {

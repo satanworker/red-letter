@@ -5,14 +5,13 @@ import { CommentsPanel } from "../comments/CommentsPanel.tsx";
 import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments, targetPr } from "../comments/commentsStore.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
-import { blobUrl } from "../repo/repoService.ts";
-import { activeTab, closeTab, navigateTo, repo, sameTab, tabUrl, toggleFiles, togglePanel, type Tab } from "../repo/repoStore.ts";
+import { activeTab, closeTab, repo, sameTab, tabUrl, toggleFiles, togglePanel, type Tab } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
 import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine } from "../ui.tsx";
 import { PrOverview } from "../pulls/PrOverview.tsx";
 import { pulls } from "../pulls/pullsStore.ts";
-import { isReviewBranch, prTitle } from "../repo/pulls.ts";
+import { prTitle } from "../repo/pulls.ts";
 import { rate, resetTime } from "../rate.ts";
 import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
@@ -21,11 +20,10 @@ import { IconPicker } from "./IconPicker.tsx";
 import { Outline } from "./Outline.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab, selectTextChanges, selectWords } from "./docSelectors.ts";
 import { commentThreads } from "./commentMarks.ts";
-import { doc, editorState, isReading, showFavicon, showTab, toggleChanges, toggleReading, updateDraft } from "./docStore.ts";
+import { doc, editorState, isReading, showFavicon, showTab, toggleReading } from "./docStore.ts";
 
 export function EditorScreen() {
   const full = () => repo.repo!.full_name;
-  const canWrite = () => repo.repo?.permissions?.push === true;
   const threads = createMemo(() => {
     doc.version;
     const state = editorState();
@@ -36,10 +34,6 @@ export function EditorScreen() {
     return doc.session ? selectMarks(doc.session) : [];
   });
   const history = createMemo(() => selectHistory(doc.history, marks()));
-  const draft = createMemo(() => {
-    doc.version;
-    return doc.session?.doc.base;
-  });
   const changes = createMemo(() => {
     doc.version;
     const s = doc.session;
@@ -61,18 +55,6 @@ export function EditorScreen() {
   });
   createEffect(() => showFavicon(icon()));
   onCleanup(() => showFavicon(""));
-  // every branch of the repo but Red Letter's own (red-letter/comments/…, red-letter/review/…: hashed names nobody
-  // picks), unless it's the one open: this one first, then its base, the default branch, yours, the rest alphabetically
-  const branches = () => {
-    const login = `${repo.user?.login}/`;
-    const rest = repo.branches.filter((b) => !b.startsWith("red-letter/")).sort((a, b) => Number(b.startsWith(login)) - Number(a.startsWith(login)) || a.localeCompare(b));
-    return [...new Set([repo.branch, draft()?.branch ?? "", repo.repo?.default_branch ?? "", ...rest])].filter(Boolean);
-  };
-  const pickBranch = (sel: HTMLSelectElement) => {
-    const branch = sel.value;
-    sel.value = repo.branch; // the route decides which branch shows
-    navigateTo(blobUrl(full(), branch, repo.path), true); // the same doc on another branch: in its tab
-  };
   const openCount = () => threads().filter((t) => !t.resolved).length;
   const tab = () => selectTab(doc, openCount(), marks().length);
   // other people on this file; your own other tabs count for saving (Session.close) but aren't shown
@@ -165,7 +147,7 @@ export function EditorScreen() {
             <SidebarIcon closed={repo.filesHidden} />
           </button>
         </span>
-        {/* the branch, its state and the pull requests moved to the doc's bottom-right corner and the panel */}
+        {/* the branch moved to the file sidebar's foot (VS Code's status bar), the pull requests to its tab */}
         <span class="min-w-0 flex-1" />
         {/* at least the panel's 320px; a long status (offline, error, the rate limit) widens it leftwards instead of pushing "…" off-screen */}
         <div class="flex min-w-80 shrink-0 items-start px-3">
@@ -252,8 +234,9 @@ export function EditorScreen() {
           </Show>
           {/* hidden, not unmounted, under a PR's tab: CodeMirror and the doc's scroll stay as they were */}
           <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg" hidden={!!repo.pull}>
+            {/* a file being opened shows its spinner at once, not the file it replaces */}
             <Show
-              when={doc.session}
+              when={!doc.opening && doc.session}
               keyed
               fallback={
                 <Show
@@ -284,55 +267,11 @@ export function EditorScreen() {
                     <IconPicker icon={icon()} />
                   </Show>
                   <Editor session={s} marks={marks} changes={changes} threads={threads} />
-                  {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls. Left to right: the branch
-                      (a picker), what's special about it (read-only, protected, Changes / Update from its base), the
-                      local changes (Saved · sha / Edited / Saving…, offline, error), then the pencil that switches
-                      editing and reading (faded; read-only docs stay in reading) and the word count. */}
+                  {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls: the pencil that switches
+                      editing and reading (faded; read-only docs stay in reading) and the word count. The branch and
+                      its state are at the file sidebar's foot. */}
                   <div class="sticky bottom-0 z-[5] h-0">
                     <p class="absolute right-0 bottom-0 flex h-6 max-w-full items-center gap-2.5 rounded-tl-xl border-t-[.4px] border-l-[.4px] border-rule bg-card px-3 font-light whitespace-nowrap text-muted">
-                      <label class="inline-flex min-w-0 items-center gap-1 text-fg" title="Switch branch">
-                        <BranchIcon />
-                        <select class="max-w-[220px] cursor-pointer truncate bg-transparent font-normal [field-sizing:content]" onChange={(e) => pickBranch(e.currentTarget)}>
-                          <For each={branches()}>
-                            {(b) => (
-                              <option value={b} selected={b === repo.branch}>
-                                {isReviewBranch(b) ? "review" : b}
-                              </option>
-                            )}
-                          </For>
-                        </select>
-                      </label>
-                      <Show when={!canWrite()}>
-                        <span class={`${badge} px-1.5`}>read-only</span>
-                      </Show>
-                      <Show when={comments.viaPr}>
-                        <span class={`${badge} px-1.5`} title={`${repo.branch} is protected: no edits here; comments go through a pull request`}>
-                          protected
-                        </span>
-                      </Show>
-                      {/* the branch's changes: against its recorded base, or, reviewing a PR, against the PR's base */}
-                      <Show when={draft()?.branch ?? (doc.reviewBase !== null && pulls.reviewing?.base)}>
-                        {(base) => (
-                          <button
-                            class={`${badge} cursor-pointer px-1.5 hover:text-fg ${doc.showChanges ? "bg-on text-fg" : ""}`}
-                            aria-pressed={doc.showChanges}
-                            title={`Highlight what this branch changed from ${base()}`}
-                            onClick={toggleChanges}
-                          >
-                            Changes
-                          </button>
-                        )}
-                      </Show>
-                      <Show when={draft()}>
-                        {(b) => (
-                          <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
-                            <button class={`${badge} cursor-pointer px-1.5 hover:text-fg disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} title={`${b().branch} has new edits: merge them into this branch`} onClick={() => void updateDraft()}>
-                              Update from {b().branch}
-                            </button>
-                          </Show>
-                        )}
-                      </Show>
-                      <span class="h-3 w-px bg-rule" />
                       <button
                         class={`cursor-pointer rounded hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent ${isReading() ? "opacity-40" : ""}`}
                         disabled={!s.canWrite}
@@ -381,9 +320,9 @@ export function EditorScreen() {
   );
 }
 
-// Figma 140:2830: the open tabs over the doc: files on any branch (the branch named after the file when it isn't the
-// default one) and pull requests' descriptions. The open one is the page's white, 3px wider on each side and running
-// into the doc; a hovered one is a grey pill; a 1px rule parts two tabs unless either is open or hovered.
+// Figma 140:2830: the open tabs over the doc: files (all on the workspace's branch) and pull requests' descriptions.
+// The open one is the page's white, 3px wider on each side and running into the doc; a hovered one is a grey pill; a
+// 1px rule parts two tabs unless either is open or hovered. A file still opening shows a spinner.
 // Like Chrome's and Obsidian's, tabs are up to 200px and shrink to share the strip; only past their 56px minimum do
 // they scroll sideways, without a scrollbar (trackpad, wheel; the open tab scrolls into view). "+" stays in sight.
 function Tabs() {
@@ -395,10 +334,9 @@ function Tabs() {
   const label = (t: Tab) => {
     if ("pull" in t) {
       const p = pulls.list.find((x) => x.number === t.pull);
-      return { name: `#${t.pull}${p ? ` ${prTitle(p)}` : ""}`, branch: "", title: p ? `#${t.pull} ${p.title}` : `Pull request #${t.pull}` };
+      return { name: `#${t.pull}${p ? ` ${prTitle(p)}` : ""}`, title: p ? `#${t.pull} ${p.title}` : `Pull request #${t.pull}` };
     }
-    const branch = t.branch === repo.repo?.default_branch ? "" : isReviewBranch(t.branch) ? "review" : t.branch;
-    return { name: t.path.split("/").pop()!, branch, title: `${t.path} on ${t.branch}` };
+    return { name: t.path.split("/").pop()!, title: t.path };
   };
   return (
     <div class="flex h-[35px] shrink-0 items-center bg-side">
@@ -422,11 +360,12 @@ function Tabs() {
                   class={`pointer-events-none absolute ${on() ? "-inset-x-[3px] top-[3px] bottom-0 rounded-t-lg bg-bg" : "inset-x-0 top-1/2 h-[26px] -translate-y-1/2 rounded-lg group-hover/tab:bg-rule"}`}
                 />
                 <a href={tabUrl(repo.repo!.full_name, t)} aria-current={on() ? "page" : undefined} class="relative flex h-6 min-w-0 flex-1 items-center gap-1.5 px-2">
-                  <span class="max-w-full shrink-0 truncate">{l().name}</span>
-                  <Show when={l().branch}>
-                    {/* gives way first: the file name stays readable as long as it fits the tab */}
-                    <span class="min-w-0 shrink-[100] truncate text-[11px] text-muted">{l().branch}</span>
+                  <Show when={"path" in t && t.path === doc.opening}>
+                    <span class="shrink-0 scale-75">
+                      <Spinner />
+                    </span>
                   </Show>
+                  <span class="max-w-full truncate">{l().name}</span>
                 </a>
                 <Show when={repo.tabs.length > 1}>
                   <button

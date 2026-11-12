@@ -149,6 +149,7 @@ export class Session {
   #removed = false; // deleted or moved away: nothing more goes to IndexedDB or git
   #localTimer: number | undefined;
   readonly #key: string;
+  #ready: Promise<void> = Promise.resolve(); // what a save needs that opening didn't wait for: EOL style, a first opener's snapshot ref
 
   constructor(
     readonly repoName: string,
@@ -222,36 +223,51 @@ export class Session {
       this.synced = this.#catchUp();
       return;
     }
-    this.#crdtHead = await this.#crdtRefSha();
+    // the branch head is asked for alongside: a first opener builds on it, and the poll after loading reuses the answer
+    const [crdtHead, head] = await Promise.all([this.#crdtRefSha(), headOf(this.repoName, this.branch)]);
+    this.#crdtHead = crdtHead;
+    let eol = Promise.resolve();
     if (this.#crdtHead !== ZERO) {
       const snap = await readSnapshot(this.repoName, this.#crdtHead);
       this.handle = this.#repo.import<RLDoc>(snap.bytes, { docId: snap.meta.docId as DocumentId });
-      await this.#file(snap.meta.commit).catch(() => {}); // learn the file's EOL style
+      eol = this.#file(snap.meta.commit).then(() => {}, () => {}); // learns the file's EOL style before a save
       this.log("loaded snapshot", this.#crdtHead.slice(0, 7), "at", snap.meta.commit.slice(0, 7));
     } else {
-      // First opener ever: init from the file at branch head, then claim the snapshot ref. Git is the lock.
-      const head = await headOf(this.repoName, this.branch);
+      // First opener ever: init from the file at branch head, then claim the snapshot ref (claim()).
       this.handle = this.#repo.create<RLDoc>({ text: await this.#file(head) });
       const heads = A.getHeads(this.doc);
       this.handle.change((d) => {
         d.git = { commit: head, heads };
         if (draftOf) d.base = { branch: draftOf, commit: head, heads, inGit: head };
       });
-      if (this.canWrite) {
-        const snap = await this.#snapshotCommit(head, heads);
-        const res = await gh(`/repos/${this.repoName}/git/refs`, { method: "POST", body: JSON.stringify({ ref: this.#crdtRef, sha: snap }) });
-        if (res.status === 422) {
-          this.log("another tab created this doc first; loading theirs");
-          this.#crdtHead = await this.#crdtRefSha(true);
-          const theirs = await readSnapshot(this.repoName, this.#crdtHead);
-          this.handle = this.#repo.import<RLDoc>(theirs.bytes, { docId: theirs.meta.docId as DocumentId });
-        } else if (!res.ok) throw new HttpError(res.status, `claim snapshot ref: ${res.status} ${await res.text()}`);
-        else this.#crdtHead = snap;
-      }
     }
     this.#watch();
     this.#flushLocal();
-    this.synced = this.poll();
+    const claim = this.#crdtHead === ZERO && this.canWrite ? this.#claim(this.doc.git!.commit, this.doc.git!.heads) : Promise.resolve();
+    this.#ready = Promise.all([eol, claim.catch(() => {})]).then(() => {});
+    this.synced = claim.then(() => this.poll());
+  }
+
+  // The first opener's snapshot: four calls (~2 s), made while the doc already shows; saves wait for it (#ready).
+  // Git is the lock: when another tab claimed the ref first, this copy is dropped and the file reopens on theirs
+  // (DocReset; anything typed meanwhile is lost, a race of two first openers within those seconds).
+  async #claim(head: string, heads: string[]) {
+    try {
+      const snap = await this.#snapshotCommit(head, heads);
+      const res = await gh(`/repos/${this.repoName}/git/refs`, { method: "POST", body: JSON.stringify({ ref: this.#crdtRef, sha: snap }) });
+      if (res.status === 422) {
+        this.#removed = true;
+        await idbDelete("docs", this.#key);
+        throw new DocReset(`another tab created ${this.path} first; loading theirs`);
+      }
+      if (!res.ok) throw new HttpError(res.status, `claim snapshot ref: ${res.status} ${await res.text()}`);
+      this.#crdtHead = snap;
+      this.#flushLocal();
+    } catch (e) {
+      if (e instanceof DocReset) throw e;
+      this.status.error = errText(e);
+      this.onStatus();
+    }
   }
 
   async #create(text: string) {
@@ -529,6 +545,7 @@ export class Session {
     this.status.saving = true;
     this.onStatus();
     try {
+      await this.#ready;
       await this.poll(true); // build on the newest head
       const d = this.doc;
       const heads = A.getHeads(d);

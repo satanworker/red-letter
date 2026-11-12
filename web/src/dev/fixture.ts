@@ -41,7 +41,7 @@ export function showFixture(f: Fixture): Session {
     branch: "demo",
     docs: f.docs,
     path: f.path,
-    tabs: [{ branch: "demo", path: f.path }],
+    tabs: [{ path: f.path }],
     filesHidden: false,
     panelHidden: false,
   });

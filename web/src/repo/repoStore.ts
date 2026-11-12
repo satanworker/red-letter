@@ -21,7 +21,7 @@ type RepoState = {
   docs: string[];
   path: string; // the open file (kept, hidden, under a pull request's tab)
   pull: number; // the pull request whose description is the open tab, else 0
-  tabs: Tab[]; // the repo's open tabs, any branch, in order; the route's is always one of them
+  tabs: Tab[]; // the repo's open tabs, in order, all on `branch`; the route's is always one of them
   branches: string[]; // every branch of the repo, for the picker
   filesHidden: boolean;
   panelHidden: boolean; // the comments / history panel
@@ -74,19 +74,19 @@ export function loadCollaborators() {
 }
 
 // Without the Navigation API (older browsers) this is a page load, which works too.
-// replace: the route takes the open tab's place instead of a tab of its own (the same doc on another branch).
-export function navigateTo(path: string, replace = false) {
-  if (window.navigation) void window.navigation.navigate(path, { info: { replace } });
+export function navigateTo(path: string) {
+  if (window.navigation) void window.navigation.navigate(path);
   else location.assign(path);
 }
 
-// A tab is a file on a branch or a pull request's description; tabs are per repo, any branch, kept across reloads.
-// Opening one that has a tab goes to it; otherwise it gets a new tab right after the open one.
-export type Tab = { branch: string; path: string } | { pull: number };
-export const tabUrl = (full: string, t: Tab) => ("pull" in t ? pullUrl(full, t.pull) : blobUrl(full, t.branch, t.path));
+// A tab is a file or a pull request's description. Every file tab is on the workspace's branch (VS Code's checkout):
+// switching branch switches them all, so two tabs never show one file from two branches. Per repo, kept across
+// reloads. Opening one that has a tab goes to it; otherwise it gets a new tab right after the open one.
+export type Tab = { path: string } | { pull: number };
+export const tabUrl = (full: string, t: Tab) => ("pull" in t ? pullUrl(full, t.pull) : blobUrl(full, state.branch, t.path));
 export const pullUrl = (full: string, n: number) => `/${full}/pull/${n}`;
-export const sameTab = (a: Tab, b: Tab) => ("pull" in a ? "pull" in b && a.pull === b.pull : !("pull" in b) && a.branch === b.branch && a.path === b.path);
-export const activeTab = (): Tab => (state.pull ? { pull: state.pull } : { branch: state.branch, path: state.path });
+export const sameTab = (a: Tab, b: Tab) => ("pull" in a ? "pull" in b && a.pull === b.pull : !("pull" in b) && a.path === b.path);
+export const activeTab = (): Tab => (state.pull ? { pull: state.pull } : { path: state.path });
 const tabsKey = (full: string) => `rl_tabs2:${full}`;
 function setTabs(tabs: Tab[]) {
   const seen = new Set<string>();
@@ -94,11 +94,11 @@ function setTabs(tabs: Tab[]) {
   set("tabs", tabs);
   localStorage.setItem(tabsKey(state.repo!.full_name), JSON.stringify(tabs));
 }
-// `t` among the tabs: where it is, or right after `from` (replacing it with `replace`), or last
-function withTab(tabs: Tab[], t: Tab, from: Tab | null, replace: boolean): Tab[] {
+// `t` among the tabs: where it is, or right after `from`, or last
+function withTab(tabs: Tab[], t: Tab, from: Tab | null): Tab[] {
   if (tabs.some((x) => sameTab(x, t))) return tabs;
   const at = from ? tabs.findIndex((x) => sameTab(x, from)) : -1;
-  return at < 0 ? [...tabs, t] : replace ? tabs.with(at, t) : tabs.toSpliced(at + 1, 0, t);
+  return at < 0 ? [...tabs, t] : tabs.toSpliced(at + 1, 0, t);
 }
 
 // ⌘/Ctrl+click, as in Chrome: a file of this branch or a pull request gets a tab right after the open one and stays
@@ -108,9 +108,9 @@ export function openInBackground(pathname: string) {
   const prefix = blobUrl(full, state.branch, "");
   const path = pathname.startsWith(prefix) ? decodeURIComponent(pathname.slice(prefix.length)) : "";
   const pull = Number(pathname.match(new RegExp(`^/${full}/pull/(\\d+)$`, "i"))?.[1] ?? 0);
-  if (pull) return setTabs(withTab(state.tabs, { pull }, activeTab(), false));
+  if (pull) return setTabs(withTab(state.tabs, { pull }, activeTab()));
   if (!state.docs.includes(path)) return navigateTo(pathname);
-  setTabs(withTab(state.tabs, { branch: state.branch, path }, activeTab(), false));
+  setTabs(withTab(state.tabs, { path }, activeTab()));
 }
 
 // Closing the open tab opens its right neighbour, else its left one. The last tab stays: the route always names one.
@@ -176,14 +176,14 @@ export async function moveFile(input: string) {
   if (state.docs.includes(p.path)) return noteDraft(`${p.path} already exists`);
   if (!(await removeFile(s, `Moving to ${p.path}…`, p.path))) return;
   set("docs", state.docs.map((d) => (d === s.path ? p.path : d)));
-  setTabs(state.tabs.map((t) => (sameTab(t, { branch: state.branch, path: s.path }) ? { branch: state.branch, path: p.path } : t)));
+  setTabs(state.tabs.map((t) => (sameTab(t, { path: s.path }) ? { path: p.path } : t)));
   navigateTo(blobUrl(state.repo.full_name, state.branch, p.path));
 }
 
 export async function deleteFile() {
   const s = doc.session;
   if (!s || !state.repo || !(await removeFile(s, `Deleting ${s.path}…`))) return;
-  const gone = { branch: state.branch, path: s.path };
+  const gone = { path: s.path };
   const i = state.tabs.findIndex((t) => sameTab(t, gone));
   const tabs = state.tabs.filter((t) => !sameTab(t, gone));
   set("docs", state.docs.filter((d) => d !== s.path));
@@ -231,7 +231,7 @@ export async function forkBranch(name: string) {
   }
   drafting.set(branch, state.branch);
   set("branches", [...new Set([...state.branches, branch])]);
-  navigateTo(blobUrl(state.repo.full_name, branch, state.path), true); // the doc moves to the branch: same tab
+  navigateTo(blobUrl(state.repo.full_name, branch, state.path)); // the workspace moves to the branch
 }
 
 // A pull request from this branch into its base (the default branch when none was recorded); the bar then shows it.
@@ -309,15 +309,10 @@ export async function mergePullRequest() {
     return true;
   });
   if (!merged) return;
-  retireBranch(state.branch, pr.base, pr.number);
+  setTabs(state.tabs.filter((t) => !sameTab(t, { pull: pr.number })));
   void listBranches(full, true).then((bs) => set("branches", bs), () => {});
   void refreshPulls(true);
   navigateTo(blobUrl(full, pr.base, state.path));
-}
-
-// A merged or closed branch's tabs: the open file's moves to the base, the others close, and so does the PR's tab
-function retireBranch(branch: string, base: string, pull: number) {
-  setTabs(state.tabs.flatMap((t): Tab[] => ("pull" in t ? (t.pull === pull ? [] : [t]) : t.branch !== branch ? [t] : t.path === state.path ? [{ branch: base, path: t.path }] : [])));
 }
 
 // Review a PR: its doc on its branch (this doc if the PR changes it, else the first markdown file it changes), with
@@ -362,7 +357,7 @@ export async function closePullRequest(pr: { number: number; head: string; base:
   void refreshComments();
   if (pr.head === state.branch) {
     endReview();
-    retireBranch(state.branch, pr.base, pr.number);
+    setTabs(state.tabs.filter((t) => !sameTab(t, { pull: pr.number })));
     navigateTo(blobUrl(full, pr.base, state.path));
   } else if (state.pull === pr.number) closeTab({ pull: pr.number });
   else setTabs(state.tabs.filter((t) => !sameTab(t, { pull: pr.number })));
@@ -370,23 +365,19 @@ export async function closePullRequest(pr: { number: number; head: string; base:
 
 let current = 0;
 
-// The repo's saved tabs; files of `branch` that are gone are dropped (other branches': when the branch list comes).
-function savedTabs(full: string, branch: string, docs: string[]): Tab[] {
+// The repo's saved tabs, those `docs` (the branch's files) has. Tabs saved before 2026-11-12 also named a branch: ignored.
+function savedTabs(full: string, docs: string[]): Tab[] {
   const saved: Tab[] = JSON.parse(localStorage.getItem(tabsKey(full)) ?? "[]");
-  return saved.filter((t) => "pull" in t || t.branch !== branch || docs.includes(t.path));
+  return saved.map((t) => ("pull" in t ? t : { path: t.path })).filter((t) => "pull" in t || docs.includes(t.path));
 }
-// The branch list, for the picker; tabs on branches that are gone close (when the list is whole: first 100 only).
+// The branch list, for the picker
 function loadBranches(full: string, branch: string, stale: () => boolean) {
-  void listBranches(full).then((bs) => {
-    if (stale()) return;
-    set("branches", [...new Set([...bs, branch])]);
-    if (bs.length < 100) setTabs(state.tabs.filter((t) => "pull" in t || state.branches.includes(t.branch)));
-  }, () => {});
+  void listBranches(full).then((bs) => !stale() && set("branches", [...new Set([...bs, branch])]), () => {});
 }
 
 // /owner/repo · /owner/repo/tree/<branch> · /owner/repo/blob/<branch>/<path> · /owner/repo/<path> (default branch) ·
 // /owner/repo/pull/<n> (its description)
-export async function openRoute(url: URL, replace = false): Promise<void> {
+export async function openRoute(url: URL): Promise<void> {
   const id = ++current;
   const stale = () => id !== current; // a newer navigation took over
   try {
@@ -424,22 +415,18 @@ export async function openRoute(url: URL, replace = false): Promise<void> {
       }
     }
     const full = info.full_name;
-    // a pull request's description: a tab of its own. The sidebar's Files list the PR's branch (a review branch's base:
-    // its hashed branch is nobody's to browse); the open file stays, hidden, when it's on that branch, else it closes
+    // a pull request's description: a tab of its own, on the workspace's branch (its files stay as they are). Opened
+    // first thing, the workspace takes the PR's branch (a review branch's base: its hashed branch is nobody's to browse).
     if (rest[0] === "pull" && /^\d+$/.test(rest[1] ?? "")) {
       const n = Number(rest[1]);
       const pr = pulls.repo === full ? pulls.list.find((p) => p.number === n) : undefined;
-      const branch = pr ? (pr.review ? pr.base : pr.head) : same ? state.branch : info.default_branch;
-      const keep = same && branch === state.branch;
-      const docs = keep ? state.docs : await listDocs(full, branch, true);
+      const branch = same ? state.branch : pr ? (pr.review ? pr.base : pr.head) : info.default_branch;
+      const docs = same ? state.docs : await listDocs(full, branch, true);
       const user = state.user ?? (await currentUser());
       if (stale() || !user) return;
-      const tabs = withTab(same ? state.tabs : savedTabs(full, branch, docs), { pull: n }, same ? activeTab() : null, replace);
-      if (!keep) {
-        closeFile();
-        endReview();
-      }
-      set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path: keep ? state.path : "", pull: n, message: "" });
+      const tabs = withTab(same ? state.tabs : savedTabs(full, docs), { pull: n }, same ? activeTab() : null);
+      if (!same) endReview();
+      set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path: same ? state.path : "", pull: n, message: "" });
       setTabs(tabs);
       if (!same) loadBranches(full, branch, stale);
       loadPulls(full);
@@ -458,6 +445,10 @@ export async function openRoute(url: URL, replace = false): Promise<void> {
     }
     const fresh = !(same && branch === state.branch); // another repo or branch: sync its files in the background
     const docs = fresh ? await listDocs(full, branch, true) : state.docs;
+    // the tabs the branch has files for: switching branch takes every tab along, and closes those it lacks
+    const kept = (same ? state.tabs : savedTabs(full, docs)).filter((t) => "pull" in t || docs.includes(t.path));
+    // switched to a branch without the open file: its first tab there
+    if (same && fresh && !docs.includes(path)) path = kept.find((t): t is { path: string } => "path" in t)?.path ?? "";
     // no file in the URL: the README (or the first document) of the branch
     path ||= docs.find((p) => /^readme\.md$/i.test(p)) ?? docs.find((p) => /(^|\/)readme\.md$/i.test(p)) ?? docs[0] ?? "";
     const user = state.user ?? (await currentUser());
@@ -465,12 +456,12 @@ export async function openRoute(url: URL, replace = false): Promise<void> {
     if (!fresh && path === state.path && doc.session?.path === path && !doc.opening) {
       // already open: the active tab, a link to itself, or back from a pull request's tab
       if (state.pull) {
-        setTabs(withTab(state.tabs, { branch, path }, activeTab(), replace));
+        setTabs(withTab(state.tabs, { path }, activeTab()));
         set("pull", 0);
       }
       return;
     }
-    const tabs = withTab(same ? state.tabs : savedTabs(full, branch, docs), { branch, path }, same ? activeTab() : null, replace);
+    const tabs = withTab(kept, { path }, same ? activeTab() : null);
     set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path, pull: 0, message: "" });
     setTabs(path ? tabs : tabs.filter((t) => "pull" in t || t.path));
     if (fresh) loadBranches(full, branch, stale);

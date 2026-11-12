@@ -2,6 +2,14 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-12: One branch, tabs that open at once
+
+- **The branch moved to the file sidebar's foot**, as in VS Code's status bar: the picker, read-only / protected, Changes and Update from <base>. The doc's pill keeps the pencil and the counts.
+- **The branch is the workspace's**: switching it takes every tab along (tabs are files now, not files on a branch), closes the ones the branch has no file for, and opens the first one left if the open file isn't there. A file can't be open from two branches any more. A PR's description opens on the branch you're on.
+- **Clicking a file opens its tab at once**, with a spinner in the tab and "Opening …" in the doc, instead of leaving the previous file on screen until the new one loaded.
+- **First open of a file 3.8 s → 0.9 s**: the snapshot ref and the branch head are asked for together, and a first opener's snapshot is written in the background while the doc already shows (saves wait for it). A file with a snapshot no longer waits on reading its EOL style either.
+- **Each tab keeps its scroll position**: back to a tab, the doc is where you left it; a tab not opened before starts at the top.
+
 ## 2026-11-12: Comments on code
 
 - **Text in a code block takes comments** when they go to the pull request (the default): the "Add a comment" pill and ⌘⌥M work there. A review comment never touches the file, so it can't turn into code; in-file comments still skip fenced code.

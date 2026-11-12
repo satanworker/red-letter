@@ -2,14 +2,16 @@
 // Links are plain <a href>: main.tsx's navigate handler turns them into in-page file switches.
 // Keyboard: Tab reaches the rows, Up/Down move between visible rows, Enter opens a file or toggles a folder.
 import { For, Show, createEffect, createMemo, createSignal, onMount, untrack } from "solid-js";
+import { comments } from "../comments/commentsStore.ts";
 import { selectIcon } from "../doc/docSelectors.ts";
-import { doc, editorState } from "../doc/docStore.ts";
-import { ArrowDownIcon, ArrowUpIcon, Avatar, FileIcon, FindIcon, FolderIcon, NewFileIcon, SearchIcon, field, fine } from "../ui.tsx";
+import { doc, editorState, toggleChanges, updateDraft } from "../doc/docStore.ts";
+import { ArrowDownIcon, ArrowUpIcon, Avatar, BranchIcon, FileIcon, FindIcon, FolderIcon, NewFileIcon, SearchIcon, badge, field, fine } from "../ui.tsx";
 import { togglePalette } from "../palette/paletteStore.ts";
 import { encPath } from "../github.ts";
+import { isReviewBranch } from "./pulls.ts";
 import { blobUrl } from "./repoService.ts";
 import { selectMatches, selectTree, type Dir } from "./repoSelectors.ts";
-import { createFile, repo } from "./repoStore.ts";
+import { createFile, navigateTo, repo } from "./repoStore.ts";
 import { pulls, showView } from "../pulls/pullsStore.ts";
 import { PullsTree } from "../pulls/PullsTree.tsx";
 
@@ -79,9 +81,9 @@ export function FileSidebar() {
         id="files"
         aria-label="Files"
         hidden={repo.filesHidden}
-        class="relative w-80 shrink-0 bg-side after:pointer-events-none after:absolute after:inset-0 after:z-[2] after:border-[.5px] after:border-t-0 after:border-line"
+        class="relative flex w-80 shrink-0 flex-col bg-side after:pointer-events-none after:absolute after:inset-0 after:z-[2] after:border-[.5px] after:border-t-0 after:border-line"
       >
-        <div ref={nav} class="flex h-full flex-col overflow-auto pb-6">
+        <div ref={nav} class="flex min-h-0 flex-1 flex-col overflow-auto pb-6">
           {/* Figma 129:1325 */}
           <div class="flex h-9 shrink-0 items-center gap-2 px-3 py-1 shadow-figma">
             <Avatar login={repo.user!.login} size={28} />
@@ -160,8 +162,76 @@ export function FileSidebar() {
           </div>
           </Show>
         </div>
+        <BranchBar />
       </nav>
     </>
+  );
+}
+
+// VS Code's status bar item, at the sidebar's foot: the branch every file and tab is on (a picker: switching it
+// switches them all), then what's special about it: read-only, protected, Changes / Update from its base.
+function BranchBar() {
+  const draft = createMemo(() => {
+    doc.version;
+    return doc.session?.doc.base;
+  });
+  // every branch of the repo but Red Letter's own (red-letter/comments/…, red-letter/review/…: hashed names nobody
+  // picks), unless it's the one open: this one first, then its base, the default branch, yours, the rest alphabetically
+  const branches = () => {
+    const login = `${repo.user?.login}/`;
+    const rest = repo.branches.filter((b) => !b.startsWith("red-letter/")).sort((a, b) => Number(b.startsWith(login)) - Number(a.startsWith(login)) || a.localeCompare(b));
+    return [...new Set([repo.branch, draft()?.branch ?? "", repo.repo?.default_branch ?? "", ...rest])].filter(Boolean);
+  };
+  const pick = (sel: HTMLSelectElement) => {
+    const branch = sel.value;
+    sel.value = repo.branch; // the route decides which branch shows
+    navigateTo(blobUrl(repo.repo!.full_name, branch, repo.path));
+  };
+  return (
+    <div class="flex h-7 shrink-0 items-center gap-2 border-t-[.5px] border-line px-3 font-light whitespace-nowrap text-muted">
+      <label class="inline-flex min-w-0 items-center gap-1 text-fg" title="Switch branch: every file and tab moves to it">
+        <BranchIcon />
+        <select class="min-w-0 cursor-pointer truncate bg-transparent font-normal [field-sizing:content]" aria-label="Branch" onChange={(e) => pick(e.currentTarget)}>
+          <For each={branches()}>
+            {(b) => (
+              <option value={b} selected={b === repo.branch}>
+                {isReviewBranch(b) ? "review" : b}
+              </option>
+            )}
+          </For>
+        </select>
+      </label>
+      <Show when={!repo.repo?.permissions?.push}>
+        <span class={`${badge} px-1.5`}>read-only</span>
+      </Show>
+      <Show when={comments.viaPr}>
+        <span class={`${badge} px-1.5`} title={`${repo.branch} is protected: no edits here; comments go through a pull request`}>
+          protected
+        </span>
+      </Show>
+      {/* the branch's changes: against its recorded base, or, reviewing a PR, against the PR's base */}
+      <Show when={draft()?.branch ?? (doc.reviewBase !== null && pulls.reviewing?.base)}>
+        {(base) => (
+          <button
+            class={`${badge} cursor-pointer px-1.5 hover:text-fg ${doc.showChanges ? "bg-on text-fg" : ""}`}
+            aria-pressed={doc.showChanges}
+            title={`Highlight what this branch changed from ${base()}`}
+            onClick={toggleChanges}
+          >
+            Changes
+          </button>
+        )}
+      </Show>
+      <Show when={draft()}>
+        {(b) => (
+          <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
+            <button class={`${badge} cursor-pointer px-1.5 hover:text-fg disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} title={`${b().branch} has new edits: merge them into this branch`} onClick={() => void updateDraft()}>
+              Update from {b().branch}
+            </button>
+          </Show>
+        )}
+      </Show>
+    </div>
   );
 }
 

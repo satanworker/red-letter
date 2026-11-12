@@ -226,6 +226,23 @@ function images(e: Event, data: DataTransfer | null, pos: number): boolean {
   return true;
 }
 
+// Each tab keeps its place in the doc's scroller (#doc, shared by every file): the line at the top when the file was
+// left and how far into it, brought back when it's open again (edits since move the line along); a file not open
+// before starts at the top.
+const places = new Map<string, { pos: number; off: number }>();
+function notePlace(view: EditorView, s: Session) {
+  const el = view.dom.closest<HTMLElement>("#doc");
+  if (!el?.checkVisibility()) return; // under a pull request's tab: nothing to measure
+  const top = el.getBoundingClientRect().top - view.documentTop, line = view.lineBlockAtHeight(top);
+  places.set(`${s.repoName}\n${s.path}`, { pos: line.from, off: top - line.top });
+}
+function restorePlace(view: EditorView, s: Session) {
+  const el = view.dom.closest<HTMLElement>("#doc"), at = places.get(`${s.repoName}\n${s.path}`);
+  if (!el) return;
+  if (!at || at.pos > view.state.doc.length) el.scrollTop = 0;
+  else view.dispatch({ effects: EditorView.scrollIntoView(at.pos, { y: "start", yMargin: -at.off }) });
+}
+
 export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; changes: Accessor<Region[]>; threads: Accessor<Thread[]> }) {
   let host!: HTMLDivElement;
   onMount(() => {
@@ -258,6 +275,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
       parent: host,
     });
     setView(view);
+    restorePlace(view, s);
     createEffect(on(isReading, (r) => view.dispatch({ effects: mode.reconfigure(modeOf(r)) }), { defer: true }));
     createEffect(on(() => canComment(s), (c) => view.dispatch({ effects: tip.reconfigure(c ? commentTooltip() : []) }), { defer: true }));
     // What the highlights show, apart from where: as text is typed, decoField maps them along (and the comment markup
@@ -276,6 +294,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
       }),
     );
     onCleanup(() => {
+      notePlace(view, s);
       setView(undefined);
       view.destroy();
     });

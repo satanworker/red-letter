@@ -1,6 +1,8 @@
 # 🍐 Designs_tasks
 # TO redo
-1. Search in the slash menu when you type "/"
+1. Change the appernce of the Add a search in the slash menu when you type "/"
+   https://www.figma.com/design/O3BbnNENlU3fMgOGuYqIkh/Red-Letter?node-id=140-2781&t=fY2jtLY6YELzAzV4-1
+   
 2. Change this icon. Check the design again.››
 ![Screenshot 2026-11-12 at 18.26.16](images/screenshot-2026-11-12-at-18-26-16-8170320.png)
 

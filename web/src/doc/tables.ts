@@ -54,24 +54,45 @@ const rowText = (cells: string[]) => `| ${cells.join(" | ")} |`;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 // Cell text -> HTML: code spans, bold, italic, links. Reading: rendered (a link shows its name). Editing (markdown):
 // the markers stay, in their content's style; a link's (url) is grey. Everything from the doc is escaped first. A
-// link's parts carry its url (data-href) for Cmd/Ctrl-click.
-const cellHtml = (s: string, markdown: boolean) =>
-  s
-    .split(/(`[^`]+`)/)
-    .map((part, i) =>
-      i % 2
-        ? `<code>${esc(markdown ? part : part.slice(1, -1))}</code>`
-        : esc(part)
-            .replace(/\*\*(.+?)\*\*/g, markdown ? "<strong>**$1**</strong>" : "<strong>$1</strong>")
-            .replace(/(^|[^*])\*([^*]+)\*/g, markdown ? "$1<em>*$2*</em>" : "$1<em>$2</em>")
-            .replace(/\[([^\]]+)\]\(([^)]*)\)/g, (_, name: string, href: string) =>
-              markdown
-                ? `<span class="cm-lp-link" data-href="${href}">[${name}]</span><span class="cm-lp-url" data-href="${href}">(<span class="cm-lp-u">${href.replace(/(\/(?!\/)|\.)(?=.)/g, "$1<wbr>")}</span>)</span>`
-                : `<span class="cm-lp-link cm-lp-u" data-href="${href}">${name}</span>`,
-            ),
-    )
-    .join("");
+// link's parts carry its url (data-href) for Cmd/Ctrl-click. Comment markers (`marked` cells) become threadSpans.
+export const cellHtml = (s: string, markdown: boolean) =>
+  threadSpans(
+    s
+      .replace(/<!--(\/?)rl:([a-z0-9]+)-->/g, (_, close: string, id: string) => `${close ? CLOSE : OPEN}${id}${END}`)
+      .split(/(`[^`]+`)/)
+      .map((part, i) =>
+        i % 2
+          ? `<code>${esc(markdown ? part : part.slice(1, -1))}</code>`
+          : esc(part)
+              .replace(/\*\*(.+?)\*\*/g, markdown ? "<strong>**$1**</strong>" : "<strong>$1</strong>")
+              .replace(/(^|[^*])\*([^*]+)\*/g, markdown ? "$1<em>*$2*</em>" : "$1<em>$2</em>")
+              .replace(/\[([^\]]+)\]\(([^)]*)\)/g, (_, name: string, href: string) =>
+                markdown
+                  ? `<span class="cm-lp-link" data-href="${href}">[${name}]</span><span class="cm-lp-url" data-href="${href}">(<span class="cm-lp-u">${href.replace(/(\/(?!\/)|\.)(?=.)/g, "$1<wbr>")}</span>)</span>`
+                  : `<span class="cm-lp-link cm-lp-u" data-href="${href}">${name}</span>`,
+              ),
+      )
+      .join(""),
+  );
 
+// A comment's markers, as cellHtml carries them through escaping and markdown (private-use characters).
+const OPEN = "\uE000", CLOSE = "\uE001", END = "\uE002";
+const MARKER = /[\uE000\uE001][a-z0-9]+\uE002/g;
+// The commented text in [data-thread] spans (Editor.tsx's stylesheet lights the shown ones; a click opens the thread).
+// Spans wrap text runs only, never tags, so a comment starting inside a code span or across a link nests cleanly. A
+// marker copied into an attribute (a link's url) is dropped there.
+function threadSpans(html: string): string {
+  if (!html.includes(END)) return html;
+  const open: string[] = [];
+  return html.replace(/<[^>]*>|[\uE000\uE001][a-z0-9]+\uE002|[^<\uE000\uE001]+/g, (m) => {
+    if (m[0] === "<") return m.replace(MARKER, "");
+    const id = m.slice(1, -1), at = open.lastIndexOf(id);
+    if (m[0] === OPEN) open.push(id);
+    else if (m[0] === CLOSE) at >= 0 && open.splice(at, 1);
+    else return open.map((t) => `<span data-thread="${t}">`).join("") + m + "</span>".repeat(open.length);
+    return "";
+  });
+}
 // The url of the link at `offset` in a cell's raw text: a `[name](url)` or a bare http(s) url.
 function linkAt(text: string, offset: number): string | null {
   for (const m of text.matchAll(/\[[^\]]*\]\(([^)\s]+)[^)]*\)|https?:\/\/[^\s)|]+/g))
@@ -82,6 +103,7 @@ function linkAt(text: string, offset: number): string | null {
 // After a change that redraws the table (new row, new column), the cell to put the caret back in.
 let refocus: { r: number; c: number; end: boolean } | null = null;
 const raws = new WeakMap<HTMLElement, string[][]>(); // the table element -> current raw cell texts
+const drawn = new WeakMap<HTMLElement, string[][]>(); // the same with their comment markers, as drawn
 // The cell being edited and its table's start. When a redraw removes that cell, Chrome drops the focus to
 // nowhere (lostAt); the redrawn table takes it back if that happened just now. Focus moved by the user clears it.
 let editing: { from: number; r: number; c: number; lostAt: number } | null = null;
@@ -107,26 +129,32 @@ const measure = (entries: ResizeObserverEntry[]) => {
   }
 };
 
-// Raw cell texts by row text. Every edit makes a new widget for the whole table; parsing each row again (pipes,
-// comment markup) took ~15 ms a keystroke in a 2,000-row table. Never mutated.
+// Cell texts by row text: `plain` without comment markup (what a focused cell shows and edits), `marked` with it (what
+// a drawn cell shows, its comments lit). Every edit makes a new widget for the whole table; parsing each row again
+// (pipes, comment markup) took ~15 ms a keystroke in a 2,000-row table. Never mutated.
 // ponytail: emptied whole past 50k rows, an LRU if docs with that many table rows get edited often
-const parsedRows = new Map<string, string[]>();
-function parseRow(line: string): string[] {
+type ParsedRow = { plain: string[]; marked: string[] };
+const parsedRows = new Map<string, ParsedRow>();
+function parseRow(line: string): ParsedRow {
   let row = parsedRows.get(line);
   if (row) return row;
   if (parsedRows.size > 50_000) parsedRows.clear();
-  row = splitRow(line, 0).map((c) => unescape(plain(line.slice(c.from, c.to)).text));
+  const marked = splitRow(line, 0).map((c) => unescape(line.slice(c.from, c.to)));
+  row = { marked, plain: marked.map((c) => plain(c).text) };
   parsedRows.set(line, row);
   return row;
 }
 
 class TableWidget extends WidgetType {
   readonly cells: string[][]; // raw text per source row (delimiter row included), without comment markers
+  readonly marked: string[][]; // the same with them
   readonly align: string[];
   // readOnly: switching between reading and editing patches the cells' contentEditable (updateDOM)
   constructor(readonly src: string, readonly readOnly: boolean) {
     super();
-    this.cells = src.split("\n").map(parseRow);
+    const rows = src.split("\n").map(parseRow);
+    this.cells = rows.map((r) => r.plain);
+    this.marked = rows.map((r) => r.marked);
     this.align = (this.cells[1] ?? []).map((d) => (d.endsWith(":") ? (d.startsWith(":") ? "center" : "right") : "left"));
   }
   get width() {
@@ -150,7 +178,7 @@ class TableWidget extends WidgetType {
   // changed are touched: rewriting every cell's HTML on each keystroke took 2-4 s a key in a 2,000-row table
   // (`bun bench/stress.ts --doc tables`), mostly relaying out the whole table.
   updateDOM(dom: HTMLElement, view: EditorView) {
-    const old = raws.get(dom);
+    const old = drawn.get(dom);
     if (!old || old.length !== this.cells.length || old[0]?.length !== this.width || refocus) {
       // rows or columns changed (undo, a peer, an agent): the redrawn table gets the caret back
       const at = cellOf(document.activeElement);
@@ -162,12 +190,12 @@ class TableWidget extends WidgetType {
     // the delimiter row (r 1) has no cells: querySelector finds none
     const changed = redraw
       ? [...dom.querySelectorAll<HTMLElement>("[data-r]")]
-      : this.cells.flatMap((row, r) => row.flatMap((raw, c) => (old[r]?.[c] === raw ? [] : (dom.querySelector<HTMLElement>(`[data-r="${r}"][data-c="${c}"]`) ?? []))));
+      : this.marked.flatMap((row, r) => row.flatMap((m, c) => (old[r]?.[c] === m ? [] : (dom.querySelector<HTMLElement>(`[data-r="${r}"][data-c="${c}"]`) ?? []))));
     const active = cellOf(document.activeElement);
     if (active && dom.contains(active) && !changed.includes(active)) changed.push(active);
     for (const el of changed) {
-      const raw = this.raw(Number(el.dataset.r), Number(el.dataset.c));
-      if (el !== active) el.innerHTML = cellHtml(raw, !this.readOnly);
+      const r = Number(el.dataset.r), c = Number(el.dataset.c), raw = this.raw(r, c);
+      if (el !== active) el.innerHTML = cellHtml(this.marked[r]?.[c] ?? "", !this.readOnly);
       // The file trims cells, so a space just typed at an end isn't stored yet: compare what would be stored.
       else if (unescape(toCell(el.textContent ?? "")).trim() !== raw) {
         el.textContent = raw; // undo or a remote edit changed the cell being edited
@@ -176,6 +204,7 @@ class TableWidget extends WidgetType {
       if (redraw) el.contentEditable = view.state.readOnly ? "false" : "true";
     }
     raws.set(dom, this.cells);
+    drawn.set(dom, this.marked);
     return true;
   }
   raw(r: number, c: number) {
@@ -199,10 +228,11 @@ class TableWidget extends WidgetType {
         el.style.textAlign = this.align[c] ?? "left";
         el.contentEditable = view.state.readOnly ? "false" : "true";
         el.spellcheck = false;
-        el.innerHTML = cellHtml(this.raw(r, c), !this.readOnly);
+        el.innerHTML = cellHtml(this.marked[r]?.[c] ?? "", !this.readOnly);
       }
     });
     raws.set(wrap, this.cells);
+    drawn.set(wrap, this.marked);
     wire(wrap, view);
     (resized ??= new ResizeObserver(measure)).observe(table);
     const f = refocus;
@@ -370,7 +400,7 @@ function wire(wrap: HTMLElement, view: EditorView) {
   });
   wrap.addEventListener("focusout", (e) => {
     const el = cellOf(e.target);
-    if (el) el.innerHTML = cellHtml(raws.get(wrap)?.[Number(el.dataset.r)]?.[Number(el.dataset.c)] ?? "", !view.state.readOnly);
+    if (el) el.innerHTML = cellHtml(drawn.get(wrap)?.[Number(el.dataset.r)]?.[Number(el.dataset.c)] ?? "", !view.state.readOnly);
     if (cellOf(e.relatedTarget)) return; // another cell
     if (e.relatedTarget) editing = null; // the user moved focus elsewhere
     else if (editing) editing.lostAt = performance.now(); // to nowhere: a redraw (or the window lost focus)

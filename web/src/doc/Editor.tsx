@@ -305,5 +305,20 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
     openThread(id);
     showPanel();
   };
-  return <div id="editor" class="[&_.cm-editor]:min-h-[calc(100%-20px)]" ref={host} onClick={click} />;
+  // Table cells are one widget, so the highlights above can't reach them: cells draw in-file comments as
+  // [data-thread] spans (tables.ts) and this lights them as .rl-comment does, without redrawing a table when a thread
+  // is opened or resolved. Ids are [a-z0-9]+ (comments/inline.ts).
+  const cellLights = createMemo(() => {
+    const sel = (ids: string[]) => ids.map((id) => `.cm-lp-table [data-thread="${id}"]`).join(",");
+    const file = props.threads().filter((t) => t.source === "file");
+    const lit = sel(file.filter((t) => !t.resolved).map((t) => t.id));
+    const on = sel(file.filter((t) => (t.id === doc.activeThread && !t.resolved) || t.id === doc.hoveredThread).map((t) => t.id));
+    return (lit ? `${lit}{background:var(--hl);border-radius:4px;cursor:pointer}` : "") + (on ? `${on}{background:var(--hl-on);border-radius:4px}` : "");
+  });
+  return (
+    <>
+      <style>{cellLights()}</style>
+      <div id="editor" class="[&_.cm-editor]:min-h-[calc(100%-20px)]" ref={host} onClick={click} />
+    </>
+  );
 }

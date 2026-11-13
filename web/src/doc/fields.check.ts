@@ -9,7 +9,7 @@ import { commentMarks, commentSpans, commentThreads } from "./commentMarks.ts";
 import { headingField } from "./headings.ts";
 import { imageField } from "./images.ts";
 import { mermaidField } from "./mermaid.ts";
-import { tableField } from "./tables.ts";
+import { cellHtml, tableField } from "./tables.ts";
 
 const blocks = { tableField, imageField, mermaidField } as unknown as Record<string, StateField<{ deco: DecorationSet }>>;
 const extensions = [markdownLanguage.extension, tableField, imageField, mermaidField, commentMarks, headingField];
@@ -54,4 +54,14 @@ for (let i = 0; i < 1500; i++) {
   if (syntaxTree(fresh).length < upto || tops(state, upto) !== tops(fresh, upto)) continue;
   for (const [name, f] of Object.entries(blocks)) if (widgets(state, f, upto) !== widgets(fresh, f, upto)) throw new Error(`${name} after ${edit} differs from a fresh build`);
 }
+// a table cell's comment: spans around text only, never across a tag; a marker inside a link's url is dropped there
+const cell = (s: string, md = true) => {
+  const out = cellHtml(s, md);
+  if (/[\uE000-\uE002]/.test(out)) throw new Error(`marker left in ${out}`);
+  return out;
+};
+const spanned = cell("`general_mana<!--rl:c1-->ger`; such <!--rl:c2-->GMs<!--/rl:c1--> here<!--/rl:c2-->");
+if (spanned !== '<code>`general_mana<span data-thread="c1">ger`</span></code><span data-thread="c1">; such </span><span data-thread="c1"><span data-thread="c2">GMs</span></span><span data-thread="c2"> here</span>')
+  throw new Error(`cell comment spans: ${spanned}`);
+cell("[a](http://x<!--rl:c3-->y) z<!--/rl:c3-->", false);
 console.log("incremental fields: ok");

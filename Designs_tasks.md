@@ -22,3 +22,7 @@
 
 Use this is as a guideline for design. You can find the design for dropdown menus
 https://www.figma.com/design/O3BbnNENlU3fMgOGuYqIkh/Red-Letter?node-id=183-849&t=fY2jtLY6YELzAzV4-1
+
+
+## 2 round
+![Screenshot 2026-11-13 at 08.23.22](images/screenshot-2026-11-13-at-08-23-22-e7edcef.png)

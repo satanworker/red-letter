@@ -1,4 +1,4 @@
-# 🎯 🎯 Red Letter: notes for agents
+# 🎯 Red Letter: notes for agents
 
 Read `docs/DESIGN.md` (truth model, replay, prototype status) before changing behaviour. When a feature lands, update its "Prototype status" and add a line to `CHANGELOG.md` (newest day first).
 

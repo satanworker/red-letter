@@ -12,7 +12,7 @@ Data flow: `external event -> store action -> service call -> store update -> se
 - **Stores own state and orchestration.** `repoStore.ts` (screen, repo, branch, files, routing), `docStore.ts` (open Session, status, panel/tab/draft comment) and `commentsStore.ts`. Loading, errors and "what happens when X" live in store actions.
 - **Selectors are pure.** `*Selectors.ts` derive render data. Memoize them in components with `createMemo`; don't store derived data.
 - **Components render and call actions.** No business logic or fetching in components. Global listeners (navigation, focus, beforeunload, ⌘K) live in `main.tsx` and only call store actions.
-- `doc/session.ts`, `replay.ts`, `regions.ts` and `hub.ts` are the engine (CRDT ↔ git); `sync.ts` binds the editor to the CRDT. Keep UI out of them. Read the doc through `session.doc`, never `handle.doc()`: the getter first hands over typing `sync.ts` is still holding.
+- `doc/session.ts`, `replay.ts`, `regions.ts` and `hub.ts` are the engine (CRDT ↔ git); `sync.ts` binds the editor to the CRDT; `sync.ts` binds the editor to the CRDT. Keep UI out of them. Read the doc through `session.doc`, never `handle.doc()`: the getter first hands over typing `sync. Read the doc through `session.doc`, never `handle.ts` is still holding.doc()`: the getter first hands over typing `sync.ts` is still holding.
 
 ## Solid
 
@@ -24,10 +24,12 @@ Data flow: `external event -> store action -> service call -> store update -> se
 ## Verify
 
 ```sh
-cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json && bun build.ts && bun src/comments/inline.check.ts && bun src/comments/prThreads.check.ts && bun src/doc/textDiff.check.ts && bun src/doc/fields.check.ts && bun src/doc/sync.check.ts
+cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json && bun build.ts && bun src/comments/inline.check.ts && bun src/comments/prThreads.check.ts && bun src/doc/textDiff.check.ts && bun src/doc/fields.check.ts && bun src/doc/sync.check.ts && bun src/comments/prThreads.check.ts && bun src/doc/textDiff.check.ts && bun src/doc/fields.check.ts && bun src/doc/sync.check.ts
 cd server && CGO_ENABLED=0 go test ./...
 ```
 
 Smoke in a browser with `cd web && bun dev.ts` (localhost:5173, hub on localhost:8787). `window.rl` exposes `{ doc, repo, comments }`; `rl.doc.session` is the open Session. Test edits go to the `demo` branch (`/satanworker/red-letter/blob/demo/demo.md`); leave `demo.md` as you found it.
 
-**Performance:** a keystroke's work must not grow with the doc. Anything read from the whole text (block widgets, comment markup and threads, headings, word count) is kept by the editor and updated from the change (`doc/blocks.ts`, `commentMarks.ts`, `headings.ts`, `selectWords`), never re-derived from `session.doc.text` on each `version` tick; lists of derived rows keep their objects when nothing they show changed. After touching the editor, typing or the panels, run `cd web && bun bench/stress.ts` (README) and compare with the numbers in `docs/DESIGN.md`.
+**Performance:** a keystroke's work must not grow with the doc. Anything read from the whole text (block widgets, comment markup as you found it.
+
+**Performance:** a keystroke's work must not grow with the doc. Anything read from the whole text (block widgets, comment markup and threads, heand threaddings,, word headings, word count) is kept bcount) is kept by the edit the editor and r and updated from the change (`doc/blocks.ts`, `commentMarks.ts`, `headings.ts`, `selectWords`), never re-derived from `session.doc.text` on each `version` tick; lists of derived rows keep their objects when nothing they showpdated from the change (`doc/blocks.ts`, `commentMarks.ts`, `headings.ts`, `selectWords`), never re-derived from `session.doc.text` on each `version` tick; lists of derived rows keep their objects when changed. Anothing they show changed. After tter touchiching the eg the editor,itor, typtyping or ng or the panels, run `cd web && bun bench/sthe panels, run `cd web && bun bench/stress.ts` (README) and compare with the numbers in `docs/DESIGN.md`ress.ts` (README) and compare with the numbers in `docs/DESIGN.md`.

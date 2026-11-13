@@ -2,7 +2,8 @@
 // opens, refreshed on the doc's 15 s tick. The open-PR list is REST (ETag: free when unchanged); its details (files,
 // threads, decision) are GraphQL, asked only when the list's stamp (numbers + updated_at) changed, or `force`d after a
 // write of ours. Also the review under way: a PR's file clicked in the tree opens it on the PR's branch with the PR's
-// changes against its base highlighted (docStore.reviewBase); leaving that branch ends it.
+// changes against its base highlighted (docStore.reviewBase). Only ever started on purpose (repoStore.toggleReview);
+// leaving that branch ends it.
 import { createStore } from "solid-js/store";
 import { commentOnConversation, listPulls, openPulls, type RepoPr } from "../repo/pulls.ts";
 

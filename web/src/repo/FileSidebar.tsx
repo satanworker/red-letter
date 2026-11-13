@@ -14,7 +14,7 @@ import { encPath } from "../github.ts";
 import { isReviewBranch } from "./pulls.ts";
 import { blobUrl } from "./repoService.ts";
 import { selectMatches, selectTree, type Dir } from "./repoSelectors.ts";
-import { createFile, navigateTo, repo } from "./repoStore.ts";
+import { createFile, navigateTo, repo, toggleReview } from "./repoStore.ts";
 import { pulls, showView } from "../pulls/pullsStore.ts";
 import { PullsTree } from "../pulls/PullsTree.tsx";
 
@@ -254,6 +254,19 @@ function BranchBar() {
         <span class={`${badge} px-1.5`} title={`${repo.branch} is protected: no edits here; comments go through a pull request`}>
           protected
         </span>
+      </Show>
+      {/* the mode: working on the branch, or reviewing its PR (its changes lit against the PR's base). Never automatic. */}
+      <Show when={pulls.reviewing ?? doc.pr}>
+        {(pr) => (
+          <button
+            class={`${badge} cursor-pointer px-1.5 hover:text-fg ${pulls.reviewing ? "bg-on text-fg" : ""}`}
+            aria-pressed={!!pulls.reviewing}
+            title={pulls.reviewing ? "Stop reviewing: back to working on the branch" : `Review pull request #${pr().number}: its changes against ${pr().base} lit`}
+            onClick={toggleReview}
+          >
+            {pulls.reviewing ? `Reviewing #${pr().number} ×` : `Review #${pr().number}`}
+          </button>
+        )}
       </Show>
       {/* the branch's changes: against its recorded base, or, reviewing a PR, against the PR's base */}
       <Show when={draft()?.branch ?? (doc.reviewBase !== null && pulls.reviewing?.base)}>

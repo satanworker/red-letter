@@ -2,8 +2,8 @@
 // anywhere, the editor included. Keys are CodeMirror-style: "Mod" is ⌘ on a Mac and Ctrl elsewhere, "Alt" is ⌥.
 import { doc, focusEditor, isReading, showTab, startComment, stepComment, toggleReading } from "../doc/docStore.ts";
 import { pageItems } from "../doc/PageMenu.tsx";
-import { activeTab, closeTab, navigateTo, repo, sameTab, showPanel, tabUrl, toggleFiles, togglePanel } from "../repo/repoStore.ts";
-import { showView } from "../pulls/pullsStore.ts";
+import { activeTab, closeTab, navigateTo, repo, sameTab, showPanel, tabUrl, toggleFiles, togglePanel, toggleReview } from "../repo/repoStore.ts";
+import { pulls, showView } from "../pulls/pullsStore.ts";
 
 export type Command = { label: string; keys?: string; run: () => unknown };
 
@@ -122,6 +122,7 @@ export const commands = (): Command[] => [
   { label: "Show history", run: () => (showTab("history"), showPanel()) },
   { label: "Show outline", run: () => (showTab("outline"), showPanel()) },
   { label: "Show pull requests", run: () => (showFiles(), showView("pulls")) },
+  ...(pulls.reviewing ? [{ label: `Stop reviewing #${pulls.reviewing.number}`, run: toggleReview }] : doc.pr ? [{ label: `Review pull request #${doc.pr.number}`, run: toggleReview }] : []),
   { label: repo.filesHidden ? "Show files" : "Hide files", keys: "Mod-\\", run: toggleFiles },
   { label: repo.panelHidden ? "Show side panel" : "Hide side panel", keys: "Mod-Shift-\\", run: togglePanel },
   ...(doc.session ? [{ label: "Save", keys: "Mod-s", run: () => doc.session?.save() }] : []),

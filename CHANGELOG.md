@@ -2,6 +2,11 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-13: Working vs reviewing, bigger diagrams
+
+- **Working on a branch and reviewing its pull request are separate modes.** Opening a file the PR changed no longer starts a review or flips the sidebar to Pull requests. The branch bar shows "Review #N" to start one (⌘K too) and "Reviewing #N ×" to leave it, back to Files.
+- **Click a mermaid diagram to see it bigger**: as wide as the window allows, up to twice its size; Esc or a click closes it.
+
 ## 2026-11-12: Panel by keyboard
 
 - **⌘⇧O / Ctrl+Shift+O goes to the outline**, on the reader's section; arrows walk the headings, Enter jumps there and focus stays; pressed again, back to the doc with the caret at the top of the view. ⌘⌥3 does the same for whichever panel tab is chosen (the lit comment's card, the outline's section, the newest history row), and Down from the panel's tabs goes into their list.

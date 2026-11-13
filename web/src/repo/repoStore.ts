@@ -3,7 +3,7 @@
 import { createStore } from "solid-js/store";
 import { clearIcons, clearReview, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
 import { refreshComments } from "../comments/commentsStore.ts";
-import { loadPulls, pulls, refreshPulls, setReviewing, unfoldPr } from "../pulls/pullsStore.ts";
+import { loadPulls, pulls, refreshPulls, setReviewing, showView, unfoldPr } from "../pulls/pullsStore.ts";
 import { NO_SNAPSHOT, prefetchTexts, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
 import { approvePr, closePr, mergeInto, mergePr, openPr, openPrFrom, requestChanges, reviewBranch, touchFile, type Pr } from "./pulls.ts";
@@ -333,6 +333,15 @@ export function endReview() {
   clearReview();
 }
 
+// Working on the branch ↔ reviewing the PR from it (doc.pr, as of the last poll). The only way in besides the PR tree
+// and Review: opening a file never starts a review by itself.
+export function toggleReview() {
+  if (pulls.reviewing) {
+    endReview();
+    showView("files");
+  } else if (doc.pr) reviewPullRequest(doc.pr);
+}
+
 // GitHub's "request changes" review, with a note; GitHub refuses it on your own PR (422) and says so.
 export async function requestChangesOnPullRequest(number: number, note: string) {
   if (!state.repo || !note.trim()) return;
@@ -476,9 +485,6 @@ export async function openRoute(url: URL): Promise<void> {
     creating.delete(path);
     const draftOf = drafting.get(branch);
     drafting.delete(branch);
-    // a file a PR from this branch changes, however it was opened (a tab, back, a link): reviewed against its base
-    const prHere = pulls.list.find((p) => p.head === branch && p.files.some((f) => f.path === path));
-    if (prHere && pulls.reviewing?.number !== prHere.number) setReviewing({ number: prHere.number, head: prHere.head, base: prHere.base });
     if (!(await openFile(info, branch, path, user, create, draftOf)) && !stale()) set("message", `${path} doesn't exist on ${branch}.`);
     // background sync reads every doc of the branch (≈4 calls a doc with a snapshot, 1 without; cached for good after):
     // worth it on the default branch, where people live; a review or feature branch opens its docs on demand instead

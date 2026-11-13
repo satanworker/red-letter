@@ -71,6 +71,8 @@ class MermaidWidget extends WidgetType {
         // fit the column, but never below 70%: a wider diagram scrolls
         img.style.width = `max(min(100%, ${w}px), ${w * 0.7}px)`;
         img.alt = "diagram";
+        img.title = "Click to enlarge";
+        img.onclick = () => enlarge(img.src, w);
         img.onload = () => {
           if (!fresh()) return;
           box.className = "cm-lp-mermaid";
@@ -114,10 +116,26 @@ export const mermaidField = blockField((state, n, out) => {
   out.push(Decoration.widget({ widget: new MermaidWidget(src), block: true, side: 1 }).range(last.to));
 });
 
+// A diagram as wide as the window allows, up to twice its own size, in a modal over the page: Esc or a click closes it.
+// Outside the editor, so styled here rather than in mermaidTheme.
+function enlarge(src: string, w: number) {
+  const d = document.createElement("dialog");
+  d.style.cssText = "margin:auto;max-width:96vw;max-height:96vh;padding:24px;border:0;border-radius:10px;background:var(--bg);box-shadow:var(--pop);cursor:zoom-out";
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = "diagram";
+  img.style.cssText = `display:block;width:min(calc(96vw - 48px), ${w * 2}px)`;
+  d.append(img);
+  d.onclick = () => d.remove();
+  d.onclose = () => d.remove();
+  document.body.append(d);
+  d.showModal();
+}
+
 export const mermaidTheme = EditorView.theme({
   // padding, not margin: CodeMirror can't see a block widget's margins, and clicks below it would land too low
   ".cm-lp-mermaid": { overflowX: "auto", paddingTop: "8px", paddingBottom: "8px", textAlign: "center" },
-  ".cm-lp-mermaid img": { display: "inline-block", verticalAlign: "top" },
+  ".cm-lp-mermaid img": { display: "inline-block", verticalAlign: "top", cursor: "zoom-in" },
   ".cm-lp-mermaid-err": { color: "var(--faint)", fontSize: "13px", textAlign: "left", cursor: "text" },
   ".cm-lp-mermaid-stale": { opacity: "0.4" },
 });

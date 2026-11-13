@@ -59,18 +59,18 @@ function compact(name: string, d: Tree): [string, Tree] {
 const unfolded = new Set<string>();
 function PrNode(props: { pr: RepoPr }) {
   const open = () => pulls.open.includes(props.pr.number);
-  // the PR whose branch is open (VS Code's checked-out PR): marked, unfolded the first time it's seen here, and the
-  // open doc reviewed against its base (its changes lit) when no review is under way
+  // the PR whose branch is open (VS Code's checked-out PR): unfolded the first time it's seen here. Not reviewed by
+  // itself: working on a branch and reviewing its PR are separate modes (repoStore.toggleReview); the row is lit
+  // only while its review is under way.
   const here = () => props.pr.head === repo.branch;
   createEffect(() => {
     const k = `${props.pr.number}@${repo.branch}`;
     if (here() && !unfolded.has(k)) {
       unfolded.add(k);
       if (!open()) togglePr(props.pr.number);
-      if (!pulls.reviewing && props.pr.files.some((f) => f.path === repo.path)) reviewPullRequest(props.pr, [], repo.path);
     }
   });
-  const reviewing = () => pulls.reviewing?.number === props.pr.number || here();
+  const reviewing = () => pulls.reviewing?.number === props.pr.number;
   const shown = () => repo.pull === props.pr.number;
   const files = createMemo(() => tree(props.pr.files));
   return (

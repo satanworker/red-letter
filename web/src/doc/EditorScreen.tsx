@@ -10,6 +10,7 @@ import { Palette } from "../palette/Palette.tsx";
 import { openInNewTab, palette } from "../palette/paletteStore.ts";
 import { focusPanel, keyLabel } from "../palette/commands.ts";
 import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine, listKeys } from "../ui.tsx";
+import { DraftBar, canStartDraft, onDraft, promptDraft } from "../pulls/DraftBar.tsx";
 import { PrOverview } from "../pulls/PrOverview.tsx";
 import { pulls } from "../pulls/pullsStore.ts";
 import { prTitle } from "../repo/pulls.ts";
@@ -209,6 +210,12 @@ export function EditorScreen() {
               )}
             </For>
           </span>
+          {/* GitBook's "Edit in a change request": work on this doc out of sight, publish when it's ready */}
+          <Show when={onDoc() && canStartDraft()}>
+            <button class="mt-2.5 mr-3 cursor-pointer hover:underline" title={`Edit this doc in a draft: nothing reaches ${repo.branch} until you publish`} onClick={promptDraft}>
+              Start a draft
+            </button>
+          </Show>
           <button class="mt-2.5 cursor-pointer hover:underline" onClick={() => void share()}>
             {copied() ? "Link copied" : "Share"}
           </button>
@@ -220,6 +227,9 @@ export function EditorScreen() {
         {/* over the header's shadow: the tab strip sits there, so the shadow never lands on the white page */}
         <div class="relative z-[4] flex min-w-0 flex-1 flex-col">
           <Tabs />
+          <Show when={!repo.pull && onDraft()}>
+            <DraftBar />
+          </Show>
           <Show when={repo.pull}>
             <div class="min-h-0 flex-1 overflow-auto bg-bg">
               <Show

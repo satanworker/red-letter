@@ -6,7 +6,7 @@ import { refreshComments } from "../comments/commentsStore.ts";
 import { loadPulls, pulls, refreshPulls, setReviewing, showView, unfoldPr } from "../pulls/pullsStore.ts";
 import { NO_SNAPSHOT, prefetchTexts, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
-import { approvePr, closePr, mergeInto, mergePr, openPr, openPrFrom, requestChanges, reviewBranch, touchFile, type Pr } from "./pulls.ts";
+import { approvePr, closePr, mergeInto, mergePr, openPr, openPrFrom, requestChanges, requestReviewers, reviewBranch, touchFile, type Pr } from "./pulls.ts";
 import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
@@ -215,31 +215,75 @@ const branchName = (input: string) =>
     .filter(Boolean)
     .join("/");
 
-// The open file on a new branch `name`, forked where the doc was last saved (unsaved text is saved first, so the
-// branch starts from what's on screen). It opens at once, with this branch as its base.
-export async function forkBranch(name: string) {
-  const branch = branchName(name);
-  const s = doc.session;
-  if (!branch || !s || !state.repo || !state.user) return;
-  noteDraft("Creating the branch…");
+// Unsaved text first: a draft starts from, asks review of, and publishes what's on screen.
+async function saveFirst(s: Session) {
   await s.save();
-  if (s.status.dirty || s.status.error) return noteDraft(`Couldn't save the text first: ${s.status.error ?? "try again"}`);
-  try {
-    await createBranch(state.repo.full_name, branch, s.doc.git!.commit);
-  } catch (e) {
-    return noteDraft(e instanceof HttpError && e.status === 422 ? `There's already a branch called ${branch}` : String(e));
-  }
-  drafting.set(branch, state.branch);
-  set("branches", [...new Set([...state.branches, branch])]);
-  navigateTo(blobUrl(state.repo.full_name, branch, state.path)); // the workspace moves to the branch
+  if (s.status.dirty || s.status.error) throw new Error(`Couldn't save the text first: ${s.status.error ?? "try again"}`);
 }
 
-// A pull request from this branch into its base (the default branch when none was recorded); the bar then shows it.
-export async function openPullRequest(title: string) {
+// A draft is a git branch nobody has to know about (GitBook's change requests): `<login>/<name>` (the open file's
+// name when none is given; "-2", "-3" when taken), forked where the doc was last saved, opened at once with this
+// branch as its base.
+export async function startDraft(name: string) {
   const s = doc.session;
-  if (!s || !state.repo || !title.trim()) return;
-  await runDraft("Opening the pull request…", () => createPr(s, state.branch, s.doc.base?.branch ?? state.repo!.default_branch, title.trim()));
+  if (!s || !state.repo || !state.user) return;
+  const slug = branchName(name.replaceAll("/", " ")) || branchName(s.path.split("/").pop()!.replace(/\.[^.]+$/, "")) || "draft";
+  let branch = `${state.user.login}/${slug}`;
+  for (let n = 2; state.branches.includes(branch); n++) branch = `${state.user.login}/${slug}-${n}`;
+  noteDraft("Starting the draft…");
+  try {
+    await saveFirst(s);
+    await createBranch(state.repo.full_name, branch, s.doc.git!.commit);
+  } catch (e) {
+    return noteDraft(e instanceof HttpError && e.status === 422 ? `There's already a draft called ${branch}; pick another name` : e instanceof Error ? e.message : String(e));
+  }
+  noteDraft("");
+  drafting.set(branch, state.branch);
+  set("branches", [...new Set([...state.branches, branch])]);
+  navigateTo(blobUrl(state.repo.full_name, branch, state.path)); // the workspace moves to the draft
+}
+
+// Where a draft publishes to: its recorded base, else (a branch made elsewhere) the default branch.
+const draftBase = (s: Session) => s.doc.base?.branch ?? state.repo!.default_branch;
+
+// Ask for review: the draft's pull request, made the first time and titled with the draft's name, and the people
+// asked on it (GitHub notifies them). Nobody asked: just the pull request.
+export async function askForReview(reviewers: string[]) {
+  const s = doc.session;
+  if (!s || !state.repo) return;
+  const full = state.repo.full_name;
+  await runDraft("Asking for review…", async () => {
+    await saveFirst(s);
+    const n = doc.pr?.number ?? (await createPr(s, state.branch, draftBase(s), prTitle(state.branch))).pr.number;
+    if (reviewers.length) await requestReviewers(full, n, reviewers);
+  });
   await refreshPr();
+  void refreshPulls(true);
+}
+
+// Publish: the draft's edits land on its base through GitHub's merge, so its rules (required reviews, checks) hold.
+// A draft nobody reviewed gets its pull request on the way: every publish is one in GitHub's history.
+export async function publishDraft() {
+  if (!doc.pr) await askForReview([]);
+  if (doc.pr) await mergePullRequest();
+}
+
+// Discard: the draft's pull request closed, its branch deleted, unsaved edits with it; the workspace goes back.
+export async function discardDraft() {
+  const s = doc.session;
+  if (!s || !state.repo) return;
+  if (doc.pr) return closePullRequest(doc.pr);
+  const full = state.repo.full_name, base = draftBase(s);
+  if (!(await runDraft("Discarding…", async (x) => (await x.dropBranch(), true)))) return;
+  await relist(full, base);
+  navigateTo(blobUrl(full, base, state.path));
+}
+
+// After a draft is published or discarded: the branches and the base's files as GitHub has them now, before the route
+// reads this browser's copies (they'd still list the deleted branch, and lack a file the draft added: the route would
+// land on another tab).
+async function relist(full: string, base: string) {
+  await Promise.all([listBranches(full, true).then((bs) => set("branches", bs)), listDocs(full, base)]).catch(() => {});
 }
 
 // GitHub refuses a PR with no commits (422 "No commits between"): then the file gets a newline appended first
@@ -301,17 +345,16 @@ export async function mergePullRequest() {
   const pr = doc.pr;
   if (!pr || !state.repo) return;
   const full = state.repo.full_name;
-  const merged = await runDraft("Merging…", async (s) => {
-    await s.save();
-    if (s.status.dirty || s.status.error) throw new Error(`Couldn't save the text first: ${s.status.error ?? "try again"}`);
+  const merged = await runDraft("Publishing…", async (s) => {
+    await saveFirst(s);
     await mergePr(full, pr.number);
     await s.dropBranch();
     return true;
   });
   if (!merged) return;
   setTabs(state.tabs.filter((t) => !sameTab(t, { pull: pr.number })));
-  void listBranches(full, true).then((bs) => set("branches", bs), () => {});
   void refreshPulls(true);
+  await relist(full, pr.base);
   navigateTo(blobUrl(full, pr.base, state.path));
 }
 
@@ -361,15 +404,18 @@ export async function closePullRequest(pr: { number: number; head: string; base:
     return true;
   });
   if (!ok) return;
-  void listBranches(full, true).then((bs) => set("branches", bs), () => {});
   void refreshPulls(true);
   void refreshComments();
   if (pr.head === state.branch) {
     endReview();
     setTabs(state.tabs.filter((t) => !sameTab(t, { pull: pr.number })));
+    await relist(full, pr.base);
     navigateTo(blobUrl(full, pr.base, state.path));
-  } else if (state.pull === pr.number) closeTab({ pull: pr.number });
-  else setTabs(state.tabs.filter((t) => !sameTab(t, { pull: pr.number })));
+  } else {
+    void listBranches(full, true).then((bs) => set("branches", bs), () => {});
+    if (state.pull === pr.number) closeTab({ pull: pr.number });
+    else setTabs(state.tabs.filter((t) => !sameTab(t, { pull: pr.number })));
+  }
 }
 
 let current = 0;

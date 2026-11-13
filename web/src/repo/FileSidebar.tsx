@@ -7,7 +7,7 @@
 import { For, Show, createEffect, createMemo, createSignal, onMount, untrack } from "solid-js";
 import { comments } from "../comments/commentsStore.ts";
 import { selectIcon } from "../doc/docSelectors.ts";
-import { doc, editorState, focusEditor, toggleChanges, updateDraft } from "../doc/docStore.ts";
+import { doc, editorState, focusEditor, toggleChanges } from "../doc/docStore.ts";
 import { ArrowDownIcon, ArrowUpIcon, Avatar, BranchIcon, FileIcon, FindIcon, FolderIcon, NewFileIcon, SearchIcon, badge, field, fine } from "../ui.tsx";
 import { togglePalette } from "../palette/paletteStore.ts";
 import { encPath } from "../github.ts";
@@ -215,7 +215,8 @@ export function FileSidebar() {
 }
 
 // VS Code's status bar item, at the sidebar's foot: the branch every file and tab is on (a picker: switching it
-// switches them all), then what's special about it: read-only, protected, Changes / Update from its base.
+// switches them all), then what's special about it: read-only, protected, the review mode. A draft's own actions
+// (Changes, Bring in edits, Publish…) are in its bar over the doc (pulls/DraftBar.tsx).
 function BranchBar() {
   const draft = createMemo(() => {
     doc.version;
@@ -268,8 +269,8 @@ function BranchBar() {
           </button>
         )}
       </Show>
-      {/* the branch's changes: against its recorded base, or, reviewing a PR, against the PR's base */}
-      <Show when={draft()?.branch ?? (doc.reviewBase !== null && pulls.reviewing?.base)}>
+      {/* reviewing a branch that isn't a draft (a draft's bar has its own Changes): its changes against the PR's base */}
+      <Show when={!draft() && doc.reviewBase !== null && pulls.reviewing?.base}>
         {(base) => (
           <button
             class={`${badge} cursor-pointer px-1.5 hover:text-fg ${doc.showChanges ? "bg-on text-fg" : ""}`}
@@ -279,15 +280,6 @@ function BranchBar() {
           >
             Changes
           </button>
-        )}
-      </Show>
-      <Show when={draft()}>
-        {(b) => (
-          <Show when={doc.status.baseHead && doc.status.baseHead !== b().commit}>
-            <button class={`${badge} cursor-pointer px-1.5 hover:text-fg disabled:cursor-default disabled:opacity-50`} disabled={!!doc.drafting} title={`${b().branch} has new edits: merge them into this branch`} onClick={() => void updateDraft()}>
-              Update from {b().branch}
-            </button>
-          </Show>
         )}
       </Show>
     </div>

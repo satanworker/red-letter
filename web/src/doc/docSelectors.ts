@@ -2,6 +2,7 @@ import * as A from "@automerge/automerge";
 import type { Text } from "@codemirror/state";
 import type { Found } from "./headings.ts";
 import type { Commit } from "../repo/repoService.ts";
+import type { PrState } from "../repo/pulls.ts";
 import { editRegions, type Region } from "./regions.ts";
 import { textChanges } from "./textDiff.ts";
 import type { AgentMark, Session } from "./session.ts";
@@ -28,6 +29,14 @@ export function selectHistory(history: Commit[], marks: AgentMark[]): HistoryEnt
 }
 
 // A draft's edits against its base branch (as last merged in): ranges in the current text, deleted text in `before`.
+// A draft's state in words, from its pull request and GitHub's latest verdicts (GitBook / Decap's statuses).
+export function selectDraftStatus(pr: PrState | null): { label: string; detail: string } {
+  if (!pr) return { label: "Draft", detail: "nobody asked to review yet" };
+  if (pr.changesRequested.length) return { label: "Changes requested", detail: `by ${pr.changesRequested.join(", ")}` };
+  if (pr.approved.length) return { label: "Approved", detail: `by ${pr.approved.join(", ")}` };
+  return { label: "In review", detail: pr.reviewers.length ? `waiting on ${pr.reviewers.join(", ")}` : "anyone can review" };
+}
+
 export const selectDraftChanges = (s: Session): Region[] => (s.doc.base ? editRegions(s.doc, s.doc.base.heads, A.getHeads(s.doc)) : []);
 
 // What `text` changed from `base`, for reviewing a PR whose branch records no base (made by git, by an agent, or the

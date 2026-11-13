@@ -2,6 +2,11 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-13: Drafts
+
+- **Branches are drafts now, with no git words** (after GitBook's change requests): **Start a draft** in the header, edit, **Ask for review** (tick the people GitHub should notify), then **Publish to main** or **Discard**. A bar over the doc says whose draft it is and where it stands: Draft, In review (waiting on …), Approved, Changes requested. Underneath it's a branch and a pull request, so GitHub's rules still apply.
+- After publishing, the base opens on the same file (it used to land on another tab when the file list in this browser was stale).
+
 ## 2026-11-13: Working vs reviewing, bigger diagrams, comments lit in tables
 
 - **Working on a branch and reviewing its pull request are separate modes.** Opening a file the PR changed no longer starts a review or flips the sidebar to Pull requests. The branch bar shows "Review #N" to start one (⌘K too) and "Reviewing #N ×" to leave it, back to Files.

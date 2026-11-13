@@ -2,7 +2,8 @@
 // come with it, and the top layer puts it over the tab strip and the doc. Move / delete prompt here, then commit.
 // Keyboard: opening it focuses the first item, Up/Down/Home/End move. The ⌘K palette lists the same items.
 import { For, onMount, type JSX } from "solid-js";
-import { deleteFile, duplicateFile, forkBranch, moveFile, repo } from "../repo/repoStore.ts";
+import { canStartDraft, promptDraft } from "../pulls/DraftBar.tsx";
+import { deleteFile, duplicateFile, moveFile } from "../repo/repoStore.ts";
 import { BranchIcon, CopyPageIcon, DeleteIcon, DotsIcon, DuplicateIcon, LinkIcon, MoveIcon, listKeys } from "../ui.tsx";
 import { copyContents, doc } from "./docStore.ts";
 
@@ -10,20 +11,8 @@ export const pageItems = (canWrite: boolean): { label: string; icon: () => JSX.E
   { label: "Copy link", icon: LinkIcon, run: () => navigator.clipboard.writeText(location.href) },
   ...(canWrite ? [{ label: "Duplicate", icon: DuplicateIcon, run: duplicateFile }] : []),
   { label: "Copy page contents", icon: CopyPageIcon, run: copyContents },
-  // this file on a new branch; from any branch without a recorded base, a protected main included (that's the point)
-  ...(repo.repo?.permissions?.push && !doc.session?.doc.base
-    ? [
-        {
-          label: "New branch",
-          icon: BranchIcon,
-          run: () => {
-            const stem = doc.session!.path.split("/").pop()!.replace(/\.[^.]+$/, "");
-            const name = prompt("Branch name", `${repo.user!.login}/${stem}-edits`);
-            return name && forkBranch(name);
-          },
-        },
-      ]
-    : []),
+  // its edits off this branch until published (DraftBar)
+  ...(canStartDraft() ? [{ label: "Start a draft", icon: BranchIcon, run: promptDraft }] : []),
   ...(canWrite
     ? [
         {

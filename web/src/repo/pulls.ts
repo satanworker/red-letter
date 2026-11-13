@@ -13,8 +13,18 @@ export type PrState = Pr & {
   mergeable: boolean | null; // null: GitHub is still working it out (asked again on the next poll)
   approved: string[]; // reviewers whose latest verdict is an approval
   changesRequested: string[]; // … or a request for changes
+  reviewers: string[]; // asked to review and not yet answered
 };
-type PrJson = { number: number; html_url: string; title: string; mergeable: boolean | null; base: { ref: string }; head: { ref: string; sha: string }; user: { login: string } };
+type PrJson = {
+  number: number;
+  html_url: string;
+  title: string;
+  mergeable: boolean | null;
+  base: { ref: string };
+  head: { ref: string; sha: string };
+  user: { login: string };
+  requested_reviewers?: { login: string }[];
+};
 
 // The open PR from `head` (into `base`, if given). Always asked of GitHub, an unchanged answer is a free 304: a shared
 // in-flight request or a recent answer could predate a PR just opened.
@@ -46,7 +56,23 @@ export async function prState(repo: string, head: string): Promise<PrState | nul
   const latest = new Map<string, string>();
   for (const r of reviews) if (r.user && (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED")) latest.set(r.user.login, r.state);
   const by = (s: string) => [...latest].filter(([, v]) => v === s).map(([k]) => k);
-  return { ...pr, base: p.base.ref, head: p.head.ref, headSha: p.head.sha, title: p.title, author: p.user.login, mergeable: p.mergeable, approved: by("APPROVED"), changesRequested: by("CHANGES_REQUESTED") };
+  return {
+    ...pr,
+    base: p.base.ref,
+    head: p.head.ref,
+    headSha: p.head.sha,
+    title: p.title,
+    author: p.user.login,
+    mergeable: p.mergeable,
+    approved: by("APPROVED"),
+    changesRequested: by("CHANGES_REQUESTED"),
+    reviewers: (p.requested_reviewers ?? []).map((u) => u.login),
+  };
+}
+
+// Ask people to review a PR (GitHub notifies them); GitHub refuses the PR's author (422) and says so.
+export async function requestReviewers(repo: string, number: number, reviewers: string[]): Promise<void> {
+  await post(`/repos/${repo}/pulls/${number}/requested_reviewers`, { reviewers });
 }
 
 // GitHub answers 422 for your own PR; its message is kept.

@@ -25,4 +25,5 @@ https://www.figma.com/design/O3BbnNENlU3fMgOGuYqIkh/Red-Letter?node-id=183-849&t
 
 
 ## 2 round
-![Screenshot 2026-11-13 at 08.23.22](images/screenshot-2026-11-13-at-08-23-22-e7edcef.png)
+![Screenshot 2026-11-13 at 08.23.22](images/screenshot-2026-11-13-at-08-23-22-e7edcef.png) 
+1. Search block in "/" 

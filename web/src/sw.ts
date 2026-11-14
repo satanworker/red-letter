@@ -43,7 +43,11 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       fetch(e.request)
         .then((res) => {
-          if (res.ok) void caches.open(CACHE).then((c) => c.put("/", res.clone()));
+          // cloned now: once the page has the response its body is read, and a later clone() throws
+          if (res.ok) {
+            const copy = res.clone();
+            void caches.open(CACHE).then((c) => c.put("/", copy));
+          }
           return res;
         })
         .catch(() => caches.match("/").then((hit) => hit ?? Response.error())),

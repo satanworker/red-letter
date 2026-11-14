@@ -27,7 +27,7 @@ export async function build(out = `${import.meta.dir}/dist`) {
     conditions: ["browser"], // solid-js's DOM build, not its server build
     minify,
     splitting: true,
-    sourcemap: "none",
+    sourcemap: "linked", // bug reports' stack traces and slow-frame scripts point into minified code: the maps decode them
     naming,
     publicPath: "/assets/",
     define: {
@@ -53,7 +53,8 @@ export async function build(out = `${import.meta.dir}/dist`) {
   await Bun.write(`${out}/_headers`, "/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n");
 
   const outputs = [...res.outputs, ...worker.outputs];
-  const assets = outputs.map((o) => `/assets/${o.path.split("/").pop()}`);
+  // source maps load only with DevTools open (or for decoding a report): not precached
+  const assets = outputs.filter((o) => !o.path.endsWith(".map")).map((o) => `/assets/${o.path.split("/").pop()}`);
   const sw = await Bun.build({
     entrypoints: [`${import.meta.dir}/src/sw.ts`],
     target: "browser",

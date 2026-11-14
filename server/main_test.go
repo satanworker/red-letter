@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,8 +18,19 @@ import (
 const origin = "https://diff.satanworker.com"
 
 func setup(t *testing.T) (hub *httptest.Server, wsURL string) {
+	_, hub, wsURL = setupServer(t)
+	return hub, wsURL
+}
+
+func setupServer(t *testing.T) (s *server, hub *httptest.Server, wsURL string) {
 	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/user":
+			if r.Header.Get("Authorization") != "Bearer good" {
+				w.WriteHeader(401)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
 		case r.URL.Path == "/login/oauth/access_token":
 			r.ParseForm()
 			json.NewEncoder(w).Encode(map[string]string{
@@ -34,11 +47,12 @@ func setup(t *testing.T) (hub *httptest.Server, wsURL string) {
 		}
 	}))
 	t.Cleanup(gh.Close)
-	s := newServer([]string{origin, "http://localhost:5173"}, gh.URL, gh.URL, "cid", "shh")
+	s = newServer([]string{origin, "http://localhost:5173"}, gh.URL, gh.URL, "cid", "shh")
 	s.oauthID, s.oauthSecret = "oid", "oauth-shh"
+	s.reports = filepath.Join(t.TempDir(), "reports")
 	hub = httptest.NewServer(s.routes())
 	t.Cleanup(hub.Close)
-	return hub, "ws" + strings.TrimPrefix(hub.URL, "http") + "/sync?repo=Owner/Repo"
+	return s, hub, "ws" + strings.TrimPrefix(hub.URL, "http") + "/sync?repo=Owner/Repo"
 }
 
 func dial(t *testing.T, url string) *websocket.Conn {
@@ -202,5 +216,51 @@ func TestOAuth(t *testing.T) {
 	r, _ := http.DefaultClient.Do(req)
 	if r.StatusCode != 204 || r.Header.Get("Access-Control-Allow-Origin") != "http://localhost:5173" {
 		t.Fatalf("preflight: %d", r.StatusCode)
+	}
+}
+
+func TestReport(t *testing.T) {
+	s, hub, _ := setupServer(t)
+	send := func(org, token, body string) (*http.Response, string) {
+		req, _ := http.NewRequest("POST", hub.URL+"/report", strings.NewReader(body))
+		req.Header.Set("Origin", org)
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		return res, string(b)
+	}
+	res, body := send(origin, "good", `{"note":"stuck opening"}`)
+	var out struct{ ID string }
+	json.Unmarshal([]byte(body), &out)
+	if res.StatusCode != 200 || !strings.Contains(out.ID, "-alice-") || res.Header.Get("Access-Control-Allow-Origin") != origin {
+		t.Fatalf("report: %d %s", res.StatusCode, body)
+	}
+	saved, err := os.ReadFile(filepath.Join(s.reports, out.ID+".json"))
+	if err != nil || string(saved) != `{"note":"stuck opening"}` {
+		t.Fatalf("stored: %q %v", saved, err)
+	}
+	for _, c := range []struct {
+		org, token, body string
+		want             int
+	}{
+		{origin, "bad", `{}`, 401},
+		{origin, "", `{}`, 401},
+		{"https://evil.example", "good", `{}`, 403},
+		{origin, "good", `not json`, 400},
+		{origin, "good", `"` + strings.Repeat("x", maxReport) + `"`, 413},
+	} {
+		if res, body := send(c.org, c.token, c.body); res.StatusCode != c.want {
+			t.Errorf("%s %s: %d %s, want %d", c.org, c.token, res.StatusCode, body[:min(len(body), 80)], c.want)
+		}
+	}
+	if files, _ := os.ReadDir(s.reports); len(files) != 1 {
+		t.Fatalf("%d files stored, want 1", len(files))
 	}
 }

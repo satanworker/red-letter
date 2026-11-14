@@ -43,6 +43,6 @@ cd server && CGO_ENABLED=0 go build -o ~/.config/red-letter/rl-hub . \
   && systemctl --user restart red-letter-hub                         # diff-api.satanworker.com
 ```
 
-On home-satan the hub and `cloudflared` run as systemd user units (`deploy/*.service`, linger enabled). Secrets live outside the repo in `~/.config/red-letter/`: `env` (`RL_GITHUB_CLIENT_ID`, `RL_GITHUB_CLIENT_SECRET`, `RL_ORIGINS`, `RL_ADDR`), the App private key `app.pem` (unused so far), `tunnel.json` (tunnel credentials) and `tunnel.yml` (`deploy/tunnel.yml` with the tunnel id and home path filled in).
+On home-satan the hub and `cloudflared` run as systemd user units (`deploy/*.service`, linger enabled). Bug reports land in `~/.config/red-letter/reports/` (`RL_REPORTS`; `ls -t | head` for the newest, `jq` to read). Secrets live outside the repo in `~/.config/red-letter/`: `env` (`RL_GITHUB_CLIENT_ID`, `RL_GITHUB_CLIENT_SECRET`, `RL_ORIGINS`, `RL_ADDR`), the App private key `app.pem` (unused so far), `tunnel.json` (tunnel credentials) and `tunnel.yml` (`deploy/tunnel.yml` with the tunnel id and home path filled in).
 
 Sign-in: OAuth App "Red Letter" (`repo` scope, default, nothing to install) or GitHub App [`red-letter-diff`](https://github.com/apps/red-letter-diff) (per-repo install; contents + pull requests read/write). The hub needs `RL_OAUTH_CLIENT_ID` / `RL_OAUTH_CLIENT_SECRET` in `env` for the former.

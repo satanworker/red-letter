@@ -1,16 +1,20 @@
 // Command server is the Red Letter hub: a dumb WebSocket router between peers
-// in a repo room, plus the GitHub App OAuth code/refresh exchange.
+// in a repo room, the GitHub App OAuth code/refresh exchange, and an inbox for
+// bug reports.
 package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -27,6 +31,7 @@ const (
 	pingEvery    = 30 * time.Second
 	pongTimeout  = 10 * time.Second
 	writeTimeout = 10 * time.Second
+	maxReport    = 8 << 20
 )
 
 var repoRE = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
@@ -37,6 +42,7 @@ type server struct {
 	clientID, secret string
 	// optional classic OAuth App ("client":"oauth"): one-click sign-in without installing the GitHub App
 	oauthID, oauthSecret string
+	reports              string // directory bug reports are written to
 	client               *http.Client
 
 	mu    sync.Mutex
@@ -102,6 +108,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /sync", s.handleSync)
 	mux.HandleFunc("/oauth/token", s.oauth(false))
 	mux.HandleFunc("/oauth/refresh", s.oauth(true))
+	mux.HandleFunc("/report", s.report)
 	return mux
 }
 
@@ -307,25 +314,10 @@ func (s *server) handleSync(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) oauth(refresh bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		if !s.origins[origin] {
-			http.Error(w, "forbidden origin", http.StatusForbidden)
+		if !s.cors(w, r, "content-type") {
 			return
 		}
 		h := w.Header()
-		h.Set("Access-Control-Allow-Origin", origin)
-		h.Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		h.Set("Access-Control-Allow-Headers", "content-type")
-		h.Add("Vary", "Origin")
-		switch r.Method {
-		case http.MethodOptions:
-			w.WriteHeader(http.StatusNoContent)
-			return
-		case http.MethodPost:
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
 		var in struct {
 			Client       string `json:"client"`
 			Code         string `json:"code"`
@@ -389,6 +381,96 @@ func (s *server) oauth(refresh bool) http.HandlerFunc {
 	}
 }
 
+// cors answers for an allowed origin (false: refused, or a preflight already answered).
+func (s *server) cors(w http.ResponseWriter, r *http.Request, headers string) bool {
+	origin := r.Header.Get("Origin")
+	if !s.origins[origin] {
+		http.Error(w, "forbidden origin", http.StatusForbidden)
+		return false
+	}
+	h := w.Header()
+	h.Set("Access-Control-Allow-Origin", origin)
+	h.Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	h.Set("Access-Control-Allow-Headers", headers)
+	h.Add("Vary", "Origin")
+	switch r.Method {
+	case http.MethodOptions:
+		w.WriteHeader(http.StatusNoContent)
+		return false
+	case http.MethodPost:
+		return true
+	}
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	return false
+}
+
+// login is the GitHub account a token belongs to, or "" when GitHub doesn't know it.
+func (s *server) login(ctx context.Context, token string) string {
+	req, err := http.NewRequestWithContext(ctx, "GET", s.api+"/user", nil)
+	if err != nil || token == "" {
+		return ""
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	res, err := s.client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer res.Body.Close()
+	var u struct {
+		Login string `json:"login"`
+	}
+	if res.StatusCode != 200 || json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&u) != nil || !loginRE.MatchString(u.Login) {
+		return ""
+	}
+	return u.Login
+}
+
+var loginRE = regexp.MustCompile(`^[A-Za-z0-9-]{1,39}$`)
+
+// report stores a bug report (the app's JSON, up to maxReport) from any signed-in GitHub user as one file in
+// s.reports, named <UTC time>-<login>-<random>. Only whoever runs the hub reads them; the id comes back so the
+// user can quote it.
+// ponytail: no per-user rate limit; the token check and the size cap are the only brakes. Add one if it's abused.
+func (s *server) report(w http.ResponseWriter, r *http.Request) {
+	if !s.cors(w, r, "content-type, authorization") {
+		return
+	}
+	login := s.login(r.Context(), strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	if login == "" {
+		http.Error(w, "sign in with GitHub to send a report", http.StatusUnauthorized)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxReport+1))
+	switch {
+	case err != nil:
+		http.Error(w, "couldn't read the report", http.StatusBadRequest)
+		return
+	case len(body) > maxReport:
+		http.Error(w, "report too large", http.StatusRequestEntityTooLarge)
+		return
+	case !json.Valid(body):
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	var b [4]byte
+	rand.Read(b[:])
+	id := time.Now().UTC().Format("20060102-150405") + "-" + login + "-" + hex.EncodeToString(b[:])
+	if err := os.MkdirAll(s.reports, 0o700); err != nil {
+		log.Printf("report %s: %v", id, err)
+		http.Error(w, "couldn't store the report", http.StatusInternalServerError)
+		return
+	}
+	if err := os.WriteFile(filepath.Join(s.reports, id+".json"), body, 0o600); err != nil {
+		log.Printf("report %s: %v", id, err)
+		http.Error(w, "couldn't store the report", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("report %s (%d bytes)", id, len(body))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"id": id})
+}
+
 func env(k, def string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
@@ -402,6 +484,8 @@ func main() {
 		os.Getenv("RL_GITHUB_CLIENT_ID"), os.Getenv("RL_GITHUB_CLIENT_SECRET"))
 	addr := env("RL_ADDR", "127.0.0.1:8787")
 	s.oauthID, s.oauthSecret = os.Getenv("RL_OAUTH_CLIENT_ID"), os.Getenv("RL_OAUTH_CLIENT_SECRET")
+	home, _ := os.UserHomeDir()
+	s.reports = env("RL_REPORTS", filepath.Join(home, ".config", "red-letter", "reports"))
 	srv := &http.Server{Addr: addr, Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("listening on %s", addr)
 	log.Fatal(srv.ListenAndServe())

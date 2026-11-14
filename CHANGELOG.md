@@ -2,6 +2,11 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-14: Report a problem
+
+- **A bug button at the bottom right of every screen.** It turns red with a count when something breaks or freezes; click it, say what you were doing (optional), and Send: the logs, slow frames, requests and the app's state go to the hub with an id to quote. No sign-in or no network: Download the same report. Never the doc's text or a token.
+- The service worker stopped throwing "Response body is already used" on every page load (it cloned the page after the browser had read it, so the offline copy of the app never updated).
+
 ## 2026-11-13: Drafts
 
 - **Branches are drafts now, with no git words** (after GitBook's change requests): **Start a draft** in the header, edit, **Ask for review** (tick the people GitHub should notify), then **Publish to main** or **Discard**. A bar over the doc says whose draft it is and where it stands: Draft, In review (waiting on …), Approved, Changes requested. Underneath it's a branch and a pull request, so GitHub's rules still apply.

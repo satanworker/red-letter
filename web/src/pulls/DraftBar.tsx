@@ -53,12 +53,15 @@ export function DraftBar() {
   };
   return (
     <div class="flex shrink-0 items-center gap-3 border-b-[.5px] border-line bg-bg2 px-4 py-2 whitespace-nowrap" role="region" aria-label="Draft">
-      <span class="text-muted" title={`Nobody sees these edits on ${target()} until you publish`}>
+      <span class="shrink-0 text-muted" title={`Nobody sees these edits on ${target()} until you publish`}>
         Draft of {target()} ·
       </span>
-      <span class="font-medium">{doc.pr?.title ?? prTitle(repo.branch)}</span>
-      <span class={`rounded-xl border-[.4px] border-line px-1.5 font-light ${TONE[status().label] ?? "text-muted"}`}>{status().label}</span>
-      <span class="min-w-0 flex-1 truncate text-muted">{status().detail}</span>
+      {/* a long name gives way first, then the status's detail: the buttons always fit */}
+      <span class="min-w-12 truncate font-medium" title={doc.pr?.title ?? prTitle(repo.branch)}>
+        {doc.pr?.title ?? prTitle(repo.branch)}
+      </span>
+      <span class={`shrink-0 rounded-xl border-[.4px] border-line px-1.5 font-light ${TONE[status().label] ?? "text-muted"}`}>{status().label}</span>
+      <span class="min-w-0 flex-1 basis-0 truncate text-muted">{status().detail}</span>
       <Show when={doc.drafting}>
         <span class="text-muted">{doc.drafting}</span>
       </Show>

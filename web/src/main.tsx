@@ -1,5 +1,6 @@
 // Automerge is aliased to its /slim build (see build.ts): load the wasm as a cacheable file, then start the app.
 // Nothing may call Automerge at module load. Global listeners live here and only dispatch store actions.
+import { setSnapshot } from "./report/report.ts"; // first: it records from the app's first log line and request
 import { initializeWasm } from "@automerge/automerge";
 import wasmUrl from "@automerge/automerge/automerge.wasm" with { type: "file" };
 import { render } from "solid-js/web";
@@ -12,9 +13,55 @@ import { openInBackground, openRoute, repo } from "./repo/repoStore.ts";
 import { palette, togglePalette } from "./palette/paletteStore.ts";
 import { keysOf, runKeys } from "./palette/commands.ts";
 import { rate } from "./rate.ts";
+import { pulls } from "./pulls/pullsStore.ts";
+import { ReportButton } from "./report/ReportButton.tsx";
 
 await initializeWasm(wasmUrl);
 render(() => <App />, document.getElementById("app")!);
+// apart from the app: the report button still works when the app is stuck or broken
+render(() => <ReportButton />, document.body.appendChild(document.createElement("div")));
+// What a bug report says about the app (report.ts): where you are and what each store is doing, never the doc's text
+setSnapshot(() => {
+  const s = doc.session, v = editorView();
+  return {
+    screen: repo.screen,
+    message: repo.message,
+    user: repo.user?.login,
+    repo: repo.repo && { name: repo.repo.full_name, push: repo.repo.permissions?.push, defaultBranch: repo.repo.default_branch },
+    branch: repo.branch,
+    path: repo.path,
+    pull: repo.pull,
+    tabs: repo.tabs,
+    docs: repo.docs.length,
+    branches: repo.branches.length,
+    hidden: { files: repo.filesHidden, panel: repo.panelHidden },
+    doc: {
+      opening: doc.opening,
+      status: doc.status,
+      drafting: doc.drafting,
+      note: doc.draftNote,
+      showChanges: doc.showChanges,
+      reviewBaseChars: doc.reviewBase?.length ?? null,
+      history: doc.history.length,
+      tab: doc.tab,
+      reading: doc.reading,
+      version: doc.version,
+      pr: doc.pr,
+      session: s && { branch: s.branch, path: s.path, canWrite: s.canWrite, chars: s.doc.text.length, base: s.doc.base, git: s.doc.git },
+      editor: v && { lines: v.state.doc.lines, chars: v.state.doc.length, readOnly: v.state.readOnly },
+    },
+    pulls: {
+      view: pulls.view,
+      loaded: pulls.loaded,
+      error: pulls.error,
+      reviewing: pulls.reviewing,
+      open: pulls.open,
+      list: pulls.list.map((p) => ({ number: p.number, head: p.head, base: p.base, files: p.files.length, threads: p.threads.length })),
+    },
+    comments: { mode: comments.mode, viaPr: comments.viaPr, prThreads: comments.prThreads.length, prs: comments.prs.map((p) => p.number), error: comments.error, sending: comments.sending },
+    rate: { core: rate.core, graphql: rate.graphql, blockedUntil: rate.blockedUntil },
+  };
+});
 
 // Same-document navigation: links, back/forward and navigateTo() switch files without reloading the page.
 // The OAuth callback stays a page load: it's where GitHub sends the browser.

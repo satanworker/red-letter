@@ -1,9 +1,11 @@
 // Screens. Which one shows is repoStore's `screen`; the editor screen lives in doc/EditorScreen.tsx.
-import { Match, Show, Switch } from "solid-js";
+import { For, Match, Show, Switch, createMemo } from "solid-js";
 import { EditorScreen } from "./doc/EditorScreen.tsx";
 import { APP_SLUG, authKind, rememberReturn, signIn, signOut, type AuthKind } from "./github.ts";
+import { selectHomeRepos } from "./repo/repoSelectors.ts";
+import type { UserRepo } from "./repo/repoService.ts";
 import { navigateTo, openRoute, repo } from "./repo/repoStore.ts";
-import { Avatar, GithubMark, Logo, Spinner, fine, primaryBtn } from "./ui.tsx";
+import { Avatar, GithubMark, Logo, Spinner, ago, badge, fine, listKeys, primaryBtn } from "./ui.tsx";
 
 const screen = "min-h-screen";
 const topnav = "flex h-[52px] items-center gap-2.5 px-5";
@@ -122,7 +124,45 @@ function Landing() {
             <SignInButtons />
           </div>
         </Show>
+        <Show when={repo.user}>
+          <Repos />
+        </Show>
       </main>
+    </div>
+  );
+}
+
+// Signed in: the repos opened in this browser, then every other repo the user can reach; a click opens its README.
+function Repos() {
+  const lists = createMemo(() => selectHomeRepos(repo.recent, repo.repos));
+  const section = (title: string, rows: UserRepo[]) => (
+    <Show when={rows.length}>
+      <h2 class="mt-8 mb-2 px-3 text-[12px] font-medium tracking-wide text-faint uppercase">{title}</h2>
+      <ul>
+        <For each={rows}>
+          {(r) => (
+            <li>
+              <a href={`/${r.full_name}`} class="flex items-center gap-2 rounded-md px-3 py-1.5 hover:bg-hover focus:bg-hover">
+                <Avatar login={r.full_name.split("/")[0]} size={16} />
+                <span class="shrink-0 font-medium">{r.full_name}</span>
+                <Show when={r.private}>
+                  <span class={`${badge} px-1.5 text-[11px]`}>private</span>
+                </Show>
+                <span class="min-w-0 flex-1 truncate text-muted">{r.description}</span>
+                <Show when={r.pushed_at}>
+                  <span class="shrink-0 text-faint">{ago(r.pushed_at)}</span>
+                </Show>
+              </a>
+            </li>
+          )}
+        </For>
+      </ul>
+    </Show>
+  );
+  return (
+    <div class="mt-4 mb-16 -mx-3" onKeyDown={(e) => listKeys(e, "li > a")}>
+      {section("Recent", lists().opened)}
+      {section("Your repositories", lists().others)}
     </div>
   );
 }

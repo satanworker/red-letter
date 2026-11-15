@@ -7,7 +7,7 @@ import { loadPulls, pulls, refreshPulls, setReviewing, showView, unfoldPr } from
 import { NO_SNAPSHOT, prefetchTexts, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
 import { approvePr, closePr, mergeInto, mergePr, openPr, openPrFrom, requestChanges, requestReviewers, reviewBranch, touchFile, type Pr } from "./pulls.ts";
-import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, resolveBranch, type RepoInfo } from "./repoService.ts";
+import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, listUserRepos, resolveBranch, type RepoInfo, type UserRepo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
 type RepoState = {
@@ -26,6 +26,8 @@ type RepoState = {
   filesHidden: boolean;
   panelHidden: boolean; // the comments / history panel
   collaborators: User[]; // who can be @mentioned, loaded on first use
+  recent: string[]; // the landing page: repos opened in this browser, last opened first
+  repos: UserRepo[]; // the landing page: every repo the user can reach
 };
 
 const [state, set] = createStore<RepoState>({
@@ -44,6 +46,8 @@ const [state, set] = createStore<RepoState>({
   filesHidden: localStorage.getItem("rl_files") === "hidden" || innerWidth < 900,
   panelHidden: localStorage.getItem("rl_panel") === "hidden",
   collaborators: [],
+  recent: [],
+  repos: [],
 });
 export const repo = state;
 // The /__figma dev page sets the whole workspace from fixture data (src/dev/figma.tsx).
@@ -420,6 +424,14 @@ export async function closePullRequest(pr: { number: number; head: string; base:
 
 let current = 0;
 
+const RECENT_KEY = "rl_recent";
+// rl_recent, then repos with saved tabs (opened before rl_recent existed): `rl_tabs2:<repo>`, before 2026-11-12 `rl_tabs:<repo>@<branch>`
+function recentRepos(): string[] {
+  const listed: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+  const tabbed = Object.keys(localStorage).flatMap((k) => k.match(/^rl_tabs2?:([^@]+)/)?.[1] ?? []);
+  return [...new Set([...listed, ...tabbed])];
+}
+
 // The repo's saved tabs, those `docs` (the branch's files) has. Tabs saved before 2026-11-12 also named a branch: ignored.
 function savedTabs(full: string, docs: string[]): Tab[] {
   const saved: Tab[] = JSON.parse(localStorage.getItem(tabsKey(full)) ?? "[]");
@@ -445,7 +457,9 @@ export async function openRoute(url: URL): Promise<void> {
     if (parts.length < 2) {
       closeFile();
       const user = await currentUser().catch(() => null);
-      if (!stale()) set({ screen: "landing", user, repo: null });
+      if (stale()) return;
+      set({ screen: "landing", user, repo: null, recent: user ? recentRepos() : [], repos: user ? state.repos : [] });
+      if (user) void listUserRepos().then((repos) => set("repos", repos), () => {});
       return;
     }
     const [owner, name, ...rest] = parts;
@@ -468,6 +482,7 @@ export async function openRoute(url: URL): Promise<void> {
         set({ screen: "noaccess", owner, name, repo: null });
         return;
       }
+      localStorage.setItem(RECENT_KEY, JSON.stringify([info.full_name, ...recentRepos().filter((r) => r !== info!.full_name)]));
     }
     const full = info.full_name;
     // a pull request's description: a tab of its own, on the workspace's branch (its files stay as they are). Opened

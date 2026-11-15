@@ -102,3 +102,13 @@ export async function appInstalledOn(fullName: string, stale = true): Promise<bo
   }
   return ok || (stale && appInstalledOn(fullName, false));
 }
+
+export type UserRepo = { full_name: string; description: string | null; private: boolean; pushed_at: string };
+
+// Every repo the user's token reaches (owned, collaborator, org member; a GitHub App token: where it's installed),
+// last pushed first. Revalidated with the ETag on each visit, the copy offline.
+// ponytail: first 100 only
+export async function listUserRepos(): Promise<UserRepo[]> {
+  const rs: UserRepo[] = JSON.parse(await cachedGet("/user/repos?sort=pushed&per_page=100"));
+  return rs.map((r) => ({ full_name: r.full_name, description: r.description, private: r.private, pushed_at: r.pushed_at }));
+}

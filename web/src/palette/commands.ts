@@ -25,7 +25,7 @@ export function keysOf(e: KeyboardEvent): string {
 export function keyLabel(keys: string): string {
   const parts = keys.split(/-(?!$)/);
   const key = parts.pop()!.toUpperCase();
-  if (mac) return parts.map((p) => ({ Mod: "⌘", Shift: "⇧", Alt: "⌥" })[p] ?? p).join("") + key;
+  if (mac) return parts.map((p) => ({ Mod: "⌘", Ctrl: "⌃", Shift: "⇧", Alt: "⌥" })[p] ?? p).join("") + key;
   return [...parts.map((p) => (p === "Mod" ? "Ctrl" : p)), key].join("+");
 }
 
@@ -117,7 +117,8 @@ export const commands = (): Command[] => [
   { label: "Previous area", keys: "Shift-F6", run: () => cycleArea(-1) },
   { label: "Next tab", keys: "Mod-Alt-]", run: () => stepTab(1) },
   { label: "Previous tab", keys: "Mod-Alt-[", run: () => stepTab(-1) },
-  ...(repo.tabs.length > 1 ? [{ label: "Close tab", run: () => closeTab(activeTab()) }] : []),
+  // ⌘W / Ctrl+W are the browser's (Chrome never hands them to the page): ⌃W on a Mac, Alt+W elsewhere
+  ...(repo.tabs.length > 1 ? [{ label: "Close tab", keys: mac ? "Ctrl-w" : "Alt-w", run: () => closeTab(activeTab()) }] : []),
   { label: "Show comments", run: () => (showTab("comments"), showPanel()) },
   { label: "Show history", run: () => (showTab("history"), showPanel()) },
   { label: "Show outline", run: () => (showTab("outline"), showPanel()) },

@@ -2,6 +2,11 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-15: Your repos on the home page, close a tab by key
+
+- **The home page lists your repositories** when signed in: first the ones opened in this browser (last opened first, `localStorage` `rl_recent`, plus any with saved tabs), then every other repo your token reaches (`GET /user/repos`, last pushed first, first 100). Each row shows owner avatar, private badge, description and last push; a click opens its README, arrows move between rows. Sign-out forgets the list and the saved tabs.
+- **⌃W closes the open tab** on a Mac, **Alt+W** elsewhere (the browser keeps ⌘W / Ctrl+W for its own tab). Sign-in and token flow written up in `docs/auth.md`.
+
 ## 2026-11-15: Calmer tab switching
 
 - **Switching tabs no longer flashes**: no "Opening …" spinner unless the file takes over 300 ms, no "offline" while live sync connects, the draft bar and "Review #N" stay instead of disappearing for a second, the comments panel keeps its pull request, and file icons don't drop to the plain icon for a frame.

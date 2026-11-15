@@ -37,10 +37,12 @@ export async function signIn(kind: AuthKind = "oauth") {
   location.assign(`https://github.com/login/oauth/authorize?${q}`);
 }
 
-// Also drops this browser's copies of docs and GitHub responses: the next person on this browser must not see them.
+// Also drops this browser's copies of docs and GitHub responses, and the repos opened here (recent list, tabs): the
+// next person on this browser must not see them.
 export function signOut() {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem("rl_user");
+  for (const k of Object.keys(localStorage)) if (k === "rl_recent" || k.startsWith("rl_tabs")) localStorage.removeItem(k);
   void idbClear("docs");
   void idbClear("http");
 }

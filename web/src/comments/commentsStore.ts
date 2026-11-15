@@ -26,15 +26,21 @@ const [state, set] = createStore({
 export const comments = state;
 let cur: Target | null = null;
 
+// The open PRs of the branch just left: another file of that branch starts with them (they're mostly the branch's),
+// so the panel's toggle and "goes to pull request #N" don't blink while its own are read
+let left: { key: string; prs: PrLink[] } | null = null;
+
 export function loadComments(repo: string, branch: string, path: string, viaPr: boolean) {
   const t = (cur = { repo, branch, path, viaPr });
   stamp = ""; // the threads were just cleared: the next refresh must fill them, even if no PR moved
-  set({ viaPr, pr: null, text: null, prThreads: [], prs: [], review: "", sending: false, error: "", mode: localStorage.getItem(modeKey(repo)) === "file" ? "file" : "pr" });
+  const prs = left?.key === `${repo} ${branch}` ? left.prs : [];
+  set({ viaPr, pr: null, text: null, prThreads: [], prs, review: "", sending: false, error: "", mode: localStorage.getItem(modeKey(repo)) === "file" ? "file" : "pr" });
   void reviewBranch(branch, path).then((r) => cur === t && set("review", r));
   void refreshComments();
 }
 
 export function clearComments() {
+  if (cur) left = { key: `${cur.repo} ${cur.branch}`, prs: state.prs };
   cur = null;
   stamp = "";
   set({ viaPr: false, pr: null, text: null, prThreads: [], prs: [], review: "", sending: false, error: "" });

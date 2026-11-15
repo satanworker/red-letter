@@ -132,7 +132,9 @@ export async function syncCopy(repo: string, branch: string, path: string, snaps
 
 export class Session {
   handle!: DocHandle<RLDoc>;
-  status: Status = { saving: false, dirty: false, commit: "", people: [], online: false, baseHead: "" };
+  // online until the hub says otherwise: connecting isn't offline (every file switch flashed "offline" for the
+  // ~50 ms its socket took); a socket that fails or drops reports it (HubAdapter onclose)
+  status: Status = { saving: false, dirty: false, commit: "", people: [], online: true, baseHead: "" };
   onStatus: () => void = () => {};
   // Resolves once the doc has caught up with git (or failed to: see status.error). Rejects with DocReset.
   synced: Promise<void> = Promise.resolve();

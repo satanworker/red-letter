@@ -156,12 +156,16 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
     docChanged();
   };
   session.handle.on("change", docChanged);
+  // the PR is the branch's, not the file's: another file of the same branch keeps it (dropping it hid the draft bar
+  // and the review toggle for the second refreshPr takes)
+  const pr = prOf?.repo === repo.full_name && prOf.branch === branch ? state.pr : null;
   batch(() => {
     release();
     loadComments(repo.full_name, branch, path, viaPr); // before the editor mounts: it reads comments.viaPr
     prOf = branch === repo.default_branch ? null : { repo: repo.full_name, branch };
+    noteIcon(path, session.doc.text); // the sidebar, tab and favicon show it until the editor has mounted
     // the panel tab stays as it was: a tab picked on one page is still open on the next
-    set({ session, opening: "", history: [], shown: null, activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "", pr: null, reviewBase: null });
+    set({ session, opening: "", history: [], shown: null, activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "", pr, reviewBase: null });
     pushStatus();
   });
   ticker = window.setInterval(tick, 15_000);

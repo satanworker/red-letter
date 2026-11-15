@@ -2,6 +2,10 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-15: Calmer tab switching
+
+- **Switching tabs no longer flashes**: no "Opening …" spinner unless the file takes over 300 ms, no "offline" while live sync connects, the draft bar and "Review #N" stay instead of disappearing for a second, the comments panel keeps its pull request, and file icons don't drop to the plain icon for a frame.
+
 ## 2026-11-14: Report a problem
 
 - **A bug button at the bottom right of every screen.** It turns red with a count when something breaks or freezes; click it, say what you were doing (optional), and Send: the logs, slow frames, requests and the app's state go to the hub with an id to quote. No sign-in or no network: Download the same report. Never the doc's text or a token.

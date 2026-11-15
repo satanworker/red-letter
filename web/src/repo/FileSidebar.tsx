@@ -33,7 +33,8 @@ function DocIcon(props: { path: string }) {
     if (doc.session?.path !== props.path) return doc.icons[props.path] ?? "";
     doc.version;
     const text = editorState()?.doc;
-    return text ? (selectIcon(text)?.icon ?? "") : "";
+    // no editor yet (the doc just swapped in): the icon noted when it opened, not the file icon for a frame
+    return text ? (selectIcon(text)?.icon ?? "") : (doc.icons[props.path] ?? "");
   });
   return (
     <Show when={icon()} fallback={<FileIcon />}>

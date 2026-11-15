@@ -56,10 +56,19 @@ export function EditorScreen() {
     if (repo.pull) document.title = `#${repo.pull} ${pr() ? prTitle(pr()!) : ""} · Red Letter`;
     else if (repo.path) document.title = `${repo.path.split("/").pop()} · Red Letter`;
   });
+  // A file that opens within 300 ms (most: from this browser's copy) swaps in place; only a slower one replaces the
+  // file being left with its spinner, so switching tabs doesn't flash "Opening …" every time.
+  const [slowOpen, setSlowOpen] = createSignal(false);
+  createEffect(() => {
+    setSlowOpen(false);
+    if (!doc.opening) return;
+    const t = setTimeout(() => setSlowOpen(true), 300);
+    onCleanup(() => clearTimeout(t));
+  });
   const icon = createMemo(() => {
     doc.version;
     const text = editorState()?.doc;
-    return text ? (selectIcon(text)?.icon ?? "") : "";
+    return text ? (selectIcon(text)?.icon ?? "") : (doc.icons[doc.session?.path ?? ""] ?? "");
   });
   createEffect(() => showFavicon(icon()));
   onCleanup(() => showFavicon(""));
@@ -252,9 +261,9 @@ export function EditorScreen() {
           </Show>
           {/* hidden, not unmounted, under a PR's tab: CodeMirror and the doc's scroll stay as they were */}
           <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg" hidden={!!repo.pull}>
-            {/* a file being opened shows its spinner at once, not the file it replaces */}
+            {/* a file being opened shows its spinner instead of the file it replaces, once it takes over 300 ms (slowOpen) */}
             <Show
-              when={!doc.opening && doc.session}
+              when={!(doc.opening && slowOpen()) && doc.session}
               keyed
               fallback={
                 <Show

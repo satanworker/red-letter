@@ -1,0 +1,23 @@
+# Weekly update PRs, minor and patch bumps grouped into one PR per ecosystem. Merging one that touches web/ deploys the
+# site (deploy-web.yml); nothing else runs on PRs, so check them locally first (AGENTS.md "Verify").
+version: 2
+updates:
+  - package-ecosystem: bun
+    directory: /web
+    schedule: { interval: weekly }
+    groups:
+      minor-and-patch: { update-types: [minor, patch] }
+    ignore:
+      # Replay determinism is a cross-version contract (docs/DESIGN.md "Known risks"): Automerge moves only on purpose,
+      # with replayVersion bumped. automerge-repo brings its own Automerge.
+      - dependency-name: "@automerge/*"
+  - package-ecosystem: gomod
+    directory: /server
+    schedule: { interval: weekly }
+    groups:
+      minor-and-patch: { update-types: [minor, patch] }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      minor-and-patch: { update-types: [minor, patch] }

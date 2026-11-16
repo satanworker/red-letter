@@ -7,6 +7,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **The Pull requests view no longer spins forever in a repo with no open PRs**: the open-PR list's stamp is empty then, the same as "never loaded", so the first refresh took it for unchanged and never marked the list loaded (two reports from `satanworker/SafeSpaceNew` after its last PR was merged).
 - **The report button sits in the bottom-right corner**, 12 px from both edges (it was 36 px up), its panel just above it.
 - **A pre-commit hook keeps the changelog going** (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`): a commit that changes `web/` or `server/` may skip `CHANGELOG.md`, but the third such commit in a row is refused (`--no-verify` skips it once).
+- **Dependabot** (`.github/dependabot.yml`): weekly update PRs for `web/` (bun), `server/` (Go modules) and the workflow's actions, minor and patch bumps grouped into one PR each; Automerge (`@automerge/*`) is left alone, since replay depends on its exact version. Security alerts and security update PRs are on.
 
 ## 2026-11-15: Cancel review, background sync runs again
 

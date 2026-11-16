@@ -36,7 +36,7 @@ Styling is Tailwind v4: utility classes in the components, design tokens in `web
 
 ## Deploy
 
-Pushes to `main` that touch `web/` deploy the site automatically (`.github/workflows/deploy-web.yml`; needs the repo secret `CLOUDFLARE_API_TOKEN`, a token with the "Edit Cloudflare Workers" template). Manual equivalents:
+Pushes to `main` that touch `web/` deploy the site automatically (`.github/workflows/deploy-web.yml`; needs the repo secret `CLOUDFLARE_API_TOKEN`, a token with the "Edit Cloudflare Workers" template), merged Dependabot PRs for `web/` included. The hub doesn't deploy itself: build and restart it on home-satan (below). Manual equivalents:
 
 ```sh
 cd web && bun build.ts && bunx wrangler@4 deploy                     # diff.satanworker.com

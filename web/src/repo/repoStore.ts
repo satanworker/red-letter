@@ -283,6 +283,17 @@ export async function discardDraft() {
   navigateTo(blobUrl(full, base, state.path));
 }
 
+// Cancel review: the draft's pull request closed, its branch and edits kept; Ask for review opens a new one.
+export async function cancelReview() {
+  const pr = doc.pr;
+  if (!pr || !state.repo) return;
+  const full = state.repo.full_name;
+  if (!(await runDraft("Cancelling the review…", async () => (await closePr(full, pr.number), true)))) return;
+  setTabs(state.tabs.filter((t) => !sameTab(t, { pull: pr.number })));
+  await refreshPr();
+  void refreshPulls(true);
+}
+
 // After a draft is published or discarded: the branches and the base's files as GitHub has them now, before the route
 // reads this browser's copies (they'd still list the deleted branch, and lack a file the draft added: the route would
 // land on another tab).
@@ -585,8 +596,8 @@ async function syncAll(repo: string, branch: string, cached: string[]) {
         const p = path;
         const isOpen = () => doc.opening === p || doc.session?.path === p;
         if (isOpen()) continue;
-        const text = await syncCopy(repo, branch, p, heads.get(await snapshotRef(branch, p)) ?? NO_SNAPSHOT, head, isOpen);
-        if (run === syncRun) noteIcon(p, text);
+        const icon = await syncCopy(repo, branch, p, heads.get(await snapshotRef(branch, p)) ?? NO_SNAPSHOT, head, isOpen);
+        if (run === syncRun) noteIcon(p, icon);
       }
     };
     await Promise.all([worker(), worker(), worker(), worker()]);

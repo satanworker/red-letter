@@ -17,11 +17,14 @@ export const selectMatches = (docs: string[], query: string) => {
   return q ? docs.filter((p) => p.toLowerCase().includes(q)).slice(0, 200) : [];
 };
 
-// The landing page's lists: repos opened in this browser (last opened first), then the rest the user can reach.
+// The landing page's lists: repos opened in this browser (last opened first), then 5 others the user can reach (last
+// pushed first); a query filters both by name or description and widens the others to 20.
 // An opened repo the user's list lacks (someone else's public repo, past the first 100) shows by name only.
-export function selectHomeRepos(recent: string[], repos: UserRepo[]) {
+export function selectHomeRepos(recent: string[], repos: UserRepo[], query: string) {
   const byName = new Map(repos.map((r) => [r.full_name.toLowerCase(), r]));
   const opened = recent.map((full) => byName.get(full.toLowerCase()) ?? { full_name: full, description: null, private: false, pushed_at: "" });
   const seen = new Set(recent.map((full) => full.toLowerCase()));
-  return { opened, others: repos.filter((r) => !seen.has(r.full_name.toLowerCase())) };
+  const q = query.trim().toLowerCase();
+  const hit = (r: UserRepo) => !q || r.full_name.toLowerCase().includes(q) || !!r.description?.toLowerCase().includes(q);
+  return { opened: opened.filter(hit), others: repos.filter((r) => !seen.has(r.full_name.toLowerCase()) && hit(r)).slice(0, q ? 20 : 5) };
 }

@@ -1,5 +1,5 @@
 // Screens. Which one shows is repoStore's `screen`; the editor screen lives in doc/EditorScreen.tsx.
-import { For, Match, Show, Switch, createMemo } from "solid-js";
+import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js";
 import { EditorScreen } from "./doc/EditorScreen.tsx";
 import { APP_SLUG, authKind, rememberReturn, signIn, signOut, type AuthKind } from "./github.ts";
 import { selectHomeRepos } from "./repo/repoSelectors.ts";
@@ -132,37 +132,56 @@ function Landing() {
   );
 }
 
-// Signed in: the repos opened in this browser, then every other repo the user can reach; a click opens its README.
+// Signed in: the repos opened in this browser, then a few others the user can reach, with a search over all of them;
+// a click opens its README.
 function Repos() {
-  const lists = createMemo(() => selectHomeRepos(repo.recent, repo.repos));
-  const section = (title: string, rows: UserRepo[]) => (
-    <Show when={rows.length}>
-      <h2 class="mt-8 mb-2 px-3 text-[12px] font-medium tracking-wide text-faint uppercase">{title}</h2>
-      <ul>
-        <For each={rows}>
-          {(r) => (
-            <li>
-              <a href={`/${r.full_name}`} class="flex items-center gap-2 rounded-md px-3 py-1.5 hover:bg-hover focus:bg-hover">
-                <Avatar login={r.full_name.split("/")[0]} size={16} />
-                <span class="shrink-0 font-medium">{r.full_name}</span>
-                <Show when={r.private}>
-                  <span class={`${badge} px-1.5 text-[11px]`}>private</span>
-                </Show>
-                <span class="min-w-0 flex-1 truncate text-muted">{r.description}</span>
-                <Show when={r.pushed_at}>
-                  <span class="shrink-0 text-faint">{ago(r.pushed_at)}</span>
-                </Show>
-              </a>
-            </li>
-          )}
-        </For>
-      </ul>
-    </Show>
+  const [query, setQuery] = createSignal("");
+  const lists = createMemo(() => selectHomeRepos(repo.recent, repo.repos, query()));
+  const heading = "mt-8 mb-2 px-3 text-[12px] font-medium tracking-wide text-faint uppercase";
+  const rows = (list: UserRepo[]) => (
+    <ul>
+      <For each={list}>
+        {(r) => (
+          <li>
+            <a href={`/${r.full_name}`} class="flex items-center gap-2 rounded-md px-3 py-1.5 hover:bg-hover focus:bg-hover">
+              <Avatar login={r.full_name.split("/")[0]} size={16} />
+              <span class="shrink-0 font-medium">{r.full_name}</span>
+              <Show when={r.private}>
+                <span class={`${badge} px-1.5 text-[11px]`}>private</span>
+              </Show>
+              <span class="min-w-0 flex-1 truncate text-muted">{r.description}</span>
+              <Show when={r.pushed_at}>
+                <span class="shrink-0 text-faint">{ago(r.pushed_at)}</span>
+              </Show>
+            </a>
+          </li>
+        )}
+      </For>
+    </ul>
   );
   return (
     <div class="mt-4 mb-16 -mx-3" onKeyDown={(e) => listKeys(e, "li > a")}>
-      {section("Recent", lists().opened)}
-      {section("Your repositories", lists().others)}
+      <Show when={repo.recent.length || repo.repos.length}>
+        <input
+          type="search"
+          aria-label="Search your repositories"
+          placeholder="Search your repositories"
+          value={query()}
+          onInput={(e) => setQuery(e.currentTarget.value)}
+          class="mx-3 mt-6 h-8 w-[calc(100%-1.5rem)] rounded-md border border-line bg-bg2 px-3 outline-none focus:border-transparent focus:bg-bg focus:shadow-[0_0_0_2px_rgba(35,131,226,.35)]"
+        />
+      </Show>
+      <Show when={lists().opened.length}>
+        <h2 class={heading}>Recent</h2>
+        {rows(lists().opened)}
+      </Show>
+      <Show when={lists().others.length}>
+        <h2 class={heading}>{query().trim() ? "Your repositories" : "Recently pushed"}</h2>
+        {rows(lists().others)}
+      </Show>
+      <Show when={query().trim() && !lists().opened.length && !lists().others.length}>
+        <p class="px-3 py-2 text-muted">No repository matches “{query().trim()}”.</p>
+      </Show>
     </div>
   );
 }

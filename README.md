@@ -17,6 +17,7 @@ Design: [`docs/DESIGN.md`](docs/DESIGN.md). Spikes: [`experiments/RESULTS.md`](e
 ## Develop
 
 ```sh
+git config core.hooksPath .githooks          # once per clone: commits changing web/ or server/ need a CHANGELOG.md line at least every third commit
 cd web && bun install && bun dev.ts          # http://localhost:5173, PORT=… to change (uses the hub on localhost:8787)
 cd server && RL_ORIGINS=http://localhost:5173 go run .                  # the hub, allowing the dev origin
 cd web && bunx tsc -p . && bunx tsc -p tsconfig.sw.json                 # typecheck app + service worker

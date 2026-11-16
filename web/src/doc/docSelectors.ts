@@ -93,6 +93,7 @@ export function selectIcon(text: string | Text): { icon: string; at: number; end
   }
   return null;
 }
+export const iconOf = (text: string) => selectIcon(text)?.icon ?? "";
 
 export type Heading = { depth: number; text: string; at: number };
 // The doc's outline from its `#` headings (headings.ts finds them: code fences and comment markup skipped), the

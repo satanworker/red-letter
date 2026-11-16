@@ -68,6 +68,9 @@ setSnapshot(() => {
 window.navigation?.addEventListener("navigate", (e) => {
   const url = new URL(e.destination.url);
   if (!e.canIntercept || e.hashChange || e.downloadRequest !== null || url.pathname === "/auth/callback") return;
+  // history.replaceState fires one too (sameDocument, not a traversal): openRoute fixing the URL of the file it's
+  // already opening. Opening it again made the first open stale, and that one alone starts background sync.
+  if (e.navigationType !== "traverse" && e.destination.sameDocument) return;
   // focusReset manual: the browser's default puts focus on <body> once the file has opened, out of the file tree a
   // keyboard user opened it from (or the doc, switching tabs by key: setView hands focus to the next editor)
   e.intercept({ handler: () => openRoute(url), focusReset: "manual" });

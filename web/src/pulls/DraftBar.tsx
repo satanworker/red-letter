@@ -1,6 +1,7 @@
 // A draft's bar over the doc, after GitBook's change requests: which draft this is, where it stands, and everything to
 // do with it. Git's words stay out of it: a draft is a branch, Ask for review opens its pull request (reviewers asked
-// on it), Publish merges it, Discard closes it and deletes the branch. Who can start one: canStartDraft.
+// on it), Publish merges it, Cancel review closes it (branch kept), Discard closes it and deletes the branch (a draft
+// made here only). Who can start one: canStartDraft.
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { doc, toggleChanges, updateDraft } from "../doc/docStore.ts";
 import { selectDraftStatus } from "../doc/docSelectors.ts";
@@ -8,6 +9,7 @@ import { isReviewBranch } from "../repo/pulls.ts";
 import {
   approvePullRequest,
   askForReview,
+  cancelReview,
   discardDraft,
   loadCollaborators,
   prTitle,
@@ -16,7 +18,7 @@ import {
   requestChangesOnPullRequest,
   startDraft,
 } from "../repo/repoStore.ts";
-import { Avatar, btn, linkBtn, primaryBtn } from "../ui.tsx";
+import { Avatar, btn, primaryBtn } from "../ui.tsx";
 
 const disabled = "disabled:cursor-default disabled:opacity-50";
 const TONE: Record<string, string> = { Approved: "text-green", "Changes requested": "text-red", "In review": "text-blue" };
@@ -47,55 +49,68 @@ export function DraftBar() {
   const publish = () => confirm(`Publish to ${target()}? Everyone sees these edits there.`) && void publishDraft();
   const discard = () =>
     confirm(`Discard this draft? Its edits${doc.pr ? " and its review" : ""} are deleted; ${target()} stays as it is.`) && void discardDraft();
+  const cancel = () => confirm("Cancel the review? The pull request closes; this branch and its edits stay.") && void cancelReview();
   const requestChanges = () => {
     const note = prompt("What should change?");
     if (note && doc.pr) void requestChangesOnPullRequest(doc.pr.number, note);
   };
   return (
-    <div class="flex shrink-0 items-center gap-3 border-b-[.5px] border-line bg-bg2 px-4 py-2 whitespace-nowrap" role="region" aria-label="Draft">
-      <span class="shrink-0 text-muted" title={`Nobody sees these edits on ${target()} until you publish`}>
-        Draft of {target()} ·
-      </span>
-      {/* a long name gives way first, then the status's detail: the buttons always fit */}
-      <span class="min-w-12 truncate font-medium" title={doc.pr?.title ?? prTitle(repo.branch)}>
-        {doc.pr?.title ?? prTitle(repo.branch)}
-      </span>
-      <span class={`shrink-0 rounded-xl border-[.4px] border-line px-1.5 font-light ${TONE[status().label] ?? "text-muted"}`}>{status().label}</span>
-      <span class="min-w-0 flex-1 basis-0 truncate text-muted">{status().detail}</span>
-      <Show when={doc.drafting}>
-        <span class="text-muted">{doc.drafting}</span>
-      </Show>
-      <Show when={base()}>
-        <button class={`${btn} ${doc.showChanges ? "bg-on" : ""}`} aria-pressed={doc.showChanges} title={`Highlight what this draft changed from ${target()}`} onClick={toggleChanges}>
-          Changes
+    <div class="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b-[.5px] border-line bg-bg2 px-4 py-2 whitespace-nowrap" role="region" aria-label="Draft">
+      {/* the name gives way first, then the status's detail; under 16rem left for them, the buttons go to a line of their own */}
+      <div class="flex min-w-0 flex-1 basis-64 items-center gap-3">
+        <span class="shrink-0 text-muted" title={`Nobody sees these edits on ${target()} until you publish`}>
+          Draft of {target()} ·
+        </span>
+        <span class="min-w-12 truncate font-medium" title={doc.pr?.title ?? prTitle(repo.branch)}>
+          {doc.pr?.title ?? prTitle(repo.branch)}
+        </span>
+        <span class={`shrink-0 rounded-xl border-[.4px] border-line px-1.5 font-light ${TONE[status().label] ?? "text-muted"}`}>{status().label}</span>
+        <span class="min-w-0 flex-1 basis-0 truncate text-muted">{status().detail}</span>
+        <Show when={doc.drafting}>
+          <span class="text-muted">{doc.drafting}</span>
+        </Show>
+      </div>
+      <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
+        <Show when={base()}>
+          <button class={`${btn} ${doc.showChanges ? "bg-on" : ""}`} aria-pressed={doc.showChanges} title={`Highlight what this draft changed from ${target()}`} onClick={toggleChanges}>
+            Changes
+          </button>
+        </Show>
+        <Show when={moved()}>
+          <button class={`${btn} ${disabled}`} disabled={!!doc.drafting} title={`${target()} has new edits: bring them into this draft`} onClick={() => void updateDraft()}>
+            Bring in edits from {target()}
+          </button>
+        </Show>
+        <Show when={mine()} fallback={<Verdicts requestChanges={requestChanges} />}>
+          <AskForReview />
+        </Show>
+        <button
+          class={`${primaryBtn} h-7 ${disabled}`}
+          disabled={!!doc.drafting || doc.pr?.mergeable === false}
+          title={doc.pr?.mergeable === false ? `GitHub can't merge this into ${target()} as it is (conflicts): bring in its edits first` : `Put these edits on ${target()}`}
+          onClick={publish}
+        >
+          Publish to {target()}
         </button>
-      </Show>
-      <Show when={moved()}>
-        <button class={`${btn} ${disabled}`} disabled={!!doc.drafting} title={`${target()} has new edits: bring them into this draft`} onClick={() => void updateDraft()}>
-          Bring in edits from {target()}
-        </button>
-      </Show>
-      <Show when={mine()} fallback={<Verdicts requestChanges={requestChanges} />}>
-        <AskForReview />
-      </Show>
-      <button
-        class={`${primaryBtn} h-7 ${disabled}`}
-        disabled={!!doc.drafting || doc.pr?.mergeable === false}
-        title={doc.pr?.mergeable === false ? `GitHub can't merge this into ${target()} as it is (conflicts): bring in its edits first` : `Put these edits on ${target()}`}
-        onClick={publish}
-      >
-        Publish to {target()}
-      </button>
-      <button class={`${linkBtn} ${disabled}`} disabled={!!doc.drafting} onClick={discard}>
-        Discard
-      </button>
-      <Show when={doc.pr}>
-        {(pr) => (
-          <a class={linkBtn} href={pr().url} target="_blank" rel="noopener" title={`Pull request #${pr().number} on GitHub`}>
-            GitHub ↗
-          </a>
-        )}
-      </Show>
+        <Show when={doc.pr}>
+          <button class={`${btn} ${disabled}`} disabled={!!doc.drafting} title="Close the pull request; the edits stay" onClick={cancel}>
+            Cancel review
+          </button>
+        </Show>
+        {/* only a draft made here: a branch from elsewhere with a PR isn't this bar's to delete */}
+        <Show when={base()}>
+          <button class={`${btn} ${disabled}`} disabled={!!doc.drafting} onClick={discard}>
+            Discard
+          </button>
+        </Show>
+        <Show when={doc.pr}>
+          {(pr) => (
+            <a class={btn} href={pr().url} target="_blank" rel="noopener" title={`Pull request #${pr().number} on GitHub`}>
+              GitHub ↗
+            </a>
+          )}
+        </Show>
+      </div>
     </div>
   );
 }

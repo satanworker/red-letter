@@ -8,6 +8,7 @@ import { idbDelete, idbGet, idbPut } from "../idb.ts";
 import { HubAdapter } from "./hub.ts";
 import { findConflicts } from "./regions.ts";
 import { REPLAY_VERSION, replay } from "./replay.ts";
+import { iconOf } from "./docSelectors.ts";
 
 // Ranges are stored as cursors: `from` = first char (inclusive); `to` = the range's last char, as a "before" cursor
 // (Automerge prefixes those with "-"), so text typed right after the range stays out of it. Anchors written before
@@ -25,7 +26,8 @@ export type Base = { branch: string; commit: string; heads: string[]; inGit: str
 // the ones the text links to, next to the file.
 export type RLDoc = { text: string; git?: { commit: string; heads: string[] }; marks?: Record<string, AgentMark>; base?: Base; images?: Record<string, string> };
 type Meta = { docId: string; branch: string; path: string; commit: string; heads: string[]; replayVersion: number };
-type Local = { docId: string; bytes: Uint8Array; crlf: boolean; crdtHead: string };
+// icon: the doc's icon (docSelectors' iconOf), so background sync needn't load the doc for it (2.4 MB of text: ~2 s)
+type Local = { docId: string; bytes: Uint8Array; crlf: boolean; crdtHead: string; icon?: string };
 type GitCommit = { sha: string; parents: { sha: string }[]; message: string; author: { name: string; date: string }; tree: { sha: string } };
 
 const TRAILER = "Red-Letter-Heads:";
@@ -113,21 +115,27 @@ export async function prefetchTexts(repo: string, sha: string, paths: string[]) 
 
 // Background sync, read-only: bring this browser's copy of a doc up to its snapshot so opening it is instant.
 // Files nobody opened yet have no snapshot; their text at `branchHead` is fetched so the first open is quicker.
-// `isOpen` is checked right before writing: an open file's Session owns its copy. Returns the doc's text.
+// `isOpen` is checked right before writing: an open file's Session owns its copy. Returns the doc's icon.
 export async function syncCopy(repo: string, branch: string, path: string, snapshot: string, branchHead: string, isOpen: () => boolean): Promise<string> {
-  if (snapshot === ZERO) return lf(await fileAt(repo, path, branchHead));
+  if (snapshot === ZERO) return iconOf(lf(await fileAt(repo, path, branchHead)));
   const key = docKey(repo, branch, path);
   const local = await idbGet<Local>("docs", key);
-  // ponytail: loads every up-to-date copy just for its text (the sidebar's icon); keep the title in Local if it gets slow
-  if (local?.crdtHead === snapshot) return A.load<RLDoc>(local.bytes).text;
+  if (local?.crdtHead === snapshot) {
+    if (local.icon !== undefined) return local.icon;
+    // a copy saved before icons were kept: loaded once, then never again
+    local.icon = iconOf(A.load<RLDoc>(local.bytes).text);
+    if (!isOpen()) await idbPut("docs", key, local);
+    return local.icon;
+  }
   const snap = await readSnapshot(repo, snapshot);
   const same = local?.docId === snap.meta.docId; // a different doc means the ref was recreated: theirs wins
   const doc = local && same ? A.merge(A.load<RLDoc>(local.bytes), A.load<RLDoc>(snap.bytes)) : A.load<RLDoc>(snap.bytes);
   // the file's EOL style from its text at the branch head (background sync prefetches every doc's in one call); a
   // Session re-learns it from git when the doc opens
   const crlf = local && same ? local.crlf : (await fileAt(repo, path, branchHead).catch(() => "")).includes("\r\n");
-  if (!isOpen()) await idbPut("docs", key, { docId: snap.meta.docId, bytes: A.save(doc), crlf, crdtHead: snapshot } satisfies Local);
-  return doc.text;
+  const icon = iconOf(doc.text);
+  if (!isOpen()) await idbPut("docs", key, { docId: snap.meta.docId, bytes: A.save(doc), crlf, crdtHead: snapshot, icon } satisfies Local);
+  return icon;
 }
 
 export class Session {
@@ -325,7 +333,7 @@ export class Session {
     clearTimeout(this.#localTimer);
     this.#localTimer = undefined;
     if (this.#removed) return;
-    const local: Local = { docId: this.docId, bytes: A.save(this.doc), crlf: this.#crlf, crdtHead: this.#crdtHead };
+    const local: Local = { docId: this.docId, bytes: A.save(this.doc), crlf: this.#crlf, crdtHead: this.#crdtHead, icon: iconOf(this.doc.text) };
     void idbPut("docs", this.#key, local);
   }
 

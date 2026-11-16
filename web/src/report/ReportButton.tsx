@@ -26,7 +26,7 @@ export function ReportButton() {
   return (
     <>
       <button
-        class={`fixed right-3 bottom-9 z-50 grid size-7 cursor-pointer place-items-center rounded-full border-[.5px] bg-card text-muted shadow-figma hover:text-fg ${report.problems ? "border-red text-red" : "border-line"}`}
+        class={`fixed right-3 bottom-3 z-50 grid size-7 cursor-pointer place-items-center rounded-full border-[.5px] bg-card text-muted shadow-figma hover:text-fg ${report.problems ? "border-red text-red" : "border-line"}`}
         title={report.problems ? `${report.problems} problem${report.problems === 1 ? "" : "s"} noticed: report it` : "Report a problem"}
         aria-label="Report a problem"
         popoverTarget="report"
@@ -42,7 +42,7 @@ export function ReportButton() {
         ref={pop}
         id="report"
         popover
-        class="fixed inset-auto right-3 bottom-18 m-0 w-80 flex-col gap-3 rounded-xl bg-card px-5 py-5 text-fg shadow-[0_4px_17.8px_rgba(0,0,0,.1),var(--shadow)] [&:popover-open]:flex"
+        class="fixed inset-auto right-3 bottom-12 m-0 w-80 flex-col gap-3 rounded-xl bg-card px-5 py-5 text-fg shadow-[0_4px_17.8px_rgba(0,0,0,.1),var(--shadow)] [&:popover-open]:flex"
         onToggle={toggled}
       >
         <Show

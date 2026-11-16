@@ -15,7 +15,7 @@ import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo }
 import { ensurePullRequest } from "../repo/repoStore.ts";
 import { commentThreads, inCode } from "./commentMarks.ts";
 import { flash } from "./flash.ts";
-import { selectIcon, type Heading } from "./docSelectors.ts";
+import { iconOf, selectIcon, type Heading } from "./docSelectors.ts";
 import { DocReset, Session, type Anchor, type Status } from "./session.ts";
 import { cellSelection, flashInTable, selectInTable } from "./tables.ts";
 import { pulls, refreshPulls, setReviewing } from "../pulls/pullsStore.ts";
@@ -163,7 +163,7 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
     release();
     loadComments(repo.full_name, branch, path, viaPr); // before the editor mounts: it reads comments.viaPr
     prOf = branch === repo.default_branch ? null : { repo: repo.full_name, branch };
-    noteIcon(path, session.doc.text); // the sidebar, tab and favicon show it until the editor has mounted
+    noteIcon(path, iconOf(session.doc.text)); // the sidebar, tab and favicon show it until the editor has mounted
     // the panel tab stays as it was: a tab picked on one page is still open on the next
     set({ session, opening: "", history: [], shown: null, activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "", pr, reviewBase: null });
     pushStatus();
@@ -195,7 +195,7 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
 function release() {
   clearInterval(ticker);
   const s = state.session;
-  if (s?.handle) noteIcon(s.path, s.doc.text); // the sidebar keeps an icon set or changed while it was open
+  if (s?.handle) noteIcon(s.path, iconOf(s.doc.text)); // the sidebar keeps an icon set or changed while it was open
   s?.close();
   clearComments();
   prOf = null;
@@ -207,8 +207,8 @@ export function closeFile() {
   set({ session: null, opening: "", status: idle(), history: [], shown: null });
 }
 
-// The sidebar's icons: one per doc of the branch, from its text (background sync, closing a doc).
-export const noteIcon = (path: string, text: string) => set("icons", path, selectIcon(text)?.icon ?? "");
+// The sidebar's icons: one per doc of the branch (background sync, closing a doc).
+export const noteIcon = (path: string, icon: string) => set("icons", path, icon);
 export const clearIcons = () => set("icons", reconcile({}));
 
 // The tab's favicon: the open doc's icon, else the ¶ from index.html.

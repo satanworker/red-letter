@@ -1,0 +1,15 @@
+#!/bin/sh
+# Changelog gate: a commit that changes web/ or server/ may leave CHANGELOG.md alone, but not the third in a row.
+# Enable once per clone: git config core.hooksPath .githooks. Skip once: git commit --no-verify.
+staged=$(git diff --cached --name-only)
+echo "$staged" | grep -qE '^(web|server)/' || exit 0
+echo "$staged" | grep -qx 'CHANGELOG.md' && exit 0
+
+last=$(git log -1 --format=%H -- CHANGELOG.md)
+skipped=$(git rev-list --count ${last:+$last..}HEAD -- web server)
+if [ "$skipped" -ge 2 ]; then
+  echo "pre-commit: CHANGELOG.md hasn't changed for the last $skipped code commits; add a line for these (newest day first)." >&2
+  echo "            Not a change worth one? git commit --no-verify" >&2
+  exit 1
+fi
+echo "pre-commit: no CHANGELOG.md line in this commit ($((skipped + 1)) of 2 skips allowed in a row)." >&2

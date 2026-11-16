@@ -2,9 +2,21 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-16: Pull requests load in a repo with none open
+
+- **The Pull requests view no longer spins forever in a repo with no open PRs**: the open-PR list's stamp is empty then, the same as "never loaded", so the first refresh took it for unchanged and never marked the list loaded (two reports from `satanworker/SafeSpaceNew` after its last PR was merged).
+- **The report button sits in the bottom-right corner**, 12 px from both edges (it was 36 px up), its panel just above it.
+- **A pre-commit hook keeps the changelog going** (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks`): a commit that changes `web/` or `server/` may skip `CHANGELOG.md`, but the third such commit in a row is refused (`--no-verify` skips it once).
+
+## 2026-11-15: Cancel review, background sync runs again
+
+- **Cancel review** in the draft bar closes the draft's pull request and keeps the branch and its edits; Ask for review opens a new one. Discard, Cancel review and GitHub ↗ are buttons now, they wrap to a line of their own when the column is narrow, and Discard shows only on a draft made here (a branch from elsewhere with a PR, like a release branch, isn't the bar's to delete).
+- **Background sync runs again on a repo's first page**: opening `/owner/repo` rewrote the URL to its README with `history.replaceState`, whose `navigate` event opened the file a second time and left the first open, the one that starts the sync, stale. Found in a report from `satanworker/SafeSpaceNew`.
+- **No more freeze from a big doc's icon**: each copy in this browser keeps its doc's icon, so background sync no longer loads every up-to-date doc to find it (a 2.4 MB doc, `agent-rules/appkit.md`, took ~2 s on the main thread).
+
 ## 2026-11-15: Your repos on the home page, close a tab by key
 
-- **The home page lists your repositories** when signed in: first the ones opened in this browser (last opened first, `localStorage` `rl_recent`, plus any with saved tabs), then every other repo your token reaches (`GET /user/repos`, last pushed first, first 100). Each row shows owner avatar, private badge, description and last push; a click opens its README, arrows move between rows. Sign-out forgets the list and the saved tabs.
+- **The home page lists your repositories** when signed in: first the ones opened in this browser (last opened first, `localStorage` `rl_recent`, plus any with saved tabs), then the 5 most recently pushed of the rest (`GET /user/repos`, first 100); a search box filters both by name or description (up to 20 others). Each row shows owner avatar, private badge, description and last push; a click opens its README, arrows move between rows. Sign-out forgets the list and the saved tabs.
 - **⌃W closes the open tab** on a Mac, **Alt+W** elsewhere (the browser keeps ⌘W / Ctrl+W for its own tab). Sign-in and token flow written up in `docs/auth.md`.
 
 ## 2026-11-15: Calmer tab switching

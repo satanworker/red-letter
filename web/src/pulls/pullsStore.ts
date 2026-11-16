@@ -21,18 +21,18 @@ const [state, set] = createStore({
   postError: "",
 });
 export const pulls = state;
-let stamp = "";
+let stamp: string | null = null; // null: not loaded yet ("" is a repo with no open PRs)
 
 export function loadPulls(repo: string) {
   if (state.repo !== repo) {
-    stamp = "";
+    stamp = null;
     set({ repo, list: [], loaded: false, error: "", reviewing: null, open: [] });
   }
   void refreshPulls();
 }
 
 export function clearPulls() {
-  stamp = "";
+  stamp = null;
   set({ repo: "", list: [], loaded: false, error: "", reviewing: null, open: [] });
 }
 

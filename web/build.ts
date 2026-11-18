@@ -17,9 +17,6 @@ export async function build(out = `${import.meta.dir}/dist`) {
   rmSync(out, { recursive: true, force: true });
   const minify = !process.env.NO_MINIFY; // NO_MINIFY=1: readable function names in CPU profiles (bench/stress.ts --profile)
   const naming = { entry: "[name]-[hash].[ext]", chunk: "[name]-[hash].[ext]", asset: "[name]-[hash].[ext]" };
-  // the mermaid worker is a script of its own; the app gets its URL
-  const worker = await Bun.build({ entrypoints: [`${import.meta.dir}/src/doc/mermaid.worker.ts`], outdir: `${out}/assets`, target: "browser", minify, naming });
-  if (!worker.success) throw new AggregateError(worker.logs, "mermaid worker bundle failed");
   const res = await Bun.build({
     entrypoints: [`${import.meta.dir}/src/main.tsx`],
     outdir: `${out}/assets`,
@@ -31,7 +28,6 @@ export async function build(out = `${import.meta.dir}/dist`) {
     naming,
     publicPath: "/assets/",
     define: {
-      MERMAID_WORKER: JSON.stringify(`/assets/${worker.outputs[0]!.path.split("/").pop()}`),
       // Bun resolves the "development" export condition unless NODE_ENV is production, so the site shipped Solid's dev
       // build (devtools graph, dev warnings, extra checks on every signal write). This picks solid.js and strips other
       // packages' dev branches.
@@ -52,9 +48,8 @@ export async function build(out = `${import.meta.dir}/dist`) {
   await Bun.write(`${out}/index.html`, html);
   await Bun.write(`${out}/_headers`, "/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n");
 
-  const outputs = [...res.outputs, ...worker.outputs];
   // source maps load only with DevTools open (or for decoding a report): not precached
-  const assets = outputs.filter((o) => !o.path.endsWith(".map")).map((o) => `/assets/${o.path.split("/").pop()}`);
+  const assets = res.outputs.filter((o) => !o.path.endsWith(".map")).map((o) => `/assets/${o.path.split("/").pop()}`);
   const sw = await Bun.build({
     entrypoints: [`${import.meta.dir}/src/sw.ts`],
     target: "browser",
@@ -63,7 +58,7 @@ export async function build(out = `${import.meta.dir}/dist`) {
   });
   if (!sw.success) throw new AggregateError(sw.logs, "service worker bundle failed");
   await Bun.write(`${out}/sw.js`, sw.outputs[0]);
-  return outputs.map((o) => `${o.path.slice(out.length)} ${(o.size / 1024).toFixed(0)}K`);
+  return res.outputs.map((o) => `${o.path.slice(out.length)} ${(o.size / 1024).toFixed(0)}K`);
 }
 
 if (import.meta.main) console.log((await build()).join("\n"));

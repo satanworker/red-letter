@@ -13,6 +13,7 @@ import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, dropCurs
 import type { SyntaxNode } from "@lezer/common";
 import { codeHighlight } from "./highlight.ts";
 import { imageField } from "./images.ts";
+import { openHref } from "./links.ts";
 import { mermaidField, mermaidTheme } from "./mermaid.ts";
 import { slashCommands } from "./slash.ts";
 import { cellComments, tableField, tableTheme } from "./tables.ts";
@@ -104,7 +105,8 @@ const theme = EditorView.theme({
   // Figma 82:749: the image fits the column (block widgets skip the line's 2px padding), 28px under its markdown line;
   // the blank line after it is the 28px to the next block
   // Padding, not margin: CodeMirror measures a block widget's box, and a margin it can't see shifts every click below.
-  ".cm-lp-img": { display: "block", maxWidth: "calc(100% - 4px)", margin: "0 2px", padding: "28px 0 0" },
+  // height auto: the width/height attributes of an image not loaded yet (images.ts) reserve its room at the column's width
+  ".cm-lp-img": { display: "block", maxWidth: "calc(100% - 4px)", height: "auto", margin: "0 2px", padding: "28px 0 0" },
 });
 
 const muted = Decoration.mark({ class: "cm-lp-mark" });
@@ -355,16 +357,11 @@ const preview = ViewPlugin.fromClass(
   },
 );
 
-// Open the http(s) or mailto link at `pos` in a new tab (⌘/Ctrl-click; Alt-Enter at the caret, as in Google Docs);
-// false: no link there.
+// Open the link at `pos` (⌘/Ctrl-click; Alt-Enter at the caret, as in Google Docs); false: no link there it opens.
 function openLink(view: EditorView, pos: number): boolean {
   for (let n: SyntaxNode | null = syntaxTree(view.state).resolveInner(pos, 1); n; n = n.parent) {
     const url = n.name === "URL" ? n : n.name === "Link" ? n.getChild("URL") : null;
-    if (!url) continue;
-    const href = view.state.doc.sliceString(url.from, url.to);
-    if (!/^(https?:|mailto:)/i.test(href)) return false;
-    window.open(href, "_blank", "noopener");
-    return true;
+    if (url) return openHref(view, view.state.sliceDoc(url.from, url.to));
   }
   return false;
 }

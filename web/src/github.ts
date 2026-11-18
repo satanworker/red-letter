@@ -209,13 +209,14 @@ export async function updateRefs(repositoryId: string, refUpdates: { name: strin
   }
 }
 
-export type User = { login: string; avatar_url: string };
+// id: for the noreply email a Save's Co-authored-by line credits (id+login@users.noreply.github.com)
+export type User = { login: string; avatar_url: string; id: number };
 export async function currentUser(): Promise<User | null> {
   const cached: User | null = JSON.parse(localStorage.getItem("rl_user") ?? "null");
-  if (cached) return cached;
+  if (cached?.id) return cached; // a copy from before ids were kept is fetched again
   if (!(await token())) return null;
   const u = await ghJson<User>("/user");
-  localStorage.setItem("rl_user", JSON.stringify({ login: u.login, avatar_url: u.avatar_url }));
+  localStorage.setItem("rl_user", JSON.stringify({ login: u.login, avatar_url: u.avatar_url, id: u.id }));
   return u;
 }
 
@@ -228,3 +229,7 @@ export const b64 = (u: Uint8Array) => {
 };
 export const unb64 = (s: string) => Uint8Array.from(atob(s.replace(/\n/g, "")), (c) => c.charCodeAt(0));
 export const encPath = (p: string) => p.split("/").map(encodeURIComponent).join("/");
+// A link or image src in the file at `from`: `diagrams/a.svg` (next to it), `../a.md` or `/docs/a.md` (repo root),
+// `a.md#part` -> repo path
+export const repoPath = (from: string, src: string) =>
+  decodeURIComponent(new URL(src, `https://repo/${from.split("/").slice(0, -1).map((s) => `${s}/`).join("")}`).pathname.slice(1));

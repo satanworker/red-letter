@@ -2,6 +2,18 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-18: Diagrams draw in a fraction of a millisecond
+
+- **Mermaid diagrams render with Obsidian's pele** instead of beautiful-mermaid: 0.05–0.3 ms a diagram instead of 20–70 ms, so the worker (and its 470 KB-gzipped bundle) is gone; only the code for the diagram types a doc uses loads. A node defined after its first use now shows its label (`a --> lake` then `lake[(Lake)]` showed "lake").
+- **Links to other files in the repo open**: ⌘/Ctrl+click (or Alt-Enter) on `[README](../extractor/README.md)` opens that doc in its tab; a link to code or a folder opens it on GitHub. Before, only `http(s)` and `mailto` links did anything.
+- **Images no longer make the page jump**: an image seen before keeps its room while it loads (its size is remembered in this browser), and the text column no longer shifts sideways when the doc grows a scrollbar. An image seen for the first time still appears when it arrives.
+
+## 2026-11-16: Save is a choice
+
+- **Pauses in typing no longer become commits.** Unsaved text is kept in the doc's snapshot ref (30–40 s after the last edit, on leaving the file, on closing the page), so another device or person opening the file still gets it, but the branch only moves on **Save**: the header's button next to "Unsaved changes", or ⌘S / Ctrl+S, opens a box for an optional note (the commit's title; empty: "Edit <file> in Red Letter"), Enter saves. One writer's evening on `Designs_tasks.md` had made 25 commits.
+- A Save commits everyone's unsaved edits and credits the others with `Co-authored-by:` lines (each tab records its Automerge actor and GitHub noreply address in the doc's `who` map).
+- Moving, deleting, publishing a draft, bringing in edits from the base and in-file comments still save first, with the default title.
+
 ## 2026-11-16: Pull requests load in a repo with none open
 
 - **The Pull requests view no longer spins forever in a repo with no open PRs**: the open-PR list's stamp is empty then, the same as "never loaded", so the first refresh took it for unchanged and never marked the list loaded (two reports from `satanworker/SafeSpaceNew` after its last PR was merged).

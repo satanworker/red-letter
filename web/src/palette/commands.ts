@@ -2,6 +2,7 @@
 // anywhere, the editor included. Keys are CodeMirror-style: "Mod" is ⌘ on a Mac and Ctrl elsewhere, "Alt" is ⌥.
 import { doc, focusEditor, isReading, showTab, startComment, stepComment, toggleReading } from "../doc/docStore.ts";
 import { pageItems } from "../doc/PageMenu.tsx";
+import { openSave } from "../doc/SaveButton.tsx";
 import { activeTab, closeTab, navigateTo, repo, sameTab, showPanel, tabUrl, toggleFiles, togglePanel, toggleReview } from "../repo/repoStore.ts";
 import { pulls, showView } from "../pulls/pullsStore.ts";
 
@@ -126,7 +127,8 @@ export const commands = (): Command[] => [
   ...(pulls.reviewing ? [{ label: `Stop reviewing #${pulls.reviewing.number}`, run: toggleReview }] : doc.pr ? [{ label: `Review pull request #${doc.pr.number}`, run: toggleReview }] : []),
   { label: repo.filesHidden ? "Show files" : "Hide files", keys: "Mod-\\", run: toggleFiles },
   { label: repo.panelHidden ? "Show side panel" : "Hide side panel", keys: "Mod-Shift-\\", run: togglePanel },
-  ...(doc.session ? [{ label: "Save", keys: "Mod-s", run: () => doc.session?.save() }] : []),
+  // ⌘S always taken (else the browser's Save page): with nothing unsaved it does nothing
+  ...(doc.session ? [{ label: "Save", keys: "Mod-s", run: openSave }] : []),
   ...(doc.session?.canWrite ? [{ label: isReading() ? "Switch to editing" : "Switch to reading", run: toggleReading }] : []),
   { label: "Switch branch", run: pickBranch },
   ...(onDoc() ? pageItems(doc.session!.canWrite) : []),

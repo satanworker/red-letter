@@ -1,9 +1,10 @@
-// One open file: CRDT doc <-> git. Snapshot ref load/claim, poll + deterministic replay of agent commits,
-// CAS commit of file + snapshot, conflict marks (an agent's edit interleaved with a human's) stored in the doc.
+// One open file: CRDT doc <-> git. Snapshot ref load/claim, poll + deterministic replay of agent commits, unsaved
+// work kept in the snapshot ref (keep), CAS commit of file + snapshot on Save, conflict marks (an agent's edit
+// interleaved with a human's) stored in the doc.
 // This browser keeps a copy of the doc in IndexedDB: a file opens from it at once and catches up with git after.
 import * as A from "@automerge/automerge";
 import { Repo, type DocHandle, type DocumentId, type PeerId } from "@automerge/automerge-repo";
-import { HUB, HttpError, b64, cachedGet, encPath, gh, graphql, post, sha1, token, unb64, updateRefs } from "../github.ts";
+import { HUB, HttpError, b64, cachedGet, encPath, gh, graphql, post, repoPath, sha1, token, unb64, updateRefs, type User } from "../github.ts";
 import { idbDelete, idbGet, idbPut } from "../idb.ts";
 import { HubAdapter } from "./hub.ts";
 import { findConflicts } from "./regions.ts";
@@ -24,10 +25,12 @@ export type AgentMark = { sha: string; author: string; message: string; at: stri
 export type Base = { branch: string; commit: string; heads: string[]; inGit: string };
 // images: pictures pasted or dropped into this doc, src as linked -> git blob sha (uploaded at once). A save commits
 // the ones the text links to, next to the file.
-export type RLDoc = { text: string; git?: { commit: string; heads: string[] }; marks?: Record<string, AgentMark>; base?: Base; images?: Record<string, string> };
+// who: Automerge actor -> "login <noreply email>" of the person typing with it, for a Save's Co-authored-by lines.
+export type RLDoc = { text: string; git?: { commit: string; heads: string[] }; marks?: Record<string, AgentMark>; base?: Base; images?: Record<string, string>; who?: Record<string, string> };
 type Meta = { docId: string; branch: string; path: string; commit: string; heads: string[]; replayVersion: number };
 // icon: the doc's icon (docSelectors' iconOf), so background sync needn't load the doc for it (2.4 MB of text: ~2 s)
-type Local = { docId: string; bytes: Uint8Array; crlf: boolean; crdtHead: string; icon?: string };
+// kept: the heads (joined) of the doc in the snapshot at crdtHead, so a copy knows whether it has work to keep
+type Local = { docId: string; bytes: Uint8Array; crlf: boolean; crdtHead: string; icon?: string; kept?: string };
 type GitCommit = { sha: string; parents: { sha: string }[]; message: string; author: { name: string; date: string }; tree: { sha: string } };
 
 const TRAILER = "Red-Letter-Heads:";
@@ -129,12 +132,13 @@ export async function syncCopy(repo: string, branch: string, path: string, snaps
   }
   const snap = await readSnapshot(repo, snapshot);
   const same = local?.docId === snap.meta.docId; // a different doc means the ref was recreated: theirs wins
-  const doc = local && same ? A.merge(A.load<RLDoc>(local.bytes), A.load<RLDoc>(snap.bytes)) : A.load<RLDoc>(snap.bytes);
+  const theirs = A.load<RLDoc>(snap.bytes);
+  const doc = local && same ? A.merge(A.load<RLDoc>(local.bytes), theirs) : theirs;
   // the file's EOL style from its text at the branch head (background sync prefetches every doc's in one call); a
   // Session re-learns it from git when the doc opens
   const crlf = local && same ? local.crlf : (await fileAt(repo, path, branchHead).catch(() => "")).includes("\r\n");
   const icon = iconOf(doc.text);
-  if (!isOpen()) await idbPut("docs", key, { docId: snap.meta.docId, bytes: A.save(doc), crlf, crdtHead: snapshot, icon } satisfies Local);
+  if (!isOpen()) await idbPut("docs", key, { docId: snap.meta.docId, bytes: A.save(doc), crlf, crdtHead: snapshot, icon, kept: A.getHeads(theirs).join() } satisfies Local);
   return icon;
 }
 
@@ -154,11 +158,14 @@ export class Session {
   #crdtHead = ZERO;
   #crlf = false;
   #polling?: Promise<void>;
-  #saving?: Promise<void>;
-  #autosave: number | undefined;
+  #queue: Promise<void> = Promise.resolve(); // keep and save both move the snapshot ref: one at a time
+  #keepTimer: number | undefined;
+  #kept = ""; // the doc's heads as in the snapshot at #crdtHead ("": not known)
+  #noted = false; // this tab's actor is in doc.who
   #removed = false; // deleted or moved away: nothing more goes to IndexedDB or git
   #localTimer: number | undefined;
   readonly #key: string;
+  readonly #author: string; // the Co-authored-by line others' Saves credit this person with
   #ready: Promise<void> = Promise.resolve(); // what a save needs that opening didn't wait for: EOL style, a first opener's snapshot ref
 
   constructor(
@@ -167,10 +174,11 @@ export class Session {
     readonly branch: string,
     readonly path: string,
     readonly canWrite: boolean,
-    login: string,
+    user: User,
   ) {
     this.#key = docKey(repoName, branch, path);
-    const peerId = `${login}-${crypto.randomUUID().slice(0, 8)}` as PeerId;
+    this.#author = `${user.login} <${user.id}+${user.login}@users.noreply.github.com>`;
+    const peerId = `${user.login}-${crypto.randomUUID().slice(0, 8)}` as PeerId;
     if (canWrite) {
       const doc = encodeURIComponent(`${branch}:${path}`);
       this.#hub = new HubAdapter(`${HUB.replace(/^http/, "ws")}/sync?repo=${encodeURIComponent(repoName)}&doc=${doc}`, token);
@@ -204,8 +212,10 @@ export class Session {
     return (await snapshotHeads(this.repoName, this.branch, fresh)).get(this.#crdtRef) ?? ZERO;
   }
 
-  async #snapshotCommit(commit: string, heads: string[]): Promise<string> {
+  // [snapshot commit, the heads it holds]
+  async #snapshotCommit(commit: string, heads: string[]): Promise<[string, string]> {
     const meta: Meta = { docId: this.docId, branch: this.branch, path: this.path, commit, heads, replayVersion: REPLAY_VERSION };
+    const kept = A.getHeads(this.doc).join();
     const blob = await post<{ sha: string }>(`/repos/${this.repoName}/git/blobs`, { content: b64(A.save(this.doc)), encoding: "base64" });
     const tree = await post<{ sha: string }>(`/repos/${this.repoName}/git/trees`, {
       tree: [
@@ -214,7 +224,7 @@ export class Session {
       ],
     });
     const msg = `red-letter snapshot ${this.path}@${commit.slice(0, 7)}`;
-    return (await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message: msg, tree: tree.sha, parents: [] })).sha;
+    return [(await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message: msg, tree: tree.sha, parents: [] })).sha, kept];
   }
 
   // create: a new file with this text. It opens at once; the file and its snapshot are committed by a save in
@@ -228,6 +238,7 @@ export class Session {
       this.handle = this.#repo.import<RLDoc>(local.bytes, { docId: local.docId as DocumentId });
       this.#crlf = local.crlf;
       this.#crdtHead = local.crdtHead;
+      this.#kept = local.kept ?? "";
       this.log("opened this browser's copy");
       this.#watch();
       this.synced = this.#catchUp();
@@ -240,11 +251,12 @@ export class Session {
     if (this.#crdtHead !== ZERO) {
       const snap = await readSnapshot(this.repoName, this.#crdtHead);
       this.handle = this.#repo.import<RLDoc>(snap.bytes, { docId: snap.meta.docId as DocumentId });
+      this.#kept = A.getHeads(this.doc).join();
       eol = this.#file(snap.meta.commit).then(() => {}, () => {}); // learns the file's EOL style before a save
       this.log("loaded snapshot", this.#crdtHead.slice(0, 7), "at", snap.meta.commit.slice(0, 7));
     } else {
       // First opener ever: init from the file at branch head, then claim the snapshot ref (claim()).
-      this.handle = this.#repo.create<RLDoc>({ text: await this.#file(head) });
+      this.handle = this.#repo.create<RLDoc>({ text: await this.#file(head), who: {} });
       const heads = A.getHeads(this.doc);
       this.handle.change((d) => {
         d.git = { commit: head, heads };
@@ -263,7 +275,7 @@ export class Session {
   // (DocReset; anything typed meanwhile is lost, a race of two first openers within those seconds).
   async #claim(head: string, heads: string[]) {
     try {
-      const snap = await this.#snapshotCommit(head, heads);
+      const [snap, kept] = await this.#snapshotCommit(head, heads);
       const res = await gh(`/repos/${this.repoName}/git/refs`, { method: "POST", body: JSON.stringify({ ref: this.#crdtRef, sha: snap }) });
       if (res.status === 422) {
         this.#removed = true;
@@ -272,6 +284,7 @@ export class Session {
       }
       if (!res.ok) throw new HttpError(res.status, `claim snapshot ref: ${res.status} ${await res.text()}`);
       this.#crdtHead = snap;
+      this.#kept = kept;
       this.#flushLocal();
     } catch (e) {
       if (e instanceof DocReset) throw e;
@@ -283,7 +296,7 @@ export class Session {
   async #create(text: string) {
     const head = await headOf(this.repoName, this.branch);
     // committed text = "" (the file doesn't exist yet), so the starting text counts as an unsaved edit
-    this.handle = this.#repo.create<RLDoc>({ text: "" });
+    this.handle = this.#repo.create<RLDoc>({ text: "", who: {} });
     this.handle.change((d) => (d.git = { commit: head, heads: A.getHeads(d) }));
     this.handle.change((d) => A.splice(d, ["text"], 0, 0, text));
     this.#watch();
@@ -291,19 +304,10 @@ export class Session {
     this.synced = this.save();
   }
 
-  // Opened from this browser's copy: merge what others saved since (their snapshot), then replay agent commits.
+  // Opened from this browser's copy: merge what others kept or saved since (their snapshot), then replay agent commits.
   async #catchUp() {
     try {
-      const head = await this.#crdtRefSha();
-      if (head !== ZERO && head !== this.#crdtHead) {
-        const snap = await readSnapshot(this.repoName, head);
-        if (snap.meta.docId !== this.docId) {
-          await idbDelete("docs", this.#key);
-          throw new DocReset(`${this.path} was recreated by someone else`);
-        }
-        this.handle.update((d) => A.merge(d, A.load<RLDoc>(snap.bytes)));
-        this.#crdtHead = head;
-      }
+      await this.#mergeSnapshot(false);
     } catch (e) {
       if (e instanceof DocReset) throw e;
       this.status.error = errText(e);
@@ -318,14 +322,15 @@ export class Session {
     this.handle.on("change", () => {
       this.status.commit = this.doc.git!.commit;
       this.#markDirty();
-      // any tab with unsaved text (its own or peers') saves 30-40 s after the last change; the first save wins,
-      // the others find nothing left to commit
-      if (this.status.dirty) this.#scheduleAutosave();
+      this.#noteAuthor();
+      // any tab with work not in the snapshot ref (its own or peers') keeps it 30-40 s after the last change; the
+      // first to write wins, the others merge theirs and find nothing left to write
+      this.#scheduleKeep();
       this.#localTimer ??= window.setTimeout(() => this.#flushLocal(), 1000);
     });
-    // text left unsaved by an earlier visit (offline, tab closed) goes to git like fresh edits
+    // text left unsaved by an earlier visit (offline, tab closed) is kept for everyone until someone saves it
     this.#markDirty();
-    if (this.status.dirty) this.#scheduleAutosave();
+    if (this.status.dirty) this.#scheduleKeep();
   }
 
   // ponytail: saves the whole doc, at most once a second; automerge-repo's incremental IndexedDB adapter if docs get big
@@ -333,19 +338,24 @@ export class Session {
     clearTimeout(this.#localTimer);
     this.#localTimer = undefined;
     if (this.#removed) return;
-    const local: Local = { docId: this.docId, bytes: A.save(this.doc), crlf: this.#crlf, crdtHead: this.#crdtHead, icon: iconOf(this.doc.text) };
+    const local: Local = { docId: this.docId, bytes: A.save(this.doc), crlf: this.#crlf, crdtHead: this.#crdtHead, icon: iconOf(this.doc.text), kept: this.#kept };
     void idbPut("docs", this.#key, local);
   }
 
-  // Leaving the file without leaving the page: keep the copy, leave live sync at once, and send unsaved text to
-  // git if nobody else is here to (their autosave covers it otherwise).
+  // Leaving the file without leaving the page: keep the copy, leave live sync at once, and keep unsaved work in the
+  // snapshot ref if nobody else is here to (their keep covers it otherwise). Nothing is committed: that's Save.
   close() {
     this.onStatus = () => {};
     if (this.handle) this.#flushLocal(); // open() may have failed before there was a doc
-    clearTimeout(this.#autosave);
+    clearTimeout(this.#keepTimer);
     const alone = this.status.people.length === 0;
     void this.#repo.shutdown();
-    if (this.canWrite && this.status.dirty && alone && !this.#removed) void this.save();
+    if (this.canWrite && alone && !this.#removed) void this.keep();
+  }
+
+  // work in this copy that the snapshot ref doesn't hold yet
+  get unkept(): boolean {
+    return A.getHeads(this.doc).join() !== this.#kept;
   }
 
   #committedText(): string {
@@ -360,10 +370,71 @@ export class Session {
     }
   }
 
-  #scheduleAutosave() {
+  #scheduleKeep() {
     if (!this.canWrite) return;
-    clearTimeout(this.#autosave);
-    this.#autosave = window.setTimeout(() => void this.save(), 30_000 + Math.random() * 10_000);
+    clearTimeout(this.#keepTimer);
+    this.#keepTimer = window.setTimeout(() => void this.keep(), 30_000 + Math.random() * 10_000);
+  }
+
+  // Credit: the first edit typed in this tab records its actor in doc.who.
+  // ponytail: two first edits on a doc from before `who` (no map yet) can each create it, one map wins; that
+  // person goes uncredited until their next visit
+  #noteAuthor() {
+    if (this.#noted || !this.canWrite || !A.getLastLocalChange(this.doc)) return;
+    this.#noted = true;
+    const actor = A.getActorId(this.doc);
+    if (this.doc.who?.[actor] === this.#author) return;
+    queueMicrotask(() =>
+      this.handle.change((d) => {
+        d.who ??= {};
+        d.who[actor] = this.#author; // through the proxy: `(d.who ??= {})[actor]` would write to the plain {}
+      }),
+    );
+  }
+
+  // Take in what others kept or saved in the snapshot ref since this copy last looked (their unsaved work too).
+  async #mergeSnapshot(fresh = true) {
+    const head = await this.#crdtRefSha(fresh);
+    if (head === ZERO || head === this.#crdtHead) return;
+    const snap = await readSnapshot(this.repoName, head);
+    if (snap.meta.docId !== this.docId) {
+      await idbDelete("docs", this.#key);
+      throw new DocReset(`${this.path} was recreated by someone else`);
+    }
+    const theirs = A.load<RLDoc>(snap.bytes);
+    this.handle.update((d) => A.merge(d, theirs));
+    this.#crdtHead = head;
+    this.#kept = A.getHeads(theirs).join();
+  }
+
+  // Unsaved work to the snapshot ref only, never the branch (no commit in its history): another device or person
+  // opening the file gets it. 4 calls. Keep and save both move the snapshot ref, so they queue.
+  keep(): Promise<void> {
+    clearTimeout(this.#keepTimer);
+    return (this.#queue = this.#queue.then(() => this.#keep()));
+  }
+
+  async #keep(attempt = 1): Promise<void> {
+    if (!this.canWrite || this.#removed || !this.unkept) return;
+    try {
+      await this.#ready;
+      await this.#mergeSnapshot(); // someone kept or saved meanwhile: theirs first, maybe nothing's left to write
+      if (!this.unkept) return;
+      const git = this.doc.git!;
+      const [snap, kept] = await this.#snapshotCommit(git.commit, git.heads);
+      const err = await updateRefs(this.repoId, [{ name: this.#crdtRef, beforeOid: this.#crdtHead, afterOid: snap, force: true }]);
+      if (err) {
+        if (attempt >= 4) throw new Error(`keeping unsaved text failed after ${attempt} attempts: ${err}`);
+        return this.#keep(attempt + 1);
+      }
+      this.#crdtHead = snap;
+      this.#kept = kept;
+      this.#flushLocal();
+    } catch (e) {
+      this.status.error = errText(e);
+      if (e instanceof TypeError) this.#scheduleKeep(); // offline: try again later, the work stays in this browser
+      this.onStatus();
+    }
   }
 
   // ---- git -> CRDT ----
@@ -414,9 +485,7 @@ export class Session {
         const own = trailer?.slice(TRAILER.length).trim().split(",") ?? [];
         if (trailer && !A.hasHeads(this.doc, own)) {
           // that tab's ops haven't reached us via the hub; the snapshot written with that commit has them
-          this.#crdtHead = await this.#crdtRefSha(true);
-          const snap = this.#crdtHead !== ZERO && (await readSnapshot(this.repoName, this.#crdtHead));
-          if (snap) this.handle.update((d) => A.merge(d, A.load<RLDoc>(snap.bytes)));
+          await this.#mergeSnapshot();
         }
         // a trailer whose heads aren't in this doc even now is another file's save: replayed like any commit
         // (usually a no-op here)
@@ -481,18 +550,13 @@ export class Session {
 
   // ---- images ----
   #images = new Map<string, Promise<string | null>>();
-  // `diagrams/a.svg` (next to this file), `../a.png` or `/docs/a.png` (repo root) -> repo path
-  #repoPath(src: string): string {
-    const dir = this.path.split("/").slice(0, -1).map((s) => `${s}/`).join("");
-    return decodeURIComponent(new URL(src, `https://repo/${dir}`).pathname.slice(1));
-  }
   // A repo-relative src at this branch (or a pasted image's blob, before it's saved), as a blob URL.
   // Absolute URLs pass through. GitHub's raw bytes come untyped: an SVG needs its type to render in an <img>.
   imageUrl(src: string): Promise<string | null> {
     if (/^(https?:|data:|blob:)/.test(src)) return Promise.resolve(src);
     let url = this.#images.get(src);
     if (!url) {
-      const path = this.#repoPath(src);
+      const path = repoPath(this.path, src);
       const blob = this.doc.images?.[src];
       url = gh(blob ? `/repos/${this.repoName}/git/blobs/${blob}` : `/repos/${this.repoName}/contents/${encPath(path)}?ref=${encodeURIComponent(this.branch)}`, { raw: true })
         .then(async (res) => (res.ok ? URL.createObjectURL(new Blob([await res.arrayBuffer()], { type: path.endsWith(".svg") ? "image/svg+xml" : "" })) : null))
@@ -528,7 +592,7 @@ export class Session {
     const d = this.doc;
     return Object.entries(d.images ?? {})
       .filter(([src]) => d.text.includes(src))
-      .map(([src, sha]) => ({ path: this.#repoPath(src), mode: "100644", type: "blob", sha }));
+      .map(([src, sha]) => ({ path: repoPath(this.path, src), mode: "100644", type: "blob", sha }));
   }
 
   // Settle a conflict: replace the interleaved region with one side's version, or (text null) keep it as merged.
@@ -545,13 +609,13 @@ export class Session {
   }
 
   // ---- CRDT -> git ----
-  save(): Promise<void> {
+  // Save: one commit of everything unsaved, whoever typed it (they're its Co-authored-by lines). note: its title.
+  save(note?: string): Promise<void> {
     if (!this.canWrite) return Promise.resolve();
-    clearTimeout(this.#autosave);
-    return (this.#saving ??= this.#save().finally(() => (this.#saving = undefined)));
+    return (this.#queue = this.#queue.then(() => this.#save(note)));
   }
 
-  async #save(attempt = 1): Promise<void> {
+  async #save(note?: string, attempt = 1): Promise<void> {
     this.status.saving = true;
     this.onStatus();
     try {
@@ -575,11 +639,16 @@ export class Session {
         base_tree: baseTree,
         tree: [{ path: this.path, mode: "100644", type: "blob", content }, ...this.#linkedImages()],
       });
-      const title = merge ? `Merge ${merge.branch} into ${this.branch} in Red Letter` : `Edit ${this.path} in Red Letter`;
-      const message = `${title}\n\n${TRAILER} ${heads.join(",")}`;
+      const others = new Set<string>();
+      for (const c of A.getChangesMetaSince(d, d.git!.heads)) {
+        const who = d.who?.[c.actor];
+        if (who && who !== this.#author) others.add(who);
+      }
+      const title = note?.trim() || (merge ? `Merge ${merge.branch} into ${this.branch} in Red Letter` : `Edit ${this.path} in Red Letter`);
+      const message = `${title}\n\n${[...[...others].map((w) => `Co-authored-by: ${w}`), `${TRAILER} ${heads.join(",")}`].join("\n")}`;
       const parents = merge ? [parent, merge.commit] : [parent];
       const c = await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message, tree: tree.sha, parents });
-      const snap = await this.#snapshotCommit(c.sha, heads);
+      const [snap, kept] = await this.#snapshotCommit(c.sha, heads);
       const err = await updateRefs(this.repoId, [
         { name: `refs/heads/${this.branch}`, beforeOid: parent, afterOid: c.sha },
         { name: this.#crdtRef, beforeOid: this.#crdtHead, afterOid: snap, force: true },
@@ -587,10 +656,11 @@ export class Session {
       if (err) {
         if (attempt >= 4) throw new Error(`save failed after ${attempt} attempts: ${err}`);
         this.log("save lost a race, replaying and retrying:", err);
-        this.#crdtHead = await this.#crdtRefSha(true);
-        return this.#save(attempt + 1);
+        await this.#mergeSnapshot(); // a keep may have moved the snapshot ref: its work goes in this commit
+        return this.#save(note, attempt + 1);
       }
       this.#crdtHead = snap;
+      this.#kept = kept;
       this.handle.change((doc) => {
         doc.git = { commit: c.sha, heads };
         if (merge) doc.base!.inGit = merge.commit;
@@ -600,7 +670,7 @@ export class Session {
       this.log("saved", c.sha.slice(0, 7));
     } catch (e) {
       this.status.error = errText(e);
-      if (e instanceof TypeError) this.#scheduleAutosave(); // offline: try again later, edits stay in this browser
+      if (e instanceof TypeError) this.#scheduleKeep(); // offline: the work stays kept; Save again once online
     } finally {
       this.status.saving = false;
       this.#markDirty();
@@ -613,7 +683,7 @@ export class Session {
   async #onlyThisFile(from: string, to: string) {
     if (from === to) return;
     const cmp: { files?: { filename: string }[] } = JSON.parse(await cachedGet(`/repos/${this.repoName}/compare/${from}...${to}`, { immutable: true }));
-    const own = new Set([this.path, ...Object.keys(this.doc.images ?? {}).map((src) => this.#repoPath(src))]);
+    const own = new Set([this.path, ...Object.keys(this.doc.images ?? {}).map((src) => repoPath(this.path, src))]);
     const other = cmp.files?.find((f) => !own.has(f.filename));
     if (other) throw new Error(`this draft also changed ${other.filename}; merge it on GitHub`);
   }
@@ -642,7 +712,7 @@ export class Session {
   // snapshot ref, and this browser's copy. Nothing more leaves this Session afterwards.
   async dropBranch() {
     this.#removed = true;
-    clearTimeout(this.#autosave);
+    clearTimeout(this.#keepTimer);
     for (const ref of [`refs/heads/${this.branch}`, this.#crdtRef]) {
       const res = await gh(`/repos/${this.repoName}/git/${ref}`, { method: "DELETE" });
       if (!res.ok && res.status !== 404 && res.status !== 422) throw new HttpError(res.status, `delete ${ref}: ${res.status} ${await res.text()}`);
@@ -673,7 +743,7 @@ export class Session {
     ]);
     if (err) throw new Error(`someone saved meanwhile, try again: ${err}`);
     this.#removed = true;
-    clearTimeout(this.#autosave);
+    clearTimeout(this.#keepTimer);
     await idbDelete("docs", this.#key);
     await headOf(this.repoName, this.branch, true); // a moved file opens from the new head, not a cached one
     this.log(to ? "moved to" : "deleted", to ?? this.path, c.sha.slice(0, 7));

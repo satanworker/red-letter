@@ -9,6 +9,7 @@ import { StateEffect, StateField, type EditorState } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, WidgetType, runScopeHandlers } from "@codemirror/view";
 import { plain } from "../comments/inline.ts";
 import { blockField } from "./blocks.ts";
+import { openHref } from "./links.ts";
 
 type Cell = { from: number; to: number; end: number }; // trimmed text (from === to: empty); end: the next pipe
 type Row = { from: number; to: number; cells: Cell[] };
@@ -388,9 +389,8 @@ function wire(wrap: HTMLElement, view: EditorView) {
       const node = p?.offsetNode ?? r?.startContainer, offset = p?.offset ?? r?.startOffset ?? 0;
       if (node && el.contains(node)) href = linkAt(el.textContent ?? "", offset) ?? undefined;
     }
-    if (!href || !/^(https?:|mailto:)/i.test(href)) return;
+    if (!href || !openHref(view, href)) return;
     e.preventDefault(); // no caret, no focus change
-    window.open(href, "_blank", "noopener");
   });
   wrap.addEventListener("focusin", (e) => {
     const el = cellOf(e.target);
@@ -467,7 +467,7 @@ function wire(wrap: HTMLElement, view: EditorView) {
     if (e.altKey && e.key === "Enter") {
       const sel = getSelection(), href = linkAt(el.textContent ?? "", sel && el.contains(sel.focusNode) ? sel.focusOffset : 0);
       e.preventDefault();
-      if (href && /^(https?:|mailto:)/i.test(href)) window.open(href, "_blank", "noopener");
+      if (href) openHref(view, href);
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;

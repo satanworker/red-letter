@@ -19,6 +19,7 @@ import { Editor } from "./Editor.tsx";
 import { PageMenu } from "./PageMenu.tsx";
 import { History } from "./History.tsx";
 import { IconPicker } from "./IconPicker.tsx";
+import { SaveButton } from "./SaveButton.tsx";
 import { Outline } from "./Outline.tsx";
 import { selectDraftChanges, selectHistory, selectIcon, selectMarks, selectTab, selectTextChanges, selectWords } from "./docSelectors.ts";
 import { commentThreads } from "./commentMarks.ts";
@@ -183,7 +184,7 @@ export function EditorScreen() {
             </button>
             <span class="mt-2.5 flex items-center gap-1.5" role="status">
               <Show when={!doc.status.saving} fallback="Saving…">
-                <Show when={!doc.status.dirty} fallback="Edited">
+                <Show when={!doc.status.dirty} fallback="Unsaved changes">
                   Saved ·
                   <a class="underline" href={`https://github.com/${full()}/commit/${doc.status.commit}`} target="_blank" title={`Last commit on ${repo.branch}`}>
                     {doc.status.commit.slice(0, 7)}
@@ -191,7 +192,7 @@ export function EditorScreen() {
                 </Show>
               </Show>
               <Show when={doc.session?.canWrite && !doc.status.online}>
-                <span class="text-[#d9730d]" title="Live sync is reconnecting; edits are kept and saved to git">
+                <span class="text-[#d9730d]" title="Live sync is reconnecting; edits are kept in this browser">
                   offline
                 </span>
               </Show>
@@ -208,6 +209,12 @@ export function EditorScreen() {
                 </span>
               </Show>
             </span>
+            {/* outside the status region: a control, not an announcement */}
+            <Show when={doc.status.dirty && !doc.status.saving && doc.session?.canWrite}>
+              <span class="mt-[5.5px] ml-2 inline-flex">
+                <SaveButton />
+              </span>
+            </Show>
           </Show>
           <span class="flex-1" />
           <span class="mt-[5.5px] mr-3 inline-flex" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
@@ -260,7 +267,8 @@ export function EditorScreen() {
             </div>
           </Show>
           {/* hidden, not unmounted, under a PR's tab: CodeMirror and the doc's scroll stay as they were */}
-          <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg" hidden={!!repo.pull}>
+          {/* scrollbar-gutter: the column doesn't shift sideways when the doc grows past the window (images arriving) */}
+          <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg [scrollbar-gutter:stable]" hidden={!!repo.pull}>
             {/* a file being opened shows its spinner instead of the file it replaces, once it takes over 300 ms (slowOpen) */}
             <Show
               when={!(doc.opening && slowOpen()) && doc.session}

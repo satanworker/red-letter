@@ -14,8 +14,9 @@ import { commentMarks, commentParses } from "./commentMarks.ts";
 import { headingField } from "./headings.ts";
 import { flashField } from "./flash.ts";
 import { keepPlace } from "./keepPlace.ts";
-import { showPanel } from "../repo/repoStore.ts";
+import { openDocLink, showPanel } from "../repo/repoStore.ts";
 import { imageUrl } from "./images.ts";
+import { docLink } from "./links.ts";
 import { editorExtensions, readingMode } from "./livePreview.ts";
 import { cellSelection } from "./tables.ts";
 import { automergeSync } from "./sync.ts";
@@ -269,6 +270,7 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
             })
           : [],
         imageUrl.of((src) => s.imageUrl(src)),
+        docLink.of((href) => openDocLink(s.path, href)),
         automergeSync(s),
       ],
       parent: host,

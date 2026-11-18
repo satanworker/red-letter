@@ -84,7 +84,7 @@ export async function listDocs(repo: string, branch: string, stale = false): Pro
 // ponytail: first 100 only
 export async function listCollaborators(repo: string): Promise<User[]> {
   const people: User[] = JSON.parse(await cachedGet(`/repos/${repo}/collaborators?per_page=100`, { stale: true }));
-  return people.map(({ login, avatar_url }) => ({ login, avatar_url }));
+  return people.map(({ login, avatar_url, id }) => ({ login, avatar_url, id }));
 }
 
 // A GitHub App token can only write where the App is installed. Answered from this browser's copy first (it

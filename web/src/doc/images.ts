@@ -12,9 +12,12 @@ export const imageUrl = Facet.define<Resolve, Resolve>({
 });
 
 // Drawn heights by src: CodeMirror counts an undrawn widget as one line unless told, so a far image remembered at its
-// size keeps the doc's estimated height (and the text under the reader) from jumping when it's drawn again. An image
-// never drawn is hidden until it loads, 0px.
+// size keeps the doc's estimated height (and the text under the reader) from jumping when it's drawn again.
 const heights = new Map<string, number>();
+// Natural sizes by src, kept across reloads: a known image takes its room (width/height attributes) before it loads,
+// so the text under it doesn't jump when it arrives. An image never seen is hidden until it loads, 0px.
+// ponytail: keyed by src alone (one src in two repos shares an entry: a wrong box until it loads), last 500 kept
+const sizes: Record<string, [number, number]> = JSON.parse(globalThis.localStorage?.getItem("rl_imgsizes") ?? "{}"); // none in bun's checks
 
 class ImageWidget extends WidgetType {
   constructor(
@@ -34,12 +37,26 @@ class ImageWidget extends WidgetType {
     const img = document.createElement("img");
     img.className = "cm-lp-img";
     img.alt = this.alt;
-    img.hidden = true; // until it loads: a missing file shows nothing rather than a broken-image box
+    const size = sizes[this.src];
+    // until it loads: a missing file shows nothing rather than a broken-image box
+    if (size) {
+      img.width = size[0];
+      img.height = size[1];
+      img.style.visibility = "hidden";
+    } else img.hidden = true;
+    img.onerror = () => (img.hidden = true);
     img.onload = () => {
       img.hidden = false;
+      img.style.visibility = "";
       heights.set(this.src, img.offsetHeight);
+      if (size?.[0] === img.naturalWidth && size[1] === img.naturalHeight) return;
+      delete sizes[this.src];
+      sizes[this.src] = [img.naturalWidth, img.naturalHeight];
+      const keys = Object.keys(sizes);
+      for (const k of keys.slice(0, keys.length - 500)) delete sizes[k];
+      localStorage.setItem("rl_imgsizes", JSON.stringify(sizes));
     };
-    void this.resolve(this.src).then((url) => url && (img.src = url));
+    void this.resolve(this.src).then((url) => (url ? (img.src = url) : (img.hidden = true)));
     return img;
   }
 }

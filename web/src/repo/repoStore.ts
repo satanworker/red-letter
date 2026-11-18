@@ -5,7 +5,7 @@ import { clearIcons, clearReview, closeFile, doc, noteDraft, noteIcon, openFile,
 import { refreshComments } from "../comments/commentsStore.ts";
 import { loadPulls, pulls, refreshPulls, setReviewing, showView, unfoldPr } from "../pulls/pullsStore.ts";
 import { NO_SNAPSHOT, prefetchTexts, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
-import { HttpError, authKind, completeSignIn, currentUser, encPath, token, type User } from "../github.ts";
+import { HttpError, authKind, completeSignIn, currentUser, encPath, repoPath, token, type User } from "../github.ts";
 import { approvePr, closePr, mergeInto, mergePr, openPr, openPrFrom, requestChanges, requestReviewers, reviewBranch, touchFile, type Pr } from "./pulls.ts";
 import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, listUserRepos, resolveBranch, type RepoInfo, type UserRepo } from "./repoService.ts";
 
@@ -81,6 +81,16 @@ export function loadCollaborators() {
 export function navigateTo(path: string) {
   if (window.navigation) void window.navigation.navigate(path);
   else location.assign(path);
+}
+
+// A link in the doc at `from` that isn't a web address (`../extractor/README.md`): a doc of this branch opens in its
+// tab, any other file (code, a folder) on GitHub. `#part` alone, `//host` and other schemes: false, not ours to open.
+export function openDocLink(from: string, href: string): boolean {
+  if (!href || href.startsWith("#") || href.startsWith("//") || /^[a-z][\w+.-]*:/i.test(href)) return false;
+  const full = state.repo!.full_name, path = repoPath(from, href);
+  if (state.docs.includes(path)) navigateTo(blobUrl(full, state.branch, path));
+  else window.open(`https://github.com/${full}/blob/${encPath(state.branch)}/${encPath(path)}`, "_blank", "noopener");
+  return true;
 }
 
 // A tab is a file or a pull request's description. Every file tab is on the workspace's branch (VS Code's checkout):

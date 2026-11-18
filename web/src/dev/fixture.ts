@@ -34,7 +34,7 @@ export function showFixture(f: Fixture): Session {
 
   fixtureRepo({
     screen: "workspace",
-    user: { login: "satanworker", avatar_url: "" },
+    user: { login: "satanworker", avatar_url: "", id: 0 },
     owner: "satanworker",
     name: "red-letter",
     repo: { node_id: "", full_name: "Satanworker/red-letter", default_branch: "main", permissions: { push: true } },

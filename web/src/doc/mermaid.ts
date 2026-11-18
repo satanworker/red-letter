@@ -1,48 +1,22 @@
-// ```mermaid blocks render as diagrams. Renderer: beautiful-mermaid (ELK layout, no DOM), in a worker loaded on first
-// use (mermaid.worker.ts): 470 KB gzipped, 20-70 ms a diagram, against mermaid.js's ~1.5 MB and a DOM render.
-// (@vercel/beautiful-mermaid, 45 KB and ~5 ms, was tried first: it kept the quotes of `A["label"]`, ignored `<br/>`
-// and drew back edges outside the picture.) The source always shows, like any code block; the diagram renders under
-// it and follows edits live.
+// ```mermaid blocks render as diagrams. Renderer: Obsidian's pele (its own layout, no DOM, synchronous), each diagram
+// type's code loaded on first use (pele/lazy): 0.05–0.3 ms a diagram, so no worker and no cache. (beautiful-mermaid
+// before it took 20–70 ms on ELK in a 470 KB-gzipped worker; @vercel/beautiful-mermaid kept the quotes of
+// `A["label"]`.) The source always shows, like any code block; the diagram renders under it and follows edits live.
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import { blockField } from "./blocks.ts";
-import type { Reply, Request } from "./mermaid.worker.ts";
 
-declare const MERMAID_WORKER: string; // the worker's URL, injected by build.ts
-let worker: Worker | undefined;
-let nextId = 0;
-const waiting = new Map<number, PromiseWithResolvers<string>>();
-// Every colour in the SVG derives from --bg/--fg. As an <img> it can't see the page's variables, but it does
-// follow the system colour scheme in its own media query.
-const light = { bg: "#ffffff", fg: "#37352f" };
-const dark = `<style>@media (prefers-color-scheme: dark) { svg { --bg: #191919 !important; --fg: #d4d4d4 !important } }</style>`;
-// source -> SVG, so redrawing the editor doesn't re-render (a diagram scrolled back to shows at its size at once)
-// ponytail: 200 SVGs of ~20 KB at most; key by doc if docs ever hold more diagrams than that
-const cache = new Map<string, Promise<string>>();
+// The SVG shows as an <img> (a repo's diagrams are untrusted; an image runs nothing), which can't see the page's
+// variables but follows the system colour scheme in its own media query. Colours from app.css.
+const theme = `<style>.pele { --pele-bg: #fff; --pele-fg: #373737; --pele-line: #373737; --pele-muted: #adadad }
+@media (prefers-color-scheme: dark) { .pele { --pele-bg: #191919; --pele-fg: #dbdbdb; --pele-line: #dbdbdb; --pele-muted: #8c8c8c;
+--pele-surface: #2a2a2a; --pele-surface-alt: #252525; --pele-border: #555 } }</style>`;
 
-function render(src: string): Promise<string> {
-  if (!worker) {
-    worker = new Worker(MERMAID_WORKER, { type: "module" });
-    worker.onmessage = (e: MessageEvent<Reply>) => {
-      const r = e.data, w = waiting.get(r.id)!;
-      waiting.delete(r.id);
-      if ("svg" in r) w.resolve(r.svg);
-      else w.reject(new Error(r.error));
-    };
-  }
-  const id = nextId++, w = Promise.withResolvers<string>();
-  waiting.set(id, w);
-  worker.postMessage({ id, src, options: { ...light, transparent: true, padding: 16 } } satisfies Request);
-  return w.promise;
-}
-
-function svgOf(src: string) {
-  let svg = cache.get(src);
-  if (!svg) {
-    svg = render(src).then((s) => s.replace(/(<svg[^>]*>)/, `$1${dark}`));
-    cache.set(src, svg);
-    if (cache.size > 200) cache.delete(cache.keys().next().value!);
-  }
-  return svg;
+async function svgOf(src: string) {
+  // dynamic: pele stays out of the main bundle until a doc has a diagram (as highlight.ts does for @pierre/highlights)
+  const { renderAsync } = await import("pele/lazy");
+  // responsive: false keeps the natural size in width/height, which the <img> needs
+  const r = await renderAsync(src, { responsive: false, padding: 16 });
+  return { w: r.width, svg: r.svg.replace(/(<svg[^>]*>)/, `$1${theme}`) };
 }
 
 // Drawn heights by source: CodeMirror counts an undrawn widget as one line unless told (see images.ts)
@@ -64,9 +38,8 @@ class MermaidWidget extends WidgetType {
     const src = (box.dataset.src = this.src);
     const fresh = () => box.dataset.src === src; // a newer source may be rendering meanwhile
     svgOf(src).then(
-      (svg) => {
+      ({ w, svg }) => {
         if (!fresh()) return;
-        const w = Number(/width="([\d.]+)"/.exec(svg)?.[1] ?? 0);
         const img = document.createElement("img");
         // fit the column, but never below 70%: a wider diagram scrolls
         img.style.width = `max(min(100%, ${w}px), ${w * 0.7}px)`;

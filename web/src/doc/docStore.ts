@@ -134,7 +134,7 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
   const push = repo.permissions?.push === true;
   const viaPr = push && (await branchProtected(repo.full_name, branch).catch(() => false));
   if (state.opening !== path) return true; // another file was picked meanwhile
-  const session = new Session(repo.full_name, repo.node_id, branch, path, push && !viaPr, user.login);
+  const session = new Session(repo.full_name, repo.node_id, branch, path, push && !viaPr, user);
   try {
     await session.open(create, draftOf);
   } catch (e) {
@@ -242,12 +242,19 @@ export async function toggleCommit(sha: string) {
   }
 }
 
-// beforeunload: unsaved text and nobody else here to save it -> save now and ask the browser to hold the page
+// beforeunload: unsaved text only this browser has (not kept in the snapshot ref yet) and nobody else here to keep
+// it -> keep it now and ask the browser to hold the page
 export function leavingWithUnsaved(): boolean {
   const s = state.session;
-  if (!s?.canWrite || !s.status.dirty || s.status.people.length) return false;
-  void s.save();
+  if (!s?.canWrite || !s.status.dirty || !s.unkept || s.status.people.length) return false;
+  void s.keep();
   return true;
+}
+
+// The header's Save (⌘S, then Enter): one commit of the unsaved text, the note as its title.
+export async function saveDoc(note: string) {
+  view?.focus();
+  await state.session?.save(note);
 }
 
 // ---- editor UI ----

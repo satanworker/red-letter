@@ -83,3 +83,5 @@ Live-preview (Obsidian-style hide markers):
 **Skip:** Overtype for collab; GitBook-style canonicalizers; Milkdown/Tiptap/Outline trees on the wire; comments as markdown HTML or PM marks.
 
 *[INFERENCE] Dual-mode (CM source + Lexical view on one `Y.Text`) is feasible but not observed as a shipped product. X discussion of CM×PM dual-binding: https://x.com/nick_mune0127/status/2021792399337697781*
+
+чето поредактировала 

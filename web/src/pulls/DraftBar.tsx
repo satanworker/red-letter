@@ -1,15 +1,15 @@
 // A draft's bar over the doc, after GitBook's change requests: which draft this is, where it stands, and everything to
 // do with it. Git's words stay out of it: a draft is a branch, Ask for review opens its pull request (reviewers asked
-// on it), Publish merges it, Cancel review closes it (branch kept), Discard closes it and deletes the branch (a draft
-// made here only). Who can start one: canStartDraft.
+// on it), Publish merges it, Cancel review leaves review mode (the PR stays open), Discard closes it and deletes the
+// branch (a draft made here only). Who can start one: canStartDraft.
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { doc, toggleChanges, updateDraft } from "../doc/docStore.ts";
+import { pulls } from "./pullsStore.ts";
 import { selectDraftStatus } from "../doc/docSelectors.ts";
 import { isReviewBranch } from "../repo/pulls.ts";
 import {
   approvePullRequest,
   askForReview,
-  cancelReview,
   discardDraft,
   loadCollaborators,
   prTitle,
@@ -17,6 +17,7 @@ import {
   repo,
   requestChangesOnPullRequest,
   startDraft,
+  toggleReview,
 } from "../repo/repoStore.ts";
 import { Avatar, btn, primaryBtn } from "../ui.tsx";
 
@@ -49,7 +50,6 @@ export function DraftBar() {
   const publish = () => confirm(`Publish to ${target()}? Everyone sees these edits there.`) && void publishDraft();
   const discard = () =>
     confirm(`Discard this draft? Its edits${doc.pr ? " and its review" : ""} are deleted; ${target()} stays as it is.`) && void discardDraft();
-  const cancel = () => confirm("Cancel the review? The pull request closes; this branch and its edits stay.") && void cancelReview();
   const requestChanges = () => {
     const note = prompt("What should change?");
     if (note && doc.pr) void requestChangesOnPullRequest(doc.pr.number, note);
@@ -92,8 +92,8 @@ export function DraftBar() {
         >
           Publish to {target()}
         </button>
-        <Show when={doc.pr}>
-          <button class={`${btn} ${disabled}`} disabled={!!doc.drafting} title="Close the pull request; the edits stay" onClick={cancel}>
+        <Show when={pulls.reviewing}>
+          <button class={btn} title="Stop reviewing: back to working on the draft (the pull request stays open)" onClick={toggleReview}>
             Cancel review
           </button>
         </Show>

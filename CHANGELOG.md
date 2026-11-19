@@ -2,6 +2,10 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-19: Cancel review keeps the pull request
+
+- **Cancel review leaves review mode, nothing more**: it shows in a draft's bar while you're reviewing its pull request ("Reviewing #N"), and takes you back to working on the draft with the highlights off; the pull request stays open. Since 2026-11-15 it closed the pull request.
+
 ## 2026-11-18: Diagrams draw in a fraction of a millisecond
 
 - **Mermaid diagrams render with Obsidian's pele** instead of beautiful-mermaid: 0.05–0.3 ms a diagram instead of 20–70 ms, so the worker (and its 470 KB-gzipped bundle) is gone; only the code for the diagram types a doc uses loads. A node defined after its first use now shows its label (`a --> lake` then `lake[(Lake)]` showed "lake").

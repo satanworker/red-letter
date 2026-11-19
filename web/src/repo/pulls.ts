@@ -246,11 +246,10 @@ export async function commentOnConversation(repo: string, number: number, body: 
   await post(`/repos/${repo}/issues/${number}/comments`, { body });
 }
 
-// Closes the PR without merging and deletes its branch `head` if given (a review branch is recreated by the next review;
-// its snapshot ref is keyed by the branch name and reused). 404/422 on the branch: already gone.
-export async function closePr(repo: string, number: number, head?: string): Promise<void> {
+// Closes the PR without merging and deletes its branch (a review branch is recreated by the next review; its snapshot
+// ref is keyed by the branch name and reused). 404/422 on the branch: already gone.
+export async function closePr(repo: string, number: number, head: string): Promise<void> {
   await ghJson(`/repos/${repo}/pulls/${number}`, { method: "PATCH", body: JSON.stringify({ state: "closed" }) });
-  if (!head) return;
   const res = await gh(`/repos/${repo}/git/refs/heads/${encPath(head)}`, { method: "DELETE" });
   if (!res.ok && res.status !== 404 && res.status !== 422) throw new HttpError(res.status, `deleting ${head}: ${res.status} ${await res.text()}`);
 }

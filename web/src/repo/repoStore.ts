@@ -87,10 +87,15 @@ export function loadCollaborators() {
   );
 }
 
-// Without the Navigation API (older browsers) this is a page load, which works too.
+// In-page: main.tsx's navigate handler opens the route. Without the Navigation API (older Safari) the same through the
+// history API, not a page load: that lost what lives only in this page, like a file just created (createFile), which
+// opens from memory and is committed only then; it came back as "doesn't exist" and left the tree.
 export function navigateTo(path: string) {
-  if (window.navigation) void window.navigation.navigate(path);
-  else location.assign(path);
+  if (window.navigation) return void window.navigation.navigate(path);
+  const url = new URL(path, location.href);
+  if (url.href === location.href) history.replaceState(null, "", url);
+  else history.pushState(null, "", url);
+  void openRoute(url);
 }
 
 // A link in the doc at `from` that isn't a web address (`../extractor/README.md`): a doc of this branch opens in its

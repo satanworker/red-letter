@@ -9,6 +9,7 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 - **Reading or editing is one button** in the doc's corner, showing a book or a pencil; it opens a menu with Read and Edit, and picking one closes it. The corner now sits at the foot of the view under a short doc instead of floating after the text.
 - **Every file and folder row has a "…"** on hover (Figma `190:1914`; also the context-menu key, Shift+F10 or a right click): Open in new tab, Duplicate, Move to… (folders with a search), Open at GitHub, Rename in place, Delete (asked in the menu). One commit each.
 - **Spellcheck** is the browser's own (Apple's in Safari and on macOS, Google's in Chrome), in the text and in table cells.
+- **Safari keeps a new file.** Without the Navigation API (older Safari) every file switch was a page load, and a file just created, which lives only in the page until it opens, vanished with it: "doesn't exist on main" and gone from the tree. Links, back/forward and opening files now stay in the page there too (history API).
 - **Comments on a pull request show at once**, marked "Sending…", replies, resolving and deleting too; if GitHub refuses, the change is taken back and a toast says so with the text to copy.
 - **Errors are toasts** at the bottom left: a failed save, a comment not sent, a move or delete that didn't happen. No more `alert()` or red lines under the panel.
 

@@ -9,7 +9,7 @@ import "./app.css";
 import { comments } from "./comments/commentsStore.ts";
 import { doc, editorView, leavingWithUnsaved, tick } from "./doc/docStore.ts";
 import { showFigmaFixture } from "./dev/figma.tsx";
-import { openInBackground, openRoute, repo } from "./repo/repoStore.ts";
+import { navigateTo, openInBackground, openRoute, repo } from "./repo/repoStore.ts";
 import { palette, togglePalette } from "./palette/paletteStore.ts";
 import { keysOf, runKeys } from "./palette/commands.ts";
 import { rate } from "./rate.ts";
@@ -75,10 +75,22 @@ window.navigation?.addEventListener("navigate", (e) => {
   // keyboard user opened it from (or the doc, switching tabs by key: setView hands focus to the next editor)
   e.intercept({ handler: () => openRoute(url), focusReset: "manual" });
 });
+// Without the Navigation API (older Safari): back/forward and plain clicks on the app's links (the file tree, tabs) go
+// through navigateTo's history API fallback instead of loading the page. A #part of this page stays the browser's.
+if (!window.navigation) {
+  addEventListener("popstate", () => void openRoute(new URL(location.href)));
+  addEventListener("click", (e) => {
+    const a = e.target instanceof Element ? e.target.closest("a") : null;
+    if (e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || !a || a.target || a.hasAttribute("download")) return;
+    if (a.origin !== location.origin || a.pathname === "/auth/callback" || (a.pathname === location.pathname && a.search === location.search)) return;
+    e.preventDefault();
+    navigateTo(a.pathname + a.search + a.hash);
+  });
+}
 // ⌘/Ctrl+click on a link into a repo: a background tab here, not a new browser tab. A plain click opens its tab.
 addEventListener("click", (e) => {
   const a = e.target instanceof Element ? e.target.closest("a") : null;
-  if (!(e.metaKey || e.ctrlKey) || !a || a.target || a.origin !== location.origin || !window.navigation || repo.screen !== "workspace") return;
+  if (!(e.metaKey || e.ctrlKey) || !a || a.target || a.origin !== location.origin || repo.screen !== "workspace") return;
   if (a.pathname.split("/").filter(Boolean).length < 2) return; // the logo: the landing page has no tabs
   e.preventDefault();
   openInBackground(a.pathname);

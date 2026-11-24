@@ -8,6 +8,7 @@ import { createStore } from "solid-js/store";
 import { doc } from "../doc/docStore.ts";
 import { openPulls, prDetails, reviewBranch, type PrLink, type PrThread } from "../repo/pulls.ts";
 import { commitToPr, readPr, type Pr } from "./commentsPr.ts";
+import { errorText, toast } from "../toast.ts";
 
 type Target = { repo: string; branch: string; path: string; viaPr: boolean };
 export type Mode = "pr" | "file";
@@ -63,6 +64,9 @@ export function setCommentsMode(mode: Mode) {
   if (cur) localStorage.setItem(modeKey(cur.repo), mode);
 }
 
+// A write that failed: a toast, with the comment's text to copy when there was one
+const notSent = (e: unknown, body: string) => toast(body ? `${errorText(e)} — not sent: “${body}”` : errorText(e), "error", body || undefined);
+
 let writes = 0; // a refresh that started before a write ended reads an older copy: dropped
 export async function refreshComments() {
   const t = cur;
@@ -92,7 +96,8 @@ async function refreshPrThreads(force = false) {
     const s = `${t.branch} ${t.path} ${mine.map((p) => `${p.number}@${p.updatedAt}`).join(" ")}`;
     if (s === stamp && !force) return;
     const details = await prDetails(t.repo, mine, force);
-    if (cur !== t || w !== writes) return;
+    // a poll while writes are on their way would wipe what they show already (optimistic): the write's own refresh comes
+    if (cur !== t || w !== writes || (!force && inFlight)) return;
     stamp = s;
     // the PR from the branch first, then the PRs into it that change this file
     const kept = details.filter((d) => d.pr.head === t.branch || d.files.some((f) => f.path === t.path)).sort((a, b) => Number(b.pr.head === t.branch) - Number(a.pr.head === t.branch));
@@ -102,20 +107,29 @@ async function refreshPrThreads(force = false) {
   }
 }
 
-// One write to the PR (a comment, reply, resolve, delete), then its threads read again. Returns what the write did,
-// undefined on failure, which is reported with the comment's text, to copy.
-export async function writeOnPr<T>(action: () => Promise<T>, body = ""): Promise<T | undefined> {
+// One write to the PR (a comment, reply, resolve, delete), then its threads read again. Optimistic: `shown` changes
+// the threads at once (a new comment with a negative id, which the panel marks "Sending…"), and the threads read after
+// the write replace them; a write that fails puts them back and says so in a toast, with the comment's text to copy.
+// Returns what the write did, undefined on failure.
+let inFlight = 0;
+export async function writeOnPr<T>(action: () => Promise<T>, body = "", shown?: (threads: PrThread[]) => PrThread[]): Promise<T | undefined> {
   const t = cur;
   if (!t) return;
   writes++;
+  inFlight++;
+  const before = state.prThreads;
   set({ sending: true, error: "" });
+  if (shown) set("prThreads", shown(state.prThreads));
   try {
     const r = await action();
     if (cur === t) await refreshPrThreads(true);
     return r;
   } catch (e) {
-    if (cur === t) set("error", `${e instanceof Error ? e.message : String(e)}${body ? ` — not sent: “${body}”` : ""}`);
+    if (cur !== t) return;
+    if (shown) set("prThreads", before);
+    notSent(e, body);
   } finally {
+    inFlight--;
     if (cur === t) set("sending", false);
   }
 }
@@ -128,11 +142,24 @@ export async function commentViaPr(message: string, edit: (text: string) => stri
   writes++;
   set({ sending: true, error: "" });
   try {
-    await ready;
-    const r = await commitToPr(t.repo, t.branch, t.path, message, edit);
+    // optimistic: the comment PR's copy shows the change now (the threads come from it); the commit's copy replaces it
+    const before = state.text;
+    try {
+      if (before !== null) set("text", edit(before));
+    } catch {} // an edit that can't apply to this copy yet: it shows once committed
+    try {
+      await ready;
+    } catch (e) {
+      if (cur === t) set("text", before);
+      throw e;
+    }
+    const r = await commitToPr(t.repo, t.branch, t.path, message, edit).catch((e: unknown) => {
+      if (cur === t) set("text", before);
+      throw e;
+    });
     if (cur === t) set({ pr: r.pr, text: r.text });
   } catch (e) {
-    if (cur === t) set("error", `${e instanceof Error ? e.message : String(e)}${body ? ` — not sent: “${body}”` : ""}`);
+    if (cur === t) notSent(e, body);
   } finally {
     if (cur === t) set("sending", false);
   }

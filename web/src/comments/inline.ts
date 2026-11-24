@@ -13,7 +13,8 @@
 // and block, so git history is the record. Nothing inside fenced code counts.
 // Pure text in, text edits out: the editor (direct) and the comment PR (commentsPr.ts) both apply them.
 
-export type Message = { author: string; at: string; body: string };
+// pending: sent and shown, not yet taken (an optimistic review comment, commentsStore.writeOnPr)
+export type Message = { author: string; at: string; body: string; pending?: boolean };
 // source: where the thread lives. "file": markup in the doc (below); "pr": a review thread on the branch's pull
 // request (commentsSelectors.ts maps it onto the doc), with GitHub's ids for replying, resolving and deleting.
 export type PrRef = { number: number; url: string; threadId: string; firstCommentId: number; outdated: boolean };
@@ -140,6 +141,18 @@ export function remove(text: string, id: string): Edit[] {
   // the last block goes with the blank line addThread put before it
   const from = b.to === text.length && blocks.at(-1) === b && text.slice(b.from - 2, b.from) === "\n\n" ? b.from - 1 : b.from;
   return [...markers.filter((k) => k.id === id).map((k) => ({ from: k.from, to: k.to, insert: "" })), { from, to: b.to, insert: "" }];
+}
+
+// One message of a thread: its header line and the lines continuing it (index as in parse's messages).
+export function removeMessage(text: string, id: string, index: number): Edit[] {
+  const b = parse(text).blocks.find((x) => x.id === id);
+  if (!b) return [];
+  const starts: number[] = [];
+  for (let at = text.indexOf("\n", b.from) + 1; at < b.close; at = text.indexOf("\n", at) + 1) {
+    if (HEADER.test(text.slice(at, text.indexOf("\n", at)))) starts.push(at);
+  }
+  const from = starts[index];
+  return from === undefined ? [] : [{ from, to: starts[index + 1] ?? b.close, insert: "" }];
 }
 
 export function apply(text: string, edits: Edit[]): string {

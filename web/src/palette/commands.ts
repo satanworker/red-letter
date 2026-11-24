@@ -32,7 +32,7 @@ export function keyLabel(keys: string): string {
 
 // ---- moving focus between the workspace's areas: header, files, open tabs, the doc, the side panel ----
 const shown = (el: Element | null): el is HTMLElement => el instanceof HTMLElement && el.checkVisibility();
-const onDoc = () => !!doc.session && !repo.pull;
+const onDoc = () => !!doc.session && !repo.pull && !repo.blank;
 
 function showFiles() {
   if (repo.filesHidden) toggleFiles();

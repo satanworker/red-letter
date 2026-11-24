@@ -74,6 +74,9 @@ emoji-picker {
   :focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
   /* Figma's 12px text sits on 15px lines: the font's own "normal", not Tailwind's leading-normal (1.5) */
   body { @apply bg-bg font-sans text-[12px] leading-[normal] text-fg antialiased; }
+  /* The workspace is grey to its edges: what overscroll (rubber-banding) and zooming out uncover is the root's
+     background, which would otherwise be the body's white */
+  html:has([data-workspace]) { background: var(--side); }
   code { @apply rounded bg-code-bg px-1 py-0.5 font-mono text-[85%] leading-none text-code; }
   summary::-webkit-details-marker { display: none; }
 }

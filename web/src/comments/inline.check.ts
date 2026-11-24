@@ -1,5 +1,5 @@
 // bun src/comments/inline.check.ts — the comment format's round trip; throws on the first broken case.
-import { addThread, apply, hidden, parse, plain, remove, reply, sameProse, setResolved } from "./inline.ts";
+import { addThread, apply, hidden, parse, plain, remove, removeMessage, reply, sameProse, setResolved } from "./inline.ts";
 
 const eq = (got: unknown, want: unknown, what: string) => {
   if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${what}: ${JSON.stringify(got)} != ${JSON.stringify(want)}`);
@@ -27,5 +27,10 @@ eq(sameProse(plain(base), plain(done)), true, "the flag is markup");
 eq(apply(done, setResolved(done, "c1", false)), t, "reopening restores the text");
 const one = apply(done, remove(done, "c2"));
 eq(apply(one, remove(one, "c1")), base, "deleting restores the doc (resolved or not)");
+const noReply = apply(t, removeMessage(t, "c1", 1));
+eq(parse(noReply).threads[0]!.messages, [c1!.messages[0]], "deleting a reply keeps the first message");
+eq(apply(noReply, reply(noReply, "c1", { author: "agent", at: "", body: "ok" })), t, "deleting a reply removes only its lines");
+eq(parse(apply(t, removeMessage(t, "c1", 0))).threads[0]!.messages, [c1!.messages[1]], "a multi-line message goes whole");
+eq(removeMessage(t, "c1", 2), [], "no such message");
 eq(hidden("```\n<!--rl:x-->a<!--/rl:x-->\n<!--rl:x\n@a: b\n-->\n```\n"), [], "fenced code is not a comment");
 console.log("inline comments: ok");

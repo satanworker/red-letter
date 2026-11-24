@@ -8,7 +8,7 @@ import { For, Show, createEffect, createMemo, createSelector, createSignal, onCl
 import { selectHeadings } from "./docSelectors.ts";
 import { doc, editorState, headingInView, scrollToHeading, showLink } from "./docStore.ts";
 import { headingField } from "./headings.ts";
-import { listKeys } from "../ui.tsx";
+import { listKeys, pressed, rowHover } from "../ui.tsx";
 
 export function Outline() {
   const found = createMemo(() => {
@@ -48,7 +48,7 @@ export function Outline() {
         <For each={outline()}>
           {(h, i) => (
             <button
-              class={`flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md pr-1.5 text-left text-fg hover:bg-hover ${isActive(i()) ? "bg-on" : ""}`}
+              class={`flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md pr-1.5 text-left text-fg ${rowHover} ${isActive(i()) ? pressed : ""}`}
               style={{ "padding-left": `${6 + h.depth * 16}px` }}
               title={h.text}
               aria-current={isActive(i()) ? "location" : undefined}
@@ -66,7 +66,7 @@ export function Outline() {
         <For each={links()}>
           {(l, i) => (
             <button
-              class="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-fg hover:bg-hover"
+              class={`flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-fg ${rowHover}`}
               title={`${l.text}\n${l.url}`}
               tabindex={!outline().length && i() === 0 ? 0 : -1}
               onClick={() => {

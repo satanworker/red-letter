@@ -4,5 +4,4 @@ import { createStore } from "solid-js/store";
 const [state, set] = createStore({ open: false });
 export const palette = state;
 export const togglePalette = () => set("open", !state.open);
-export const openInNewTab = () => set("open", true); // the tab strip's "+": every file opens in a tab of its own anyway
 export const closePalette = () => set("open", false);

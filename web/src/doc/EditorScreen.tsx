@@ -5,11 +5,13 @@ import { CommentsPanel } from "../comments/CommentsPanel.tsx";
 import { selectThreads } from "../comments/commentsSelectors.ts";
 import { comments, commentsShown, targetPr } from "../comments/commentsStore.ts";
 import { FileSidebar } from "../repo/FileSidebar.tsx";
-import { activeTab, closeTab, repo, sameTab, tabUrl, toggleFiles, togglePanel, type Tab } from "../repo/repoStore.ts";
+import { activeTab, closeTab, navigateTo, newUrl, repo, sameTab, startCreate, tabUrl, toggleFiles, togglePanel, type Tab } from "../repo/repoStore.ts";
 import { Palette } from "../palette/Palette.tsx";
-import { openInNewTab, palette } from "../palette/paletteStore.ts";
+import { Toasts } from "../Toasts.tsx";
+import { toast } from "../toast.ts";
+import { palette, togglePalette } from "../palette/paletteStore.ts";
 import { focusPanel, keyLabel } from "../palette/commands.ts";
-import { Avatar, BranchIcon, CloseIcon, CommentIcon, EditIcon, Logo, OutlineIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine, listKeys } from "../ui.tsx";
+import { Avatar, BookIcon, CloseIcon, CommentIcon, FindIcon, FolderIcon, HistoryIcon, Logo, NewFileIcon, OutlineIcon, PencilIcon, PlusIcon, SidebarIcon, Spinner, badge, count, fine, iconBtn, listKeys, menuCard, menuItem, placeMenu, textBtn } from "../ui.tsx";
 import { DraftBar, canStartDraft, onDraft, promptDraft } from "../pulls/DraftBar.tsx";
 import { PrOverview } from "../pulls/PrOverview.tsx";
 import { pulls } from "../pulls/pullsStore.ts";
@@ -52,9 +54,10 @@ export function EditorScreen() {
   });
   // the open tab is a pull request's description: the doc stays mounted under it, hidden, with its chrome
   const pr = createMemo(() => (repo.pull ? pulls.list.find((p) => p.number === repo.pull) : undefined));
-  const onDoc = () => !!doc.session && !repo.pull;
+  const onDoc = () => !!doc.session && !repo.pull && !repo.blank;
   createEffect(() => {
-    if (repo.pull) document.title = `#${repo.pull} ${pr() ? prTitle(pr()!) : ""} · Red Letter`;
+    if (repo.blank) document.title = "Create new · Red Letter";
+    else if (repo.pull) document.title = `#${repo.pull} ${pr() ? prTitle(pr()!) : ""} · Red Letter`;
     else if (repo.path) document.title = `${repo.path.split("/").pop()} · Red Letter`;
   });
   // A file that opens within 300 ms (most: from this browser's copy) swaps in place; only a slower one replaces the
@@ -141,7 +144,7 @@ export function EditorScreen() {
         class={tabClass(tab() === "history", "px-3")}
         onClick={() => showTab("history")}
       >
-        <BranchIcon />
+        <HistoryIcon />
         <Show when={tab() === "history"}>History</Show>
         <Show when={marks().length}>
           <i class={count}>{marks().length}</i>
@@ -150,15 +153,15 @@ export function EditorScreen() {
     </div>
   );
 
-  // px values are Figma "RED LETTER 5 NOV" (129:1304) coordinates. Figma strokes don't move content, so frames use outlines.
+  // px values are Figma "RED LETTER 12 NOV" (180:120) coordinates. Figma strokes don't move content, so frames use outlines.
   return (
-    <div class="flex h-screen flex-col">
-      <header class="relative z-[3] flex h-[35px] shrink-0 items-start whitespace-nowrap bg-side shadow-figma outline-[.5px] -outline-offset-[.5px] outline-line">
-        {/* Figma 129:1583: its own box over the 320px sidebar, the files toggle at its right edge; then the doc and the 320px panel */}
-        <span class="relative w-80 shrink-0 self-stretch border-r-[.5px] border-line pt-[7px] pl-3">
-          <Logo />
+    <div class="flex h-screen flex-col" data-workspace>
+      <header class="relative z-[3] flex h-[35px] shrink-0 items-center whitespace-nowrap bg-side shadow-figma outline-[.5px] -outline-offset-[.5px] outline-line">
+        {/* Figma 187:1702 "TOP LEFT": its own box over the sidebar (320px, the 38px rail when it's closed), the files toggle
+            12px in; then the wordmark centred over the doc (184:1258) and the 320px panel's box (187:1733 "TOP RIGHT") */}
+        <span class={`flex shrink-0 items-center self-stretch border-r-[.5px] border-line pl-[9.5px] ${repo.filesHidden ? "w-[38px]" : "w-80"}`}>
           <button
-            class="absolute top-1/2 right-3 -translate-y-1/2 cursor-pointer rounded hover:bg-hover"
+            class={iconBtn}
             title={`${repo.filesHidden ? "Show files" : "Hide files"} (${keyLabel("Mod-\\")})`}
             aria-label={repo.filesHidden ? "Show files" : "Hide files"}
             onClick={toggleFiles}
@@ -166,26 +169,17 @@ export function EditorScreen() {
             <SidebarIcon closed={repo.filesHidden} />
           </button>
         </span>
-        {/* the branch moved to the file sidebar's foot (VS Code's status bar), the pull requests to its tab */}
-        <span class="min-w-0 flex-1" />
+        <span class="flex min-w-0 flex-1 justify-center">
+          <Logo />
+        </span>
         {/* at least the panel's 320px; a long status (offline, error, the rate limit) widens it leftwards instead of pushing "…" off-screen */}
-        <div class="flex min-w-80 shrink-0 items-start px-3">
+        <div class="flex min-w-80 shrink-0 items-center gap-1.5 self-stretch border-l-[.5px] border-line pr-[9.5px] pl-3">
           <Show when={onDoc()}>
-            {/* Figma 140:2607 / 140:2799: the comments panel's toggle, 12px before the status */}
-            <button
-              class="mt-[10px] mr-3 cursor-pointer rounded hover:bg-hover"
-              title={`${repo.panelHidden ? "Show comments" : "Hide comments"} (${keyLabel("Mod-Shift-\\")})`}
-              aria-label={repo.panelHidden ? "Show comments" : "Hide comments"}
-              aria-controls="panel"
-              aria-expanded={!repo.panelHidden}
-              onClick={togglePanel}
-            >
-              <SidebarIcon closed={repo.panelHidden} right />
-            </button>
-            <span class="mt-2.5 flex items-center gap-1.5" role="status">
+            <span class="flex items-center gap-3" role="status">
               <Show when={!doc.status.saving} fallback="Saving…">
                 <Show when={!doc.status.dirty} fallback="Unsaved changes">
-                  Saved ·
+                  Saved
+                  <span aria-hidden="true">●</span>
                   <a class="underline" href={`https://github.com/${full()}/commit/${doc.status.commit}`} target="_blank" title={`Last commit on ${repo.branch}`}>
                     {doc.status.commit.slice(0, 7)}
                   </a>
@@ -198,7 +192,7 @@ export function EditorScreen() {
               </Show>
               <Show when={doc.status.error}>
                 {(err) => (
-                  <button class="cursor-pointer text-red" title={err()} onClick={() => alert(err())}>
+                  <button class="cursor-pointer text-red" title={err()} onClick={() => toast(`Couldn't save: ${err()}`)}>
                     error
                   </button>
                 )}
@@ -211,13 +205,13 @@ export function EditorScreen() {
             </span>
             {/* outside the status region: a control, not an announcement */}
             <Show when={doc.status.dirty && !doc.status.saving && doc.session?.canWrite}>
-              <span class="mt-[5.5px] ml-2 inline-flex">
+              <span class="ml-2 inline-flex">
                 <SaveButton />
               </span>
             </Show>
           </Show>
           <span class="flex-1" />
-          <span class="mt-[5.5px] mr-3 inline-flex" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
+          <span class="mr-1.5 inline-flex" title={people().length ? `Also here: ${people().join(", ")}` : ""}>
             <For each={people()}>
               {(p) => (
                 <span class="-ml-1.5 rounded-full ring-2 ring-side first:ml-0">
@@ -228,14 +222,26 @@ export function EditorScreen() {
           </span>
           {/* GitBook's "Edit in a change request": work on this doc out of sight, publish when it's ready */}
           <Show when={onDoc() && canStartDraft()}>
-            <button class="mt-2.5 mr-3 cursor-pointer hover:underline" title={`Edit this doc in a draft: nothing reaches ${repo.branch} until you publish`} onClick={promptDraft}>
+            <button class={textBtn} title={`Edit this doc in a draft: nothing reaches ${repo.branch} until you publish`} onClick={promptDraft}>
               Start a draft
             </button>
           </Show>
-          <button class="mt-2.5 cursor-pointer hover:underline" onClick={() => void share()}>
+          <button class={textBtn} onClick={() => void share()}>
             {copied() ? "Link copied" : "Share"}
           </button>
           <Show when={onDoc() && doc.session}>{(s) => <PageMenu canWrite={s().canWrite} />}</Show>
+          {/* Figma 187:1733: the comments panel's toggle at the far right, the files toggle's mirror */}
+          <Show when={onDoc()}>
+            <button
+              class={iconBtn}
+              title={`${repo.panelHidden ? "Show comments" : "Hide comments"} (${keyLabel("Mod-Shift-\\")})`}
+              aria-label={repo.panelHidden ? "Show comments" : "Hide comments"}
+              aria-controls="panel"
+              onClick={togglePanel}
+            >
+              <SidebarIcon closed={repo.panelHidden} right />
+            </button>
+          </Show>
         </div>
       </header>
       <main class="relative flex min-h-0 flex-1">
@@ -243,7 +249,10 @@ export function EditorScreen() {
         {/* over the header's shadow: the tab strip sits there, so the shadow never lands on the white page */}
         <div class="relative z-[4] flex min-w-0 flex-1 flex-col">
           <Tabs />
-          <Show when={!repo.pull && onDraft()}>
+          <Show when={repo.blank}>
+            <CreateNew />
+          </Show>
+          <Show when={!repo.pull && !repo.blank && onDraft()}>
             <DraftBar />
           </Show>
           <Show when={repo.pull}>
@@ -268,7 +277,7 @@ export function EditorScreen() {
           </Show>
           {/* hidden, not unmounted, under a PR's tab: CodeMirror and the doc's scroll stay as they were */}
           {/* scrollbar-gutter: the column doesn't shift sideways when the doc grows past the window (images arriving) */}
-          <div id="doc" class="group/doc relative min-h-0 flex-1 overflow-auto bg-bg [scrollbar-gutter:stable]" hidden={!!repo.pull}>
+          <div id="doc" class="group/doc relative flex min-h-0 flex-1 flex-col overflow-auto bg-bg [scrollbar-gutter:stable]" hidden={!!repo.pull || repo.blank}>
             {/* a file being opened shows its spinner instead of the file it replaces, once it takes over 300 ms (slowOpen) */}
             <Show
               when={!(doc.opening && slowOpen()) && doc.session}
@@ -302,20 +311,14 @@ export function EditorScreen() {
                     <IconPicker icon={icon()} />
                   </Show>
                   <Editor session={s} marks={marks} changes={changes} threads={threads} />
-                  {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls: the pencil that switches
-                      editing and reading (faded; read-only docs stay in reading) and the word count. The branch and
-                      its state are at the file sidebar's foot. */}
+                  {/* fills the view, so the corner below sits at the view's foot under a short doc instead of after its text */}
+                  <div class="flex-1" />
+                  {/* Figma 137:2487: pinned to the doc's bottom-right corner while it scrolls: the mode (reading or
+                      editing: its icon opens the choice, as a menu) and the word count. The branch and its state are
+                      at the file sidebar's foot. */}
                   <div class="sticky bottom-0 z-[5] h-0">
-                    <p class="absolute right-0 bottom-0 flex h-6 max-w-full items-center gap-2.5 rounded-tl-xl border-t-[.4px] border-l-[.4px] border-rule bg-card px-3 font-light whitespace-nowrap text-muted">
-                      <button
-                        class={`cursor-pointer rounded hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent ${isReading() ? "opacity-40" : ""}`}
-                        disabled={!s.canWrite}
-                        aria-pressed={!isReading()}
-                        title={!s.canWrite ? "Read-only" : isReading() ? "Reading: click to edit" : "Editing: click to read"}
-                        onClick={toggleReading}
-                      >
-                        <EditIcon />
-                      </button>
+                    <p class="absolute right-0 bottom-0 flex h-6 max-w-full items-center gap-2.5 rounded-tl-xl border-t-[.4px] border-l-[.4px] border-rule bg-card pr-3 pl-1.5 font-light whitespace-nowrap text-muted">
+                      <ModeMenu canWrite={s.canWrite} />
                       <span>{size().words} words</span>
                       <span>{size().chars} characters</span>
                     </p>
@@ -358,6 +361,7 @@ export function EditorScreen() {
       <Show when={palette.open}>
         <Palette />
       </Show>
+      <Toasts />
     </div>
   );
 }
@@ -381,6 +385,7 @@ function Tabs() {
     nav.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   });
   const label = (t: Tab) => {
+    if ("blank" in t) return { name: "Create new", title: "Create a new file or folder, or find one" };
     if ("pull" in t) {
       const p = pulls.list.find((x) => x.number === t.pull);
       return { name: `#${t.pull}${p ? ` ${prTitle(p)}` : ""}`, title: p ? `#${t.pull} ${p.title}` : `Pull request #${t.pull}` };
@@ -425,7 +430,7 @@ function Tabs() {
                 </a>
                 <Show when={repo.tabs.length > 1}>
                   <button
-                    class={`relative mr-[3px] shrink-0 cursor-pointer rounded hover:bg-hover focus-visible:opacity-100 ${on() ? "" : "opacity-0 group-hover/tab:opacity-100"}`}
+                    class={`relative mr-[3px] focus-visible:opacity-100 ${iconBtn} ${on() ? "" : "opacity-0 group-hover/tab:opacity-100"}`}
                     aria-label={`Close ${l().name}`}
                     onClick={() => close(t)}
                   >
@@ -437,9 +442,69 @@ function Tabs() {
           }}
         </For>
       </nav>
-      <button class="ml-[5px] grid size-6 shrink-0 cursor-pointer place-items-center rounded-lg hover:bg-rule" title="Open a file in a new tab" aria-label="Open a file in a new tab" onClick={openInNewTab}>
+      <button class={`ml-[5px] ${iconBtn}`} title="New tab: a new file or folder, or find one" aria-label="New tab" onClick={() => navigateTo(newUrl(repo.repo!.full_name))}>
         <PlusIcon />
       </button>
     </div>
+  );
+}
+
+// Figma 180:411 "Add a new file or folder": the "+" tab's page. A new file or folder is named in the file tree, at the
+// bottom of the root; "Go to the file" is the palette. Whatever opens next takes this tab (openRoute).
+function CreateNew() {
+  const item = "flex h-7 w-[200px] cursor-pointer items-center gap-2 rounded-[14px] border-[.5px] border-rule bg-card px-3 shadow-figma hover:border-line active:bg-rule";
+  return (
+    <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 bg-bg">
+      <Show when={repo.repo?.permissions?.push}>
+        <button class={item} onClick={() => startCreate("file")}>
+          <NewFileIcon />
+          Create new file
+        </button>
+        <button class={item} onClick={() => startCreate("folder")}>
+          <FolderIcon />
+          Create new folder
+        </button>
+      </Show>
+      <button class={item} onClick={togglePalette}>
+        <FindIcon />
+        Go to the file
+      </button>
+    </div>
+  );
+}
+
+// Task 3 of Designs_tasks.md: the doc's mode as one button, the chosen mode's icon (a book reading, a pencil editing);
+// it opens a menu with both (Figma 183:849's look), picking one closes it. Read-only docs only read: no menu.
+function ModeMenu(props: { canWrite: boolean }) {
+  let menu!: HTMLDivElement;
+  const pick = (reading: boolean) => {
+    menu.hidePopover();
+    if (isReading() !== reading) toggleReading();
+  };
+  const item = (reading: boolean) => (
+    <button type="button" role="menuitemradio" aria-checked={isReading() === reading} class={menuItem} onClick={() => pick(reading)}>
+      {reading ? <BookIcon /> : <PencilIcon />}
+      {reading ? "Read" : "Edit"}
+    </button>
+  );
+  return (
+    <>
+      <button
+        type="button"
+        class={iconBtn}
+        disabled={!props.canWrite}
+        title={!props.canWrite ? "Read-only" : isReading() ? "Reading: choose to edit" : "Editing: choose to read"}
+        aria-label={isReading() ? "Reading" : "Editing"}
+        aria-haspopup="menu"
+        popoverTarget="mode-menu"
+        onClick={(e) => placeMenu(menu, e.currentTarget, "above")}
+      >
+        {isReading() ? <BookIcon /> : <PencilIcon />}
+      </button>
+      <div ref={menu} id="mode-menu" popover role="menu" aria-label="Mode" class={`${menuCard} font-normal`}>
+        {item(true)}
+        {item(false)}
+      </div>
+    </>
   );
 }

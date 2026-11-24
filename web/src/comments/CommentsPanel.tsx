@@ -1,22 +1,29 @@
 // Comment threads beside the doc. Rows are keyed by thread id, so a reply being typed survives updates.
 // New comments are written in the editor (Editor.tsx) and show here once sent.
 // Keyboard: Up/Down/Home/End move between cards (each card's quote is a button that brings its text into view); Esc on a
-// card puts the caret at its text; Reply / Resolve / Reopen / Delete are buttons, and a card that leaves the list hands
-// focus to its neighbour. Esc closes inputs. Resolved threads wait, collapsed, under "N resolved"; hovering or focusing
-// one's card lights up its text.
+// card puts the caret at its text; Reply / Resolve / Reopen are buttons, and each message's "…" opens its menu (Delete,
+// Copy link). Esc closes inputs and the menu. Resolved threads wait, collapsed, under "N resolved"; hovering or
+// focusing one's card lights up its text.
 import { For, Show, createMemo, createSignal, type Accessor } from "solid-js";
-import { deleteThread, doc, goToThread, hoverThread, reopenThread, resolveThread, selectThread, submitReply } from "../doc/docStore.ts";
+import { commentLink, deleteMessage, doc, goToThread, hoverThread, reopenThread, resolveThread, selectThread, submitReply } from "../doc/docStore.ts";
 import { repo } from "../repo/repoStore.ts";
 import { keyLabel } from "../palette/commands.ts";
-import { Avatar, ago, badge, btn, card, linkBtn, listKeys } from "../ui.tsx";
+import { Avatar, CommentDotsIcon, GithubMarkIcon, GithubStrokeIcon, ago, badge, btn, card, iconBtn, listKeys, rowHover } from "../ui.tsx";
 import type { Message as Msg, Thread } from "./inline.ts";
 import { MentionText, createMentions } from "./Mentions.tsx";
 import { comments, setCommentsMode, targetPr, type Mode } from "./commentsStore.ts";
 
 type Submit = SubmitEvent & { currentTarget: HTMLFormElement };
+// a message's "…": pointer down notes whether its menu was open, the click toggles it
+type MenuButton = { down: (b: HTMLElement) => void; click: (b: HTMLElement) => void };
 
 // Figma 11:356: 2px #d9d9d9 bar, 8px gap, Shadows-grey text, three lines at most
 const quote = "line-clamp-3 border-l-2 border-on pl-2 text-left whitespace-pre-wrap text-muted";
+const menuItem = `-mx-1.5 cursor-pointer rounded px-1.5 text-left leading-4 whitespace-nowrap ${rowHover}`;
+// Figma 180:386's switch: the track pressed in, the chosen side raised off it
+const sunken = "shadow-[inset_1px_2px_4px_rgba(0,0,0,.1),inset_0_-.5px_1px_rgba(0,0,0,.05)]";
+const raised =
+  "bg-side shadow-[0_.5px_3px_rgba(55,55,55,.09),0_4px_10px_rgba(235,235,235,.25),inset_0_0_.2px_rgba(0,0,0,.32),inset_-.5px_-.5px_1px_rgba(0,0,0,.1),inset_.5px_.5px_1px_rgba(255,255,255,.4),inset_0_-.5px_1px_rgba(0,0,0,.05)]";
 
 export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Thread[]> }) {
   // Each keystroke above a thread moves its range, so every Thread is new; a card only needs the rest. Keeping the
@@ -35,23 +42,72 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
   const resolved = createMemo(() => ids(true));
   // selecting goes to the thread's range now, which a kept card object may hold an older copy of
   const select = (id: string) => selectThread(props.threads().find((t) => t.id === id)!);
+  // Figma 145:3124: one menu for every message, placed under the "…" that opened it. A native popover: light dismiss,
+  // Esc and the top layer come with it. Pressing the "…" whose menu is open closes it (light dismiss closes it on
+  // the press, and the click would open it again).
+  let menu!: HTMLDivElement;
+  const [menuFor, setMenuFor] = createSignal<{ id: string; index: number; button: HTMLElement } | null>(null);
+  // Delete asks in the menu itself, not with confirm(): some browsers (embedded ones) turn native dialogs off
+  const [asking, setAsking] = createSignal("");
+  const shown = () => menu.matches(":popover-open");
+  let wasOpen: boolean | undefined;
+  const menuButton = (id: string, index: number): MenuButton => ({
+    down: (b) => (wasOpen = shown() && menuFor()?.button === b),
+    click: (b) => {
+      const close = wasOpen ?? (shown() && menuFor()?.button === b);
+      wasOpen = undefined;
+      if (shown()) menu.hidePopover();
+      if (close) return;
+      setAsking("");
+      setMenuFor({ id, index, button: b });
+      const r = b.getBoundingClientRect();
+      Object.assign(menu.style, { top: `${r.bottom + 4}px`, right: `${innerWidth - r.right}px` });
+      menu.showPopover();
+    },
+  });
+  const del = () => {
+    const f = menuFor(), t = f && props.threads().find((x) => x.id === f.id);
+    if (!f || !t) return menu.hidePopover();
+    const gone = (what: string) => (t.source === "pr" ? ` GitHub deletes ${what} for good.` : ` Git history keeps ${what}.`);
+    setAsking(f.index ? `Delete this reply?${gone("it")}` : t.messages.length > 1 ? `Delete this comment and its replies?${gone("them")}` : `Delete this comment?${gone("it")}`);
+  };
+  const confirmDel = () => {
+    const f = menuFor();
+    menu.hidePopover();
+    setAsking("");
+    if (f) deleteMessage(f.id, f.index);
+  };
+  const copyLink = () => {
+    const f = menuFor();
+    menu.hidePopover();
+    if (f) void navigator.clipboard.writeText(commentLink(f.id));
+  };
   const cards = (list: Accessor<string[]>) => (
-    <For each={list()}>{(id) => <Show when={byId().get(id)}>{(t) => <ThreadCard thread={t} canComment={props.canComment} select={() => select(id)} />}</Show>}</For>
+    <For each={list()}>
+      {(id) => <Show when={byId().get(id)}>{(t) => <ThreadCard thread={t} canComment={props.canComment} select={() => select(id)} menu={(i) => menuButton(id, i)} />}</Show>}
+    </For>
   );
-  // On a branch with a pull request, the toggle picks the PR's comments or the file's: the ones shown (in the panel and
+  // On a branch with a pull request, the switch picks the PR's comments or the file's: the ones shown (in the panel and
   // the text, commentsStore.commentsShown) and where new ones go (remembered per repo). Without edit rights only the
-  // PR's. Styled like the panel's tabs: the chosen one white, the other a grey outline.
+  // PR's. Figma 180:386: a two-way switch in a sunken grey track, the pull request (GitHub's mark) or the Markdown file
+  // (MD), the chosen side raised; beside it, what that means.
   const fileLocked = () => !(doc.session?.canWrite || comments.viaPr);
-  const modeBtn = (mode: Mode, label: string) => (
+  const chosen = (): Mode => (fileLocked() ? "pr" : comments.mode);
+  const side = (mode: Mode) => (
     <button
       type="button"
-      class={`inline-flex h-6 cursor-pointer items-center whitespace-nowrap rounded-[14px] px-3 text-fg disabled:cursor-default disabled:text-faint ${comments.mode === mode ? "bg-card shadow-figma" : "border-[.4px] border-line bg-side"}`}
-      aria-pressed={comments.mode === mode}
+      role="radio"
+      aria-checked={chosen() === mode}
+      class={`flex h-5 cursor-pointer items-center rounded-[10px] px-1 disabled:cursor-default ${chosen() === mode ? raised : ""}`}
       disabled={mode === "file" && fileLocked()}
-      title={mode === "file" && fileLocked() ? "You can't edit this branch" : undefined}
+      title={mode === "pr" ? "Pull request" : fileLocked() ? "You can't edit this branch" : "Markdown file"}
       onClick={() => setCommentsMode(mode)}
     >
-      {label}
+      <Show when={mode === "pr"} fallback={<span class={`leading-4 ${chosen() === "file" ? "text-fg" : "text-muted"}`}>MD</span>}>
+        <Show when={chosen() === "pr"} fallback={<GithubMarkIcon />}>
+          <GithubStrokeIcon />
+        </Show>
+      </Show>
     </button>
   );
   // Up/Down between cards; Esc on a card (outside its reply box): the caret to its text
@@ -67,9 +123,15 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
     // contents: the cards stay items of the panel's column
     <div class="contents" onKeyDown={keys}>
       <Show when={targetPr() || doc.session?.canWrite}>
-        <div class="flex gap-2 px-0.5" role="group" aria-label="Comments on the pull request or in the file">
-          {modeBtn("pr", "On the pull request")}
-          {modeBtn("file", "In the file")}
+        <div class="flex items-start gap-2.5 px-0.5">
+          <div role="radiogroup" aria-label="Comments on the pull request or in the file" class={`flex shrink-0 items-center gap-1 rounded-[14px] bg-rule p-0.5 ${sunken}`}>
+            {side("pr")}
+            {side("file")}
+          </div>
+          <div class="flex min-w-0 flex-col gap-1">
+            <span class="leading-4">{chosen() === "pr" ? "Pull request" : "Markdown file"}</span>
+            <span class="text-[8px] text-muted">{chosen() === "pr" ? "Comments will be posted to the pull request." : "Comments will be saved in the Markdown file."}</span>
+          </div>
         </div>
       </Show>
       <Show when={!open().length}>
@@ -84,12 +146,31 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
           <div class="mt-4 flex flex-col gap-4">{cards(resolved)}</div>
         </details>
       </Show>
-      <Show when={comments.sending}>
-        <p class="text-muted">Sending to the pull request…</p>
-      </Show>
-      <Show when={comments.error}>
-        <p class="text-red [overflow-wrap:anywhere]">{comments.error}</p>
-      </Show>
+      <div ref={menu} popover role="menu" class="fixed inset-auto m-0 w-[231px] flex-col gap-2 rounded-xl bg-card px-5 py-6 text-fg shadow-[0_4px_17.8px_rgba(0,0,0,.1),var(--shadow)] [&:popover-open]:flex">
+        <Show
+          when={asking()}
+          fallback={
+            <>
+              <Show when={props.canComment}>
+                <button type="button" role="menuitem" class={menuItem} onClick={del}>
+                  Delete
+                </button>
+              </Show>
+              <button type="button" role="menuitem" class={menuItem} onClick={copyLink}>
+                Copy link
+              </button>
+            </>
+          }
+        >
+          <p class="leading-4 text-muted">{asking()}</p>
+          <button type="button" role="menuitem" class={`${menuItem} text-red`} onClick={confirmDel}>
+            Delete
+          </button>
+          <button type="button" role="menuitem" class={menuItem} onClick={() => setAsking("")}>
+            Cancel
+          </button>
+        </Show>
+      </div>
       {/* Figma 14:428 */}
       <p class="flex flex-col gap-2 py-1 text-muted">
         <Show
@@ -135,15 +216,31 @@ export function CommentsPanel(props: { canComment: boolean; threads: Accessor<Th
   );
 }
 
-// Figma 15:440: avatar 24 + name / time, the body 12px below
-export const Message = (props: { m: Msg }) => (
-  <div class="flex flex-col gap-3">
+// Figma 15:440: avatar 24 + name / time, the body 12px below; 129:1409: the "…" at the top right, when given a menu
+// A message still being sent (optimistic) is faded, "Sending…" in its time's place, and has no menu yet.
+export const Message = (props: { m: Msg; menu?: MenuButton }) => (
+  <div class={`flex flex-col gap-3 transition-opacity ${props.m.pending ? "opacity-60" : ""}`}>
     <div class="flex items-center gap-2">
       <Avatar login={props.m.author} size={24} />
       <div class="flex flex-col">
         <span>{props.m.author}</span>
-        <span class="text-muted">{props.m.at && ago(props.m.at)}</span>
+        <span class="text-muted">{props.m.pending ? "Sending…" : props.m.at && ago(props.m.at)}</span>
       </div>
+      <Show when={!props.m.pending && props.menu}>
+        {(menu) => (
+          <button
+            type="button"
+            class={`mt-0.5 ml-auto self-start ${iconBtn}`}
+            title="More"
+            aria-label="More"
+            aria-haspopup="menu"
+            onPointerDown={(e) => menu().down(e.currentTarget)}
+            onClick={(e) => menu().click(e.currentTarget)}
+          >
+            <CommentDotsIcon />
+          </button>
+        )}
+      </Show>
     </div>
     <div class="break-words whitespace-pre-wrap">
       <MentionText text={props.m.body} />
@@ -151,9 +248,10 @@ export const Message = (props: { m: Msg }) => (
   </div>
 );
 
-function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; select: () => void }) {
+function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; select: () => void; menu: (index: number) => MenuButton }) {
   const t = props.thread;
   const removed = () => !t().range || t().range!.from === t().range!.to;
+  const sending = () => (t().pr?.firstCommentId ?? 0) < 0; // shown before GitHub has it: no replies or resolving yet
   const [replying, setReplying] = createSignal(false);
   let input!: HTMLInputElement, el!: HTMLDivElement;
   const mentions = createMentions(() => input, () => {});
@@ -204,9 +302,11 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
           <span class="mt-1 flex gap-1.5 text-muted">
             <Show when={t().pr} fallback={<span class={`${badge} px-1.5`}>in file</span>}>
               {(pr) => (
-                <a class={`${badge} px-1.5 hover:underline`} href={pr().url} target="_blank" rel="noopener">
-                  on PR #{pr().number}
-                </a>
+                <Show when={pr().number} fallback={<span class={`${badge} px-1.5`}>on the pull request</span>}>
+                  <a class={`${badge} px-1.5 hover:underline`} href={pr().url} target="_blank" rel="noopener">
+                    on PR #{pr().number}
+                  </a>
+                </Show>
               )}
             </Show>
             <Show when={t().pr?.outdated}>
@@ -217,8 +317,8 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
           </span>
         </Show>
       </div>
-      <For each={t().messages}>{(m) => <Message m={m} />}</For>
-      <Show when={props.canComment}>
+      <For each={t().messages}>{(m, i) => <Message m={m} menu={props.menu(i())} />}</For>
+      <Show when={props.canComment && !sending()}>
         {/* Figma 22:561: pushing Reply shows the reply box with Comment (= send) and Cancel */}
         <Show
           when={replying()}
@@ -239,13 +339,6 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
                   Resolve
                 </button>
               </Show>
-              <button
-                type="button"
-                class={`${linkBtn} ml-auto`}
-                onClick={() => confirm(`Delete this comment and its replies?${t().source === "pr" ? " GitHub deletes them for good." : " Git history keeps them."}`) && (handOff(), deleteThread(t().id))}
-              >
-                Delete
-              </button>
             </div>
           }
         >
@@ -264,7 +357,7 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
             </div>
             <div class="flex items-center gap-1">
               <button class={btn}>Comment</button>
-              <button type="button" class="h-6 cursor-pointer rounded-[14px] px-3 hover:bg-hover" onClick={closeReply}>
+              <button type="button" class="h-6 cursor-pointer rounded-[14px] px-3 hover:shadow-[inset_0_0_0_.5px_var(--line),var(--shadow)] active:bg-rule" onClick={closeReply}>
                 Cancel
               </button>
             </div>

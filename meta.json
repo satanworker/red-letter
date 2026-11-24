@@ -1,0 +1,10 @@
+{
+ "docId": "3M8F2sFFcaeFsMdmbuXPfQQXLLxG",
+ "branch": "demo",
+ "path": "docs/research/crdt-choice.md",
+ "commit": "338a8cd59fc993a6bab18df322b1059fc09ae067",
+ "heads": [
+  "b552213950425839e969bca6834fc37a538a6d1697cac67c41de7a40463e43c3"
+ ],
+ "replayVersion": 1
+}

@@ -31,7 +31,7 @@ function nearest(s: string, q: string, near: number): number {
 const messagesOf = new WeakMap<PrThread, Message[]>();
 function prMessages(t: PrThread): Message[] {
   let ms = messagesOf.get(t);
-  if (!ms) messagesOf.set(t, (ms = t.comments.map((c, i) => ({ author: c.author, at: c.at, body: i ? c.body : splitPrMark(c.body).body }))));
+  if (!ms) messagesOf.set(t, (ms = t.comments.map((c, i) => ({ author: c.author, at: c.at, body: i ? c.body : splitPrMark(c.body).body, pending: c.id < 0 }))));
   return ms;
 }
 

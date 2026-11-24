@@ -48,6 +48,9 @@ export class DocReset extends Error {}
 
 export const NO_SNAPSHOT = ZERO;
 const docKey = (repo: string, branch: string, path: string) => `${repo.toLowerCase()} ${branch} ${path}`;
+// A doc moved away without being open: this browser's copy of its old path goes (Session.remove does it for the open one)
+export const forgetCopy = (repo: string, branch: string, path: string) => idbDelete("docs", docKey(repo, branch, path));
+export type RefUpdate = { name: string; beforeOid: string; afterOid: string };
 export const snapshotRef = async (branch: string, path: string) => `refs/red-letter/v1/${await sha1(branch)}/${await sha1(path)}`;
 async function headOf(repo: string, branch: string, fresh = false): Promise<string> {
   const ref: { object: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/ref/heads/${encPath(branch)}`, { fresh }));
@@ -725,21 +728,25 @@ export class Session {
   // the same atomic update and this browser's copy with it. A moved file starts over at its new path: its comments
   // go with it (they're text), its agent marks don't. Other tabs on the file replay the commit and find it empty.
   // ponytail: images linked by relative path break when a move changes folders; rewrite the links if that bites.
-  async remove(to?: string) {
+  // `also`: the rest of a folder's move, in the same commit (built by `also.plan` from the commit this one starts
+  // from, once the text is saved): more tree entries, other docs' snapshot refs to delete, and the commit message.
+  async remove(to?: string, also?: { plan: (parent: string) => Promise<{ tree: object[]; refs: RefUpdate[] }>; message: string }) {
     await this.save();
     if (this.status.error) throw new Error(this.status.error);
     const parent = this.doc.git!.commit;
     const content = this.#crlf ? this.doc.text.replaceAll("\n", "\r\n") : this.doc.text;
+    const more = also ? await also.plan(parent) : { tree: [], refs: [] };
     const tree = await post<{ sha: string }>(`/repos/${this.repoName}/git/trees`, {
       base_tree: (await object<GitCommit>(this.repoName, "commits", parent)).tree.sha,
-      tree: [{ path: this.path, mode: "100644", type: "blob", sha: null }, ...(to ? [{ path: to, mode: "100644", type: "blob", content }] : [])],
+      tree: [{ path: this.path, mode: "100644", type: "blob", sha: null }, ...(to ? [{ path: to, mode: "100644", type: "blob", content }] : []), ...more.tree],
     });
-    const message = to ? `Move ${this.path} to ${to} in Red Letter` : `Delete ${this.path} in Red Letter`;
+    const message = also?.message ?? (to ? `Move ${this.path} to ${to} in Red Letter` : `Delete ${this.path} in Red Letter`);
     const c = await post<{ sha: string }>(`/repos/${this.repoName}/git/commits`, { message, tree: tree.sha, parents: [parent] });
     const snap = await this.#crdtRefSha(true);
     const err = await updateRefs(this.repoId, [
       { name: `refs/heads/${this.branch}`, beforeOid: parent, afterOid: c.sha },
       ...(snap === ZERO ? [] : [{ name: this.#crdtRef, beforeOid: snap, afterOid: ZERO }]),
+      ...more.refs,
     ]);
     if (err) throw new Error(`someone saved meanwhile, try again: ${err}`);
     this.#removed = true;

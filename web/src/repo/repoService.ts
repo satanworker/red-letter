@@ -1,6 +1,6 @@
 // GitHub calls for opening a repo, forking draft branches and a file's history. Stateless. cachedGet keeps copies,
 // so a repo opened before also opens offline.
-import { HttpError, cachedGet, encPath, ghJson, post, type User } from "../github.ts";
+import { HttpError, cachedGet, encPath, ghJson, post, updateRefs, type User } from "../github.ts";
 
 export type RepoInfo = { node_id: string; full_name: string; default_branch: string; permissions?: { push: boolean } };
 
@@ -111,4 +111,39 @@ export type UserRepo = { full_name: string; description: string | null; private:
 export async function listUserRepos(): Promise<UserRepo[]> {
   const rs: UserRepo[] = JSON.parse(await cachedGet("/user/repos?sort=pushed&per_page=100"));
   return rs.map((r) => ({ full_name: r.full_name, description: r.description, private: r.private, pushed_at: r.pushed_at }));
+}
+
+// Moving, copying or deleting a file, or a folder ("dir/") with everything in it: the tree entries that do it as of
+// commit `parent`. Moving deletes each blob and adds it at `target` + the rest of its path (same blob, no download);
+// copying only adds; deleting (`target` null) only deletes. `skip` stays out: the open doc, which its Session writes
+// itself (with its unsaved text). `paths` lists every blob's old path and new one (null: deleted). Throws when nothing
+// is there any more or a new path is taken.
+type Entry = { path: string; mode: string; type: string; sha: string };
+export async function treePlan(repo: string, parent: string, src: string, target: string | null, copy = false, skip = ""): Promise<{ tree: object[]; paths: [string, string | null][] }> {
+  const c: { tree: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/commits/${parent}`, { immutable: true }));
+  const t: { tree: Entry[] } = JSON.parse(await cachedGet(`/repos/${repo}/git/trees/${c.tree.sha}?recursive=1`, { immutable: true }));
+  const blobs = t.tree.filter((e) => e.type === "blob");
+  const from = blobs.filter((e) => (src.endsWith("/") ? e.path.startsWith(src) : e.path === src));
+  if (!from.length) throw new Error(`${src} isn't on this branch any more`);
+  const to = (p: string) => (target === null ? null : target + p.slice(src.length));
+  const paths = from.map((e): [string, string | null] => [e.path, to(e.path)]);
+  const taken = new Set(blobs.map((e) => e.path));
+  const clash = paths.find(([, p]) => p !== null && taken.has(p));
+  if (clash) throw new Error(`${clash[1]} already exists`);
+  const tree = from.filter((e) => e.path !== skip).flatMap((e) => [
+    ...(copy ? [] : [{ path: e.path, mode: e.mode, type: "blob", sha: null }]),
+    ...(target === null ? [] : [{ path: to(e.path), mode: e.mode, type: "blob", sha: e.sha }]),
+  ]);
+  return { tree, paths };
+}
+
+// One commit on `branch` from `parent` with `tree` (entries over parent's tree), and the other refs in the same atomic
+// update; refused when the branch moved meanwhile.
+export async function commitTree(repo: string, repoId: string, branch: string, parent: string, tree: object[], message: string, refs: { name: string; beforeOid: string; afterOid: string }[]): Promise<string> {
+  const c: { tree: { sha: string } } = JSON.parse(await cachedGet(`/repos/${repo}/git/commits/${parent}`, { immutable: true }));
+  const t = await post<{ sha: string }>(`/repos/${repo}/git/trees`, { base_tree: c.tree.sha, tree });
+  const commit = await post<{ sha: string }>(`/repos/${repo}/git/commits`, { message, tree: t.sha, parents: [parent] });
+  const err = await updateRefs(repoId, [{ name: `refs/heads/${branch}`, beforeOid: parent, afterOid: commit.sha }, ...refs]);
+  if (err) throw new Error(`someone saved meanwhile, try again: ${err}`);
+  return commit.sha;
 }

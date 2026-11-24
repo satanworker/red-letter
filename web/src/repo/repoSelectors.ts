@@ -28,3 +28,21 @@ export function selectHomeRepos(recent: string[], repos: UserRepo[], query: stri
   const hit = (r: UserRepo) => !q || r.full_name.toLowerCase().includes(q) || !!r.description?.toLowerCase().includes(q);
   return { opened: opened.filter(hit), others: repos.filter((r) => !seen.has(r.full_name.toLowerCase()) && hit(r)).slice(0, q ? 20 : 5) };
 }
+
+// Where a drag-and-drop move would put `src` (a path, or a folder "dir/") dropped into folder `dir` ("" the root):
+// the new path, or null when it stays put or would go inside itself
+export function selectMoveTarget(src: string, dir: string): string | null {
+  const name = src.slice(src.slice(0, -1).lastIndexOf("/") + 1); // "x.md" or "folder/"
+  if (src.slice(0, -name.length) === dir || (src.endsWith("/") && dir.startsWith(src))) return null;
+  return dir + name;
+}
+
+// Every folder the branch's files are in ("a/", "a/b/"), sorted: the "Move to" list
+export function selectFolders(docs: string[]): string[] {
+  const dirs = new Set<string>();
+  for (const p of docs) {
+    const parts = p.split("/").slice(0, -1);
+    parts.forEach((_, i) => dirs.add(`${parts.slice(0, i + 1).join("/")}/`));
+  }
+  return [...dirs].sort((a, b) => a.localeCompare(b));
+}

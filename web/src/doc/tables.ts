@@ -228,7 +228,7 @@ class TableWidget extends WidgetType {
         el.dataset.c = String(c);
         el.style.textAlign = this.align[c] ?? "left";
         el.contentEditable = view.state.readOnly ? "false" : "true";
-        el.spellcheck = false;
+        el.spellcheck = true; // as in the rest of the doc: the browser's spellchecker
         el.innerHTML = cellHtml(this.marked[r]?.[c] ?? "", !this.readOnly);
       }
     });

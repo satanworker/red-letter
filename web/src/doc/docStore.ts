@@ -6,10 +6,11 @@ import { batch } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { clearComments, commentViaPr, comments, commentsOnPr, commentsShown, loadComments, refreshComments, targetPr, writeOnPr } from "../comments/commentsStore.ts";
 import { selectThreads, withPrMark } from "../comments/commentsSelectors.ts";
-import { addThread, apply, newId, now, plain, remove, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
+import { addThread, apply, newId, now, plain, remove, removeMessage, reply, sameProse, setResolved, type Edit, type Thread } from "../comments/inline.ts";
 import { HttpError, cachedGet, encPath, type User } from "../github.ts";
+import { errorText, toast } from "../toast.ts";
 import { blocked, low } from "../rate.ts";
-import { NotInDiff, commentOnPr, deletePrComment, isReviewBranch, prState, replyOnPr, setThreadResolved, touchFile, type PrState, type PrThread } from "../repo/pulls.ts";
+import { NotInDiff, commentOnPr, deletePrComment, isReviewBranch, prState, replyOnPr, setThreadResolved, touchFile, type PrComment, type PrState, type PrThread } from "../repo/pulls.ts";
 import { branchProtected, commitPatch, fileHistory, type Commit, type RepoInfo } from "../repo/repoService.ts";
 // repoStore imports this store too; each uses the other only inside functions
 import { ensurePullRequest } from "../repo/repoStore.ts";
@@ -147,8 +148,12 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
     session.close(); // another file was picked meanwhile
     return true;
   }
+  let failed = ""; // a save error says so once, as a toast; the header keeps a red "error" while it lasts
   const pushStatus = () => {
     set("status", { ...idle(), ...session.status, people: [...session.status.people] });
+    const err = session.status.error ?? "";
+    if (err && err !== failed) toast(`Couldn't save ${session.path.split("/").pop()}: ${err}`);
+    failed = err;
     void loadHistory(session);
   };
   session.onStatus = () => {
@@ -166,6 +171,9 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
     noteIcon(path, iconOf(session.doc.text)); // the sidebar, tab and favicon show it until the editor has mounted
     // the panel tab stays as it was: a tab picked on one page is still open on the next
     set({ session, opening: "", history: [], shown: null, activeThread: "", hoveredThread: "", composing: null, showChanges: false, draftNote: "", pr, reviewBase: null });
+    // opened from a comment's link
+    const linked = linkedThread();
+    if (linked) set({ activeThread: linked, tab: "comments", picked: true });
     pushStatus();
   });
   ticker = window.setInterval(tick, 15_000);
@@ -179,7 +187,11 @@ export async function openFile(repo: RepoInfo, branch: string, path: string, use
       // drift, not the review; the Changes toggle is there if wanted
       .then((t) => state.session === session && set({ reviewBase: t.replaceAll("\r\n", "\n"), showChanges: !isReviewBranch(branch) }))
       // a file new in the PR (404 on the base) shows all its text as added, nothing more; other failures say so
-      .catch((e: unknown) => state.session === session && set({ reviewBase: "", showChanges: true, draftNote: e instanceof HttpError && e.status === 404 ? "" : `Couldn't read ${rv.base}'s copy: ${String(e)}` }));
+      .catch((e: unknown) => {
+        if (state.session !== session) return;
+        set({ reviewBase: "", showChanges: true });
+        if (!(e instanceof HttpError && e.status === 404)) toast(`Couldn't read ${rv.base}'s copy: ${errorText(e)}`);
+      });
   } else if (rv) setReviewing(null);
   void navigator.storage?.persist?.(); // ask the browser not to evict this origin's copies under disk pressure
   session.synced.catch((e) => {
@@ -454,12 +466,15 @@ function editComments(message: string, edits: (text: string) => Edit[], body = "
 }
 
 // A thread on a pull request takes its replies, resolution and deletion there, whatever the mode; false: not one.
-function onPr(id: string, action: (t: PrThread, repo: string) => Promise<unknown>, body = ""): boolean {
+// `shown`: the thread as it will be, shown at once (null: gone).
+function onPr(id: string, action: (t: PrThread, repo: string) => Promise<unknown>, shown: (t: PrThread) => PrThread | null, body = ""): boolean {
   const s = state.session, t = comments.prThreads.find((t) => t.id === id);
-  if (!s || !t) return false;
-  void writeOnPr(() => action(t, s.repoName), body);
+  if (!s || !t || t.comments.some((c) => c.id < 0)) return !!t; // a thread still being sent takes nothing more
+  void writeOnPr(() => action(t, s.repoName), body, (ts) => ts.flatMap((x) => (x.id !== id ? [x] : (shown(x) ?? []))));
   return true;
 }
+let pendingIds = 0; // optimistic comments' ids: negative, GitHub's are positive
+const pendingComment = (body: string): PrComment => ({ id: -++pendingIds, nodeId: "", author: state.login, at: now(), body });
 
 // A review comment on the doc's pull request (commentsStore.targetPr: the PR from this branch, else the shared
 // review of the doc on it; repoStore.ensurePullRequest makes one when there's none): anchored to the selection's
@@ -468,6 +483,21 @@ function onPr(id: string, action: (t: PrThread, repo: string) => Promise<unknown
 // GitHub takes the comment only on the PR's diff: a file the PR doesn't change gets a newline appended first
 // (touchFile), lines outside the diff take a comment on the file as a whole, the marker still places it here.
 async function commentOnPullRequest(s: Session, anchor: Anchor, body: string) {
+  // shown at once: the thread as it will be, placed by its quote as the real one will be (commentsSelectors)
+  const at0 = s.resolve(anchor), p0 = plain(s.doc.text);
+  const pending: PrThread | null = at0 && at0.from < at0.to
+    ? {
+        id: `pending-${pendingIds + 1}`,
+        pr: targetPr() ?? { number: 0, url: "", head: s.branch, base: "", title: "" },
+        path: s.path,
+        line: null,
+        startLine: null,
+        resolved: false,
+        outdated: false,
+        comments: [pendingComment(withPrMark(body, { quote: p0.text.slice(p0.toPlain(at0.from), p0.toPlain(at0.to)), from: p0.toPlain(at0.from), to: p0.toPlain(at0.to) }))],
+      }
+    : null;
+  if (pending) set("activeThread", pending.id);
   const sent = await writeOnPr(async () => {
     await s.save();
     if (s.status.dirty) throw new Error(`Couldn't save the doc first: ${s.status.error ?? "unsaved edits"}`);
@@ -492,7 +522,7 @@ async function commentOnPullRequest(s: Session, anchor: Anchor, body: string) {
         else throw e;
       }
     }
-  }, body);
+  }, body, pending ? (ts) => [...ts, pending] : undefined);
   const t = sent && comments.prThreads.find((t) => t.comments[0]?.id === sent.id);
   if (t) set("activeThread", t.id);
 }
@@ -518,22 +548,41 @@ export function submitComment(body: string) {
       return addThread(t, pr.toText(doc.toPlain(at.from), 1), pr.toText(doc.toPlain(at.to), -1), id, msg);
     }, body);
   // the comment shows on the right only now that it's sent (Figma 22:561); a PR comment's card lights up once GitHub has it
-  set({ activeThread: commentsOnPr() ? "" : id, tab: "comments", picked: true });
+  // (a PR comment's card lit as it's shown, sending: commentOnPullRequest)
+  set({ ...(commentsOnPr() ? {} : { activeThread: id }), tab: "comments", picked: true });
   if (view) {
     view.dispatch({ selection: { anchor: view.state.selection.main.to } });
     view.focus();
   }
 }
 
+// On a pull request each shows at once (optimistic, writeOnPr); in the file, the doc's edit is instant anyway.
 export const submitReply = (id: string, body: string) =>
-  onPr(id, (t, repo) => replyOnPr(repo, t.pr.number, t.comments[0]!.id, body), body) || editComments("Reply on", (t) => reply(t, id, { author: state.login, at: now(), body }), body);
-export const resolveThread = (id: string) => onPr(id, (t) => setThreadResolved(t.id, true)) || editComments("Resolve a comment on", (t) => setResolved(t, id, true));
-export const reopenThread = (id: string) => onPr(id, (t) => setThreadResolved(t.id, false)) || editComments("Reopen a comment on", (t) => setResolved(t, id, false));
-export const deleteThread = (id: string) => onPr(id, (t, repo) => deletePrComment(repo, t.comments[0]!.id)) || editComments("Delete a comment on", (t) => remove(t, id));
+  onPr(id, (t, repo) => replyOnPr(repo, t.pr.number, t.comments[0]!.id, body), (t) => ({ ...t, comments: [...t.comments, pendingComment(body)] }), body) ||
+  editComments("Reply on", (t) => reply(t, id, { author: state.login, at: now(), body }), body);
+export const resolveThread = (id: string) =>
+  onPr(id, (t) => setThreadResolved(t.id, true), (t) => ({ ...t, resolved: true })) || editComments("Resolve a comment on", (t) => setResolved(t, id, true));
+export const reopenThread = (id: string) =>
+  onPr(id, (t) => setThreadResolved(t.id, false), (t) => ({ ...t, resolved: false })) || editComments("Reopen a comment on", (t) => setResolved(t, id, false));
+export const deleteThread = (id: string) => onPr(id, (t, repo) => deletePrComment(repo, t.comments[0]!.id), () => null) || editComments("Delete a comment on", (t) => remove(t, id));
+// A thread's first message takes its replies with it (the thread goes); a reply goes alone.
+export const deleteMessage = (id: string, index: number) =>
+  index === 0
+    ? deleteThread(id)
+    : onPr(id, (t, repo) => deletePrComment(repo, t.comments[index]!.id), (t) => ({ ...t, comments: t.comments.filter((_, i) => i !== index) })) ||
+      editComments("Delete a reply on", (t) => removeMessage(t, id, index));
+// A comment's "Copy link": this page with #comment-<thread id>, which opens the comments panel on that thread.
+export const commentLink = (id: string) => `${location.origin}${location.pathname}${location.search}#comment-${encodeURIComponent(id)}`;
+const linkedThread = () => {
+  const m = /^#comment-(.+)$/.exec(location.hash);
+  return m ? decodeURIComponent(m[1]!) : "";
+};
 
 // ---- drafts ----
 export const toggleChanges = () => set("showChanges", (v) => !v);
+// draftNote says what's going on (over the doc); what went wrong is a toast, and the note goes
 export const noteDraft = (note: string) => set("draftNote", note);
+export const failDraft = (why: string) => (set("draftNote", ""), toast(why));
 
 // One draft action at a time on the open branch (PR actions need no recorded base); an error ends up in draftNote.
 // undefined: it didn't finish.
@@ -544,7 +593,7 @@ export async function runDraft<T>(busy: string, action: (s: Session) => Promise<
   try {
     return await action(s);
   } catch (e) {
-    set("draftNote", e instanceof Error ? e.message : String(e));
+    failDraft(errorText(e));
   } finally {
     set("drafting", "");
   }

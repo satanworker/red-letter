@@ -2,6 +2,26 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-24: Menus, toasts, optimistic comments (Designs_tasks.md)
+
+- **The "/" menu** takes the dropdown design (Figma `183:953`): each block's markdown on the right in grey, the list fading out at the foot, and a search line on top. What you type after "/" searches names, markdown and aliases, spaces included ("/code b", "/todo", "/h2").
+- **History's tab** has the clock icon from the design instead of a branch.
+- **Reading or editing is one button** in the doc's corner, showing a book or a pencil; it opens a menu with Read and Edit, and picking one closes it. The corner now sits at the foot of the view under a short doc instead of floating after the text.
+- **Every file and folder row has a "…"** on hover (Figma `190:1914`; also the context-menu key, Shift+F10 or a right click): Open in new tab, Duplicate, Move to… (folders with a search), Open at GitHub, Rename in place, Delete (asked in the menu). One commit each.
+- **Spellcheck** is the browser's own (Apple's in Safari and on macOS, Google's in Chrome), in the text and in table cells.
+- **Comments on a pull request show at once**, marked "Sending…", replies, resolving and deleting too; if GitHub refuses, the change is taken back and a toast says so with the text to copy.
+- **Errors are toasts** at the bottom left: a failed save, a comment not sent, a move or delete that didn't happen. No more `alert()` or red lines under the panel.
+
+## 2026-11-24: Create and move files, the Nov 12 layout
+
+- **Drag and drop in the file tree**: drop a file or a whole folder on a folder (or on a file inside it) to move it there, or anywhere else in the tree to move it to the root. One commit; the open doc moves with its unsaved text, tabs follow their files, and a closed folder opens while you hold a row over it.
+- **New files and folders, three ways**: the tab strip's "+" opens a **Create new** tab (Create new file, Create new folder, Go to the file), the palette takes `/create file` and `/create folder`, and the pencil next to your name in the sidebar creates a file. The new row appears at the bottom of the tree for its name; a folder asks for its first file next, since git can't keep an empty folder. New files and folders go in the root.
+- **The Nov 12 layout** (Figma `180:120`): the logo is centred over the doc, the two sidebar toggles sit at the window's edges, and the header reads "Saved ● sha". The branch bar at the sidebar's foot takes Figma's look (`185:1581`), and the sidebar shows your name instead of the repo's, with search above Files / Pull request and no line under the header.
+- **Where comments go** is now a switch (Figma `180:386`): GitHub's mark for the pull request or MD for the Markdown file, with a line saying what that means.
+- **Checklists tick in reading mode** too, wherever you can edit the doc.
+- **Hover and press look the same everywhere** (Figma `184:1116`): a thin outline on hover, Dark Grey when pressed or on, for icon buttons, Share, the file tree, menus and the outline.
+- **No white edges** when the page is overscrolled or zoomed out: the workspace's grey runs to the window's edges.
+
 ## 2026-11-19: Cancel review keeps the pull request
 
 - **Cancel review leaves review mode, nothing more**: it shows in a draft's bar while you're reviewing its pull request ("Reviewing #N"), and takes you back to working on the draft with the highlights off; the pull request stays open. Since 2026-11-15 it closed the pull request.
@@ -93,8 +113,9 @@ How Red Letter got built, newest first. Live at [diff.satanworker.com](https://d
 
 - **Text in a code block takes comments** when they go to the pull request (the default): the "Add a comment" pill and ⌘⌥M work there. A review comment never touches the file, so it can't turn into code; in-file comments still skip fenced code.
 
-## 2026-11-11: New file
+## 2026-11-11: New file, comment menu
 
+- **A "…" on every comment** (Figma `129:1409`) opens its menu (`145:3124`): **Delete** removes a reply on its own, or the whole thread from its first message (it asks first, in the menu itself: the old `confirm()` box is turned off in embedded browsers, so Delete silently did nothing there), and **Copy link** copies the page with `#comment-<id>`, which opens the comments panel on that thread. Delete left the foot of the card.
 - **New file is back** in the left sidebar's header (Figma `129:1325`, the pencil right of the repo name, with push access): it opens the path form under the Files search; Enter creates, Esc cancels.
 - The window no longer scrolls sideways when the header's status runs long ("Saved · sha offline error"): the header's right block was a fixed 320 px, so "…" stuck out past the edge and the page grew scrollbars both ways. It now widens leftwards.
 

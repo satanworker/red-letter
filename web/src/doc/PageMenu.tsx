@@ -4,7 +4,7 @@
 import { For, onMount, type JSX } from "solid-js";
 import { canStartDraft, promptDraft } from "../pulls/DraftBar.tsx";
 import { deleteFile, duplicateFile, moveFile } from "../repo/repoStore.ts";
-import { BranchIcon, CopyPageIcon, DeleteIcon, DotsIcon, DuplicateIcon, LinkIcon, MoveIcon, listKeys } from "../ui.tsx";
+import { BranchIcon, CopyPageIcon, DeleteIcon, DotsIcon, DuplicateIcon, LinkIcon, MoveIcon, iconBtn, listKeys, rowHover } from "../ui.tsx";
 import { copyContents, doc } from "./docStore.ts";
 
 export const pageItems = (canWrite: boolean): { label: string; icon: () => JSX.Element; run: () => unknown }[] => [
@@ -39,7 +39,7 @@ export function PageMenu(props: { canWrite: boolean }) {
   return (
     <>
       <button
-        class="mt-[5.5px] ml-3 grid size-6 shrink-0 cursor-pointer place-items-center rounded-lg hover:bg-hover"
+        class={iconBtn}
         title="More"
         aria-label="More"
         popoverTarget="page-menu"
@@ -59,7 +59,7 @@ export function PageMenu(props: { canWrite: boolean }) {
           {(it) => (
             <button
               role="menuitem"
-              class="-mx-1.5 flex cursor-pointer items-center gap-1 rounded px-1.5 text-left leading-4 whitespace-nowrap hover:bg-hover"
+              class={`-mx-1.5 flex cursor-pointer items-center gap-1 rounded px-1.5 text-left leading-4 whitespace-nowrap ${rowHover}`}
               onClick={() => {
                 menu.hidePopover();
                 void it.run();

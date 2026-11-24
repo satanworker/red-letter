@@ -17,7 +17,7 @@ import { keepPlace } from "./keepPlace.ts";
 import { openDocLink, showPanel } from "../repo/repoStore.ts";
 import { imageUrl } from "./images.ts";
 import { docLink } from "./links.ts";
-import { editorExtensions, readingMode } from "./livePreview.ts";
+import { editorExtensions, readingMode, tasksWritable } from "./livePreview.ts";
 import { cellSelection } from "./tables.ts";
 import { automergeSync } from "./sync.ts";
 import type { Region } from "./regions.ts";
@@ -262,6 +262,10 @@ export function Editor(props: { session: Session; marks: Accessor<AgentMark[]>; 
         keepPlace,
         remoteNotUndoable,
         mode.of(modeOf(isReading())),
+        tasksWritable.of(s.canWrite),
+        // the browser's own spellchecker (Apple's in Safari and on macOS, Google's in Chrome): CodeMirror turns it off
+        EditorView.contentAttributes.of({ spellcheck: "true", autocorrect: "on", autocapitalize: "sentences" }),
+        s.canWrite ? EditorView.editorAttributes.of({ class: "cm-tasks" }) : [],
         tip.of(canComment(s) ? commentTooltip() : []),
         s.canWrite
           ? EditorView.domEventHandlers({

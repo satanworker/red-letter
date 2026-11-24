@@ -1,13 +1,15 @@
 // Which screen is showing, and the open repo + branch: info, the branch's markdown files, the current path or pull
 // request, the tabs. openRoute is the one entry point: page load, links, back/forward (see main.tsx).
 import { createStore } from "solid-js/store";
-import { clearIcons, clearReview, closeFile, doc, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
+import { clearIcons, clearReview, closeFile, doc, failDraft, noteDraft, noteIcon, openFile, refreshPr, runDraft } from "../doc/docStore.ts";
 import { refreshComments } from "../comments/commentsStore.ts";
 import { loadPulls, pulls, refreshPulls, setReviewing, showView, unfoldPr } from "../pulls/pullsStore.ts";
-import { NO_SNAPSHOT, prefetchTexts, snapshotHeads, snapshotRef, syncCopy, type Session } from "../doc/session.ts";
+import { NO_SNAPSHOT, forgetCopy, prefetchTexts, snapshotHeads, snapshotRef, syncCopy, type RefUpdate, type Session } from "../doc/session.ts";
 import { HttpError, authKind, completeSignIn, currentUser, encPath, repoPath, token, type User } from "../github.ts";
 import { approvePr, closePr, mergeInto, mergePr, openPr, openPrFrom, requestChanges, requestReviewers, reviewBranch, touchFile, type Pr } from "./pulls.ts";
-import { appInstalledOn, blobUrl, branchHead, createBranch, getRepo, listBranches, listCollaborators, listDocs, listUserRepos, resolveBranch, type RepoInfo, type UserRepo } from "./repoService.ts";
+import { selectMoveTarget } from "./repoSelectors.ts";
+import { errorText, toast } from "../toast.ts";
+import { appInstalledOn, blobUrl, branchHead, commitTree, createBranch, getRepo, listBranches, listCollaborators, listDocs, listUserRepos, resolveBranch, treePlan, type RepoInfo, type UserRepo } from "./repoService.ts";
 
 type Screen = "loading" | "landing" | "signin" | "noaccess" | "workspace" | "error";
 type RepoState = {
@@ -21,6 +23,10 @@ type RepoState = {
   docs: string[];
   path: string; // the open file (kept, hidden, under a pull request's tab)
   pull: number; // the pull request whose description is the open tab, else 0
+  blank: boolean; // the open tab is "Create new" (the tab strip's "+")
+  naming: Naming | null; // the file tree's row for a new file or folder's name
+  treeNote: { text: string; error: boolean } | null; // a move's progress, under the file tree
+  renaming: string | null; // the tree row (a path, or "dir/") whose name is being typed
   tabs: Tab[]; // the repo's open tabs, in order, all on `branch`; the route's is always one of them
   branches: string[]; // every branch of the repo, for the picker
   filesHidden: boolean;
@@ -41,6 +47,10 @@ const [state, set] = createStore<RepoState>({
   docs: [],
   path: "",
   pull: 0,
+  blank: false,
+  naming: null,
+  treeNote: null,
+  renaming: null,
   tabs: [],
   branches: [],
   filesHidden: localStorage.getItem("rl_files") === "hidden" || innerWidth < 900,
@@ -93,14 +103,16 @@ export function openDocLink(from: string, href: string): boolean {
   return true;
 }
 
-// A tab is a file or a pull request's description. Every file tab is on the workspace's branch (VS Code's checkout):
-// switching branch switches them all, so two tabs never show one file from two branches. Per repo, kept across
-// reloads. Opening one that has a tab goes to it; otherwise it gets a new tab right after the open one.
-export type Tab = { path: string } | { pull: number };
-export const tabUrl = (full: string, t: Tab) => ("pull" in t ? pullUrl(full, t.pull) : blobUrl(full, state.branch, t.path));
+// A tab is a file, a pull request's description or "Create new". Every file tab is on the workspace's branch (VS
+// Code's checkout): switching branch switches them all, so two tabs never show one file from two branches. Per repo,
+// kept across reloads. Opening one that has a tab goes to it; otherwise it gets a new tab right after the open one.
+export type Tab = { path: string } | { pull: number } | { blank: true };
+export const tabUrl = (full: string, t: Tab) => ("pull" in t ? pullUrl(full, t.pull) : "blank" in t ? newUrl(full) : blobUrl(full, state.branch, t.path));
 export const pullUrl = (full: string, n: number) => `/${full}/pull/${n}`;
-export const sameTab = (a: Tab, b: Tab) => ("pull" in a ? "pull" in b && a.pull === b.pull : !("pull" in b) && a.path === b.path);
-export const activeTab = (): Tab => (state.pull ? { pull: state.pull } : { path: state.path });
+// GitHub's own "new file" page is /owner/repo/new/<branch>; here the tab picks a file or a folder
+export const newUrl = (full: string) => `/${full}/new`;
+export const sameTab = (a: Tab, b: Tab) => ("path" in a ? "path" in b && a.path === b.path : "pull" in a ? "pull" in b && a.pull === b.pull : "blank" in b);
+export const activeTab = (): Tab => (state.blank ? { blank: true } : state.pull ? { pull: state.pull } : { path: state.path });
 const tabsKey = (full: string) => `rl_tabs2:${full}`;
 function setTabs(tabs: Tab[]) {
   const seen = new Set<string>();
@@ -108,11 +120,11 @@ function setTabs(tabs: Tab[]) {
   set("tabs", tabs);
   localStorage.setItem(tabsKey(state.repo!.full_name), JSON.stringify(tabs));
 }
-// `t` among the tabs: where it is, or right after `from`, or last
-function withTab(tabs: Tab[], t: Tab, from: Tab | null): Tab[] {
+// `t` among the tabs: where it is, or right after `from` (in its place with `replace`: leaving "Create new"), or last
+function withTab(tabs: Tab[], t: Tab, from: Tab | null, replace = false): Tab[] {
   if (tabs.some((x) => sameTab(x, t))) return tabs;
   const at = from ? tabs.findIndex((x) => sameTab(x, from)) : -1;
-  return at < 0 ? [...tabs, t] : tabs.toSpliced(at + 1, 0, t);
+  return at < 0 ? [...tabs, t] : replace ? tabs.with(at, t) : tabs.toSpliced(at + 1, 0, t);
 }
 
 // ⌘/Ctrl+click, as in Chrome: a file of this branch or a pull request gets a tab right after the open one and stays
@@ -167,13 +179,161 @@ export function createFile(input: string): string | null {
   return null;
 }
 
+// The file tree's naming row (Figma 180:411's flow: "+" in the tabs, /create in the palette, the sidebar's button): a
+// new file or folder at the bottom of the root, named in place. A folder is named first, then its first file inside
+// it: git keeps no empty folders, so the two land in one commit. `folder` is "" until then, after it "name/".
+export type Naming = { kind: "file" | "folder"; folder: string; name: string };
+export function startCreate(kind: "file" | "folder", name = "") {
+  if (!state.repo?.permissions?.push) return;
+  set("naming", { kind, folder: "", name });
+  if (state.filesHidden) toggleFiles();
+  showView("files");
+}
+export const cancelCreate = () => set("naming", null);
+// Enter in the naming row. Returns why the name can't be used, else null.
+export function nameNew(input: string): string | null {
+  const n = state.naming;
+  if (!n) return null;
+  if (n.kind === "folder" && !n.folder) {
+    const name = input.trim().replace(/^\/+|\/+$/g, "").replace(/\/{2,}/g, "/");
+    if (!name) return "Type a folder name";
+    if (name.split("/").some((s) => s === "." || s === "..")) return "No . or .. in the path";
+    set("naming", { kind: "folder", folder: `${name}/`, name: "" });
+    return null;
+  }
+  const err = createFile(n.folder + input.replace(/^\/+/, ""));
+  if (!err) set("naming", null);
+  return err;
+}
+
+// One commit that moves, copies or deletes a file or a folder ("dir/", with everything in it; target null: delete),
+// for drag and drop and the tree's "…" menu. The open doc, if it's among them, goes through its Session (with its
+// unsaved text, its snapshot ref deleted); the others' snapshot refs go in the same update, so a moved doc starts over
+// at its new path. Comments go along (they're text). Progress shows under the tree, a failure as a toast. Returns
+// every blob's old and new path (null: deleted), or null when it didn't happen.
+async function rewrite(src: string, target: string | null, copy: boolean, message: string, busy: string): Promise<{ paths: Map<string, string | null>; open: Session | null } | null> {
+  const r = state.repo;
+  if (!r?.permissions?.push) return null;
+  const branch = state.branch;
+  set("treeNote", { text: busy, error: false });
+  try {
+    const heads = await snapshotHeads(r.full_name, branch, true);
+    const snapshots = async (paths: [string, string | null][], skip = "") => {
+      const refs: RefUpdate[] = [];
+      if (copy) return refs;
+      for (const [p] of paths) {
+        const ref = await snapshotRef(branch, p);
+        const sha = p !== skip && heads.get(ref);
+        if (sha) refs.push({ name: ref, beforeOid: sha, afterOid: NO_SNAPSHOT });
+      }
+      return refs;
+    };
+    const s = doc.session;
+    const inside = (p: string) => (src.endsWith("/") ? p.startsWith(src) : p === src);
+    const open = !copy && s && s.branch === branch && inside(s.path) ? s : null;
+    let paths: [string, string | null][] = [];
+    if (open) {
+      const to = target === null ? undefined : target + open.path.slice(src.length);
+      await open.remove(to, {
+        message,
+        plan: async (parent) => {
+          const plan = await treePlan(r.full_name, parent, src, target, false, open.path);
+          paths = plan.paths;
+          return { tree: plan.tree, refs: await snapshots(paths, open.path) };
+        },
+      });
+    } else {
+      const parent = await branchHead(r.full_name, branch, true);
+      const plan = await treePlan(r.full_name, parent, src, target, copy);
+      paths = plan.paths;
+      await commitTree(r.full_name, r.node_id, branch, parent, plan.tree, message, await snapshots(paths));
+      await branchHead(r.full_name, branch, true); // files open from the new head, not a cached one
+    }
+    set("treeNote", null);
+    if (state.repo !== r || state.branch !== branch) return null;
+    if (!copy) for (const [p] of paths) if (!open || p !== open.path) void forgetCopy(r.full_name, branch, p);
+    return { paths: new Map(paths), open };
+  } catch (e) {
+    set("treeNote", null);
+    toast(`${message.replace(/ in Red Letter$/, "")} failed: ${errorText(e)}`);
+    return null;
+  }
+}
+const label = (p: string) => p.replace(/\/$/, "") || "the root";
+
+// Moved or renamed: the list and the tabs follow; the open doc opens at its new path (unless another tab, a pull
+// request or "Create new", is showing)
+async function relocate(src: string, target: string, message: string, busy: string) {
+  const done = await rewrite(src, target, false, message, busy);
+  if (!done) return;
+  const { paths, open } = done;
+  set("docs", state.docs.map((d) => paths.get(d) ?? d));
+  setTabs(state.tabs.map((t) => ("path" in t && paths.get(t.path) ? { path: paths.get(t.path)! } : t)));
+  if (!open) return;
+  if (!state.pull && !state.blank) navigateTo(blobUrl(state.repo!.full_name, state.branch, paths.get(open.path)!));
+  else (closeFile(), set("path", paths.get(open.path)!));
+}
+
+// Drag and drop, and the "…" menu's "Move to": into folder `dir` ("" is the root)
+export function moveTo(src: string, dir: string) {
+  const target = selectMoveTarget(src, dir);
+  if (target !== null) void relocate(src, target, `Move ${label(src)} to ${label(dir)} in Red Letter`, `Moving ${label(src)}…`);
+}
+
+// The "…" menu's Rename: the name typed, in the same folder (a file keeps its extension when none is typed). Returns
+// why the name can't be used, else null.
+export function renamePath(src: string, input: string): string | null {
+  const dir = src.endsWith("/");
+  const name = input.trim().replace(/\/+$/, "");
+  if (!name) return "Type a name";
+  if (name.includes("/") || name === "." || name === "..") return "A name, not a path";
+  const parent = src.slice(0, src.slice(0, -1).lastIndexOf("/") + 1);
+  const ext = /\.[^./]+$/.exec(src)?.[0] ?? "";
+  const target = parent + (dir ? `${name}/` : /\.[^./]+$/.test(name) ? name : name + ext);
+  set("renaming", null);
+  if (target !== src) void relocate(src, target, `Rename ${label(src)} to ${label(target)} in Red Letter`, `Renaming ${label(src)}…`);
+  return null;
+}
+export const startRename = (path: string) => set("renaming", path);
+export const cancelRename = () => set("renaming", null);
+
+// The "…" menu's Delete (it asked first): one commit; tabs on what went close, and if the open doc went, the next tab opens
+export async function deletePath(src: string) {
+  const done = await rewrite(src, null, false, `Delete ${label(src)} in Red Letter`, `Deleting ${label(src)}…`);
+  if (!done) return;
+  const { paths, open } = done;
+  const i = state.tabs.findIndex((t) => sameTab(t, activeTab()));
+  const tabs = state.tabs.filter((t) => !("path" in t && paths.has(t.path)));
+  set("docs", state.docs.filter((d) => !paths.has(d)));
+  setTabs(tabs);
+  if (!open) return;
+  if (state.pull || state.blank) return (closeFile(), set("path", ""));
+  const next = tabs[Math.min(i, tabs.length - 1)];
+  navigateTo(next ? tabUrl(state.repo!.full_name, next) : `/${state.repo!.full_name}/tree/${encPath(state.branch)}`);
+}
+
+// The "…" menu's Duplicate: "x copy.md" next to it, opened. The open doc's copy takes its text as on screen
+// (duplicateFile); another file's is the same blob, committed at once.
+export async function duplicatePath(path: string) {
+  if (doc.session?.path === path) return duplicateFile();
+  const target = copyName(path);
+  const done = await rewrite(path, target, true, `Duplicate ${path} as ${target} in Red Letter`, `Duplicating ${path}…`);
+  if (!done) return;
+  set("docs", [...state.docs, target]);
+  navigateTo(blobUrl(state.repo!.full_name, state.branch, target));
+}
+function copyName(path: string) {
+  const [, stem, ext = ""] = /^(.*?)(\.[^./]+)?$/.exec(path)!;
+  let copy = `${stem} copy${ext}`;
+  for (let n = 2; state.docs.includes(copy); n++) copy = `${stem} copy ${n}${ext}`;
+  return copy;
+}
+
 // A copy of the open file next to it ("x copy.md", "x copy 2.md", …), opened in a tab right after it.
 export function duplicateFile() {
   const s = doc.session;
   if (!s || !state.repo) return;
-  const [, stem, ext = ""] = /^(.*?)(\.[^./]+)?$/.exec(s.path)!;
-  let path = `${stem} copy${ext}`;
-  for (let n = 2; state.docs.includes(path); n++) path = `${stem} copy ${n}${ext}`;
+  const path = copyName(s.path);
   creating.set(path, s.doc.text);
   set("docs", [...state.docs, path]);
   navigateTo(blobUrl(state.repo.full_name, state.branch, path));
@@ -185,9 +345,9 @@ export async function moveFile(input: string) {
   const s = doc.session;
   const p = docPath(input);
   if (!s || !state.repo) return;
-  if ("error" in p) return noteDraft(p.error);
+  if ("error" in p) return failDraft(p.error);
   if (p.path === s.path) return;
-  if (state.docs.includes(p.path)) return noteDraft(`${p.path} already exists`);
+  if (state.docs.includes(p.path)) return failDraft(`${p.path} already exists`);
   if (!(await removeFile(s, `Moving to ${p.path}…`, p.path))) return;
   set("docs", state.docs.map((d) => (d === s.path ? p.path : d)));
   setTabs(state.tabs.map((t) => (sameTab(t, { path: s.path }) ? { path: p.path } : t)));
@@ -213,7 +373,7 @@ async function removeFile(s: Session, busy: string, to?: string): Promise<boolea
     await s.remove(to);
     return true;
   } catch (e) {
-    noteDraft(e instanceof Error ? e.message : String(e));
+    failDraft(errorText(e));
     return false;
   }
 }
@@ -249,7 +409,7 @@ export async function startDraft(name: string) {
     await saveFirst(s);
     await createBranch(state.repo.full_name, branch, s.doc.git!.commit);
   } catch (e) {
-    return noteDraft(e instanceof HttpError && e.status === 422 ? `There's already a draft called ${branch}; pick another name` : e instanceof Error ? e.message : String(e));
+    return failDraft(e instanceof HttpError && e.status === 422 ? `There's already a draft called ${branch}; pick another name` : errorText(e));
   }
   noteDraft("");
   drafting.set(branch, state.branch);
@@ -445,7 +605,7 @@ function recentRepos(): string[] {
 // The repo's saved tabs, those `docs` (the branch's files) has. Tabs saved before 2026-11-12 also named a branch: ignored.
 function savedTabs(full: string, docs: string[]): Tab[] {
   const saved: Tab[] = JSON.parse(localStorage.getItem(tabsKey(full)) ?? "[]");
-  return saved.map((t) => ("pull" in t ? t : { path: t.path })).filter((t) => "pull" in t || docs.includes(t.path));
+  return saved.flatMap((t): Tab[] => ("pull" in t || "blank" in t ? [t] : docs.includes(t.path) ? [{ path: t.path }] : []));
 }
 // The branch list, for the picker
 function loadBranches(full: string, branch: string, stale: () => boolean) {
@@ -453,7 +613,7 @@ function loadBranches(full: string, branch: string, stale: () => boolean) {
 }
 
 // /owner/repo · /owner/repo/tree/<branch> · /owner/repo/blob/<branch>/<path> · /owner/repo/<path> (default branch) ·
-// /owner/repo/pull/<n> (its description)
+// /owner/repo/pull/<n> (its description) · /owner/repo/new ("Create new")
 export async function openRoute(url: URL): Promise<void> {
   const id = ++current;
   const stale = () => id !== current; // a newer navigation took over
@@ -495,6 +655,21 @@ export async function openRoute(url: URL): Promise<void> {
       localStorage.setItem(RECENT_KEY, JSON.stringify([info.full_name, ...recentRepos().filter((r) => r !== info!.full_name)]));
     }
     const full = info.full_name;
+    // whatever opens from "Create new" takes its tab, like a browser's new tab page
+    const replace = same && state.blank && rest[0] !== "new";
+    // "Create new" (Figma 180:411): the open doc stays, hidden, on the workspace's branch
+    if (rest[0] === "new" && rest.length === 1) {
+      const branch = same ? state.branch : info.default_branch;
+      const docs = same ? state.docs : await listDocs(full, branch, true);
+      const user = state.user ?? (await currentUser());
+      if (stale() || !user) return;
+      const tabs = withTab(same ? state.tabs : savedTabs(full, docs), { blank: true }, same ? activeTab() : null);
+      set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path: same ? state.path : "", pull: 0, blank: true, message: "" });
+      setTabs(tabs);
+      if (!same) loadBranches(full, branch, stale);
+      loadPulls(full);
+      return;
+    }
     // a pull request's description: a tab of its own, on the workspace's branch (its files stay as they are). Opened
     // first thing, the workspace takes the PR's branch (a review branch's base: its hashed branch is nobody's to browse).
     if (rest[0] === "pull" && /^\d+$/.test(rest[1] ?? "")) {
@@ -504,9 +679,9 @@ export async function openRoute(url: URL): Promise<void> {
       const docs = same ? state.docs : await listDocs(full, branch, true);
       const user = state.user ?? (await currentUser());
       if (stale() || !user) return;
-      const tabs = withTab(same ? state.tabs : savedTabs(full, docs), { pull: n }, same ? activeTab() : null);
+      const tabs = withTab(same ? state.tabs : savedTabs(full, docs), { pull: n }, same ? activeTab() : null, replace);
       if (!same) endReview();
-      set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path: same ? state.path : "", pull: n, message: "" });
+      set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path: same ? state.path : "", pull: n, blank: false, message: "" });
       setTabs(tabs);
       if (!same) loadBranches(full, branch, stale);
       loadPulls(full);
@@ -526,7 +701,7 @@ export async function openRoute(url: URL): Promise<void> {
     const fresh = !(same && branch === state.branch); // another repo or branch: sync its files in the background
     const docs = fresh ? await listDocs(full, branch, true) : state.docs;
     // the tabs the branch has files for: switching branch takes every tab along, and closes those it lacks
-    const kept = (same ? state.tabs : savedTabs(full, docs)).filter((t) => "pull" in t || docs.includes(t.path));
+    const kept = (same ? state.tabs : savedTabs(full, docs)).filter((t) => !("path" in t) || docs.includes(t.path));
     // switched to a branch without the open file: its first tab there
     if (same && fresh && !docs.includes(path)) path = kept.find((t): t is { path: string } => "path" in t)?.path ?? "";
     // no file in the URL: the README (or the first document) of the branch
@@ -534,16 +709,16 @@ export async function openRoute(url: URL): Promise<void> {
     const user = state.user ?? (await currentUser());
     if (stale() || !user) return;
     if (!fresh && path === state.path && doc.session?.path === path && !doc.opening) {
-      // already open: the active tab, a link to itself, or back from a pull request's tab
-      if (state.pull) {
-        setTabs(withTab(state.tabs, { path }, activeTab()));
-        set("pull", 0);
+      // already open: the active tab, a link to itself, or back from a pull request's or "Create new" tab
+      if (state.pull || state.blank) {
+        setTabs(withTab(state.tabs, { path }, activeTab(), replace));
+        set({ pull: 0, blank: false });
       }
       return;
     }
-    const tabs = withTab(kept, { path }, same ? activeTab() : null);
-    set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path, pull: 0, message: "" });
-    setTabs(path ? tabs : tabs.filter((t) => "pull" in t || t.path));
+    const tabs = withTab(kept, { path }, same ? activeTab() : null, replace);
+    set({ screen: "workspace", user, owner, name, repo: info, branch, docs, path, pull: 0, blank: false, message: "" });
+    setTabs(path ? tabs : tabs.filter((t) => !("path" in t) || t.path));
     if (fresh) loadBranches(full, branch, stale);
     loadPulls(full);
     if (!path) {

@@ -6,11 +6,11 @@
 import { For, Show, createEffect, createMemo } from "solid-js";
 import { isDoc, prHead, prMark, prTitle, type PrDoc, type RepoPr } from "../repo/pulls.ts";
 import { repo, reviewPullRequest, showPullRequest } from "../repo/repoStore.ts";
-import { ArrowDownIcon, ArrowUpIcon, Avatar, CommentIcon, FileIcon, FolderIcon, ago, badge, listKeys } from "../ui.tsx";
+import { ArrowDownIcon, ArrowUpIcon, Avatar, CommentIcon, FileIcon, FolderIcon, ago, badge, listKeys, pressed, rowHover } from "../ui.tsx";
 import { pulls, togglePr } from "./pullsStore.ts";
 
 // Figma sidebar rows, as the file tree's
-const row = "mx-1 flex h-[25px] items-center gap-1 whitespace-nowrap rounded pr-2 hover:shadow-[inset_0_0_0_.5px_var(--line),var(--shadow)]";
+const row = `mx-1 flex h-[25px] items-center gap-1 whitespace-nowrap rounded pr-2 ${rowHover}`;
 const indent = (depth: number) => ({ "padding-left": `${8 + depth * 16}px` });
 const STATUS: Record<PrDoc["changeType"], [string, string]> = {
   ADDED: ["A", "text-green"],
@@ -78,7 +78,7 @@ function PrNode(props: { pr: RepoPr }) {
       <div
         role="button"
         tabindex="0"
-        class={`${row} w-[calc(100%-8px)] cursor-pointer gap-1.5 pl-2 text-left ${shown() ? "bg-on shadow-figma" : reviewing() ? "bg-on" : ""}`}
+        class={`${row} w-[calc(100%-8px)] cursor-pointer gap-1.5 pl-2 text-left ${shown() ? pressed : reviewing() ? "bg-rule" : ""}`}
         aria-expanded={open()}
         title={`#${props.pr.number} ${props.pr.title}\n${props.pr.head} → ${props.pr.base}`}
         onClick={() => showPullRequest(props.pr.number)}
@@ -180,7 +180,7 @@ function File(props: { f: PrDoc; pr: RepoPr; depth: number }) {
       }
     >
       <button
-        class={`${row} w-[calc(100%-8px)] cursor-pointer text-left ${here() ? "bg-on shadow-figma" : ""}`}
+        class={`${row} w-[calc(100%-8px)] cursor-pointer text-left ${here() ? pressed : ""}`}
         style={indent(props.depth)}
         title={props.f.path}
         aria-current={here() ? "page" : undefined}

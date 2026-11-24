@@ -19,6 +19,9 @@ import { slashCommands } from "./slash.ts";
 import { cellComments, tableField, tableTheme } from "./tables.ts";
 
 export const readingMode = Facet.define<boolean, boolean>({ combine: (v) => v.some(Boolean) });
+// Whether a click checks or unchecks a task: in both modes, wherever the doc can be edited (reading mode is read-only
+// for typing, not for ticking a box)
+export const tasksWritable = Facet.define<boolean, boolean>({ combine: (v) => v.some(Boolean) });
 
 const theme = EditorView.theme({
   "&": { color: "var(--fg)", backgroundColor: "var(--bg)", fontSize: "12px" },
@@ -87,6 +90,7 @@ const theme = EditorView.theme({
     border: ".4px solid var(--fg)", borderRadius: "2px",
   },
   ".cm-lp-box-on::before": { background: "var(--fg)" },
+  "&.cm-tasks .cm-lp-box": { cursor: "pointer" },
   ".cm-lp-done": { textDecoration: "line-through" },
   // Figma "_________": a .5px Onyx line at 50% across the column. Figma 148:3509 keeps 28px from the rule to the
   // blocks around it: a 24px line (12 + a blank line), and a heading right after it drops its 12px top padding.
@@ -121,7 +125,13 @@ class Glyph extends WidgetType {
   }
 }
 const glyph = (cls: string) => Decoration.replace({ widget: new Glyph(cls) });
-const bullet = glyph("cm-lp-bullet"), box = glyph("cm-lp-box"), boxOn = glyph("cm-lp-box cm-lp-box-on"), rule = glyph("cm-lp-hr");
+// A reading-mode task box takes its clicks (CodeMirror ignores events in widgets unless they say otherwise): the
+// plugin's mousedown ticks it.
+class TaskBox extends Glyph {
+  ignoreEvent() { return false; }
+}
+const taskBox = (cls: string) => Decoration.replace({ widget: new TaskBox(cls) });
+const bullet = glyph("cm-lp-bullet"), box = taskBox("cm-lp-box"), boxOn = taskBox("cm-lp-box cm-lp-box-on"), rule = glyph("cm-lp-hr");
 const done = Decoration.mark({ class: "cm-lp-done" });
 const marks: Record<string, Decoration> = {
   StrongEmphasis: Decoration.mark({ class: "cm-lp-strong" }),
@@ -336,13 +346,19 @@ const preview = ViewPlugin.fromClass(
   {
     decorations: (p) => p.decorations,
     eventHandlers: {
-      // a task's "[ ]" toggles on click; Cmd/Ctrl-click opens the link under the pointer
+      // a task toggles on click (editing: its "[ ]"; reading: the box drawn over its "- [ ] "); Cmd/Ctrl-click opens
+      // the link under the pointer
       mousedown(e, view) {
-        const task = (e.target as HTMLElement).closest?.(".cm-lp-taskmark");
+        const task = (e.target as HTMLElement).closest?.(".cm-lp-taskmark, .cm-lp-box");
         if (task && e.button === 0 && !e.metaKey && !e.ctrlKey) {
-          const at = view.posAtDOM(task) + 1;
+          if (!view.state.facet(tasksWritable)) return false;
+          let at = view.posAtDOM(task) + 1;
+          if (task.classList.contains("cm-lp-box")) {
+            const l = view.state.doc.lineAt(at - 1);
+            at = l.from + l.text.indexOf("[", at - 1 - l.from) + 1;
+          }
           const ch = view.state.doc.sliceString(at, at + 1);
-          if (view.state.readOnly || !/[ xX]/.test(ch)) return false;
+          if (!/[ xX]/.test(ch)) return false;
           e.preventDefault(); // keep the cursor where it is
           view.dispatch({ changes: { from: at, to: at + 1, insert: ch === " " ? "x" : " " }, userEvent: "input" });
           return true;

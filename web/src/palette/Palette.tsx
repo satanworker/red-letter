@@ -1,13 +1,15 @@
 // Notion-style Cmd/Ctrl+K palette: type to filter files and every workspace command (commands.ts, keys shown), Up/Down
-// to move, Enter to run, Esc to close. Focus returns to wherever it was when the palette opened.
+// to move, Enter to run, Esc to close. Focus returns to wherever it was when the palette opened. "/" starts a command:
+// "/create file" and "/create folder" open the file tree's naming row at the bottom of the root; a name typed after
+// the command is filled in.
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { blobUrl } from "../repo/repoService.ts";
-import { navigateTo, repo } from "../repo/repoStore.ts";
+import { navigateTo, repo, startCreate } from "../repo/repoStore.ts";
 import { FileIcon, card } from "../ui.tsx";
 import { commands, keyLabel } from "./commands.ts";
 import { closePalette, palette } from "./paletteStore.ts";
 
-type Item = { label: string; keys?: string; file?: boolean; run: () => unknown };
+type Item = { label: string; keys?: string; hint?: string; file?: boolean; run: () => unknown };
 
 // Every character of the query, in order (case-insensitive); earlier and tighter matches rank first.
 function score(label: string, q: string): number | null {
@@ -26,10 +28,28 @@ function score(label: string, q: string): number | null {
 export function Palette() {
   const [query, setQuery] = createSignal("");
   const [active, setActive] = createSignal(0);
+  // "/" commands take what's typed after them (repoStore.startCreate fills it in)
+  const slash = (): { label: string; hint: string; run: (arg: string) => void }[] =>
+    repo.repo?.permissions?.push
+      ? [
+          { label: "/create file", hint: "in the root", run: (arg) => startCreate("file", arg) },
+          { label: "/create folder", hint: "in the root", run: (arg) => startCreate("folder", arg) },
+        ]
+      : [];
   const items = createMemo(() => {
-    const q = query().trim().toLowerCase();
+    const raw = query().trim();
+    const q = raw.toLowerCase();
+    // a command: its name typed (then what follows is its argument), or the start of it
+    if (q.startsWith("/"))
+      return slash().flatMap((c): Item[] => {
+        if (q.startsWith(`${c.label} `) || q === c.label) {
+          const arg = raw.slice(c.label.length).trim();
+          return [{ label: arg ? `${c.label} ${arg}` : c.label, hint: c.hint, run: () => c.run(arg) }];
+        }
+        return c.label.startsWith(q) ? [{ label: c.label, hint: c.hint, run: () => c.run("") }] : [];
+      });
     const files: Item[] = repo.docs.map((p) => ({ label: p, file: true, run: () => navigateTo(blobUrl(repo.repo!.full_name, repo.branch, p)) }));
-    const all: Item[] = [...commands(), ...files];
+    const all: Item[] = [...commands(), ...slash().map((c): Item => ({ label: c.label, hint: c.hint, run: () => c.run("") })), ...files];
     if (!q) return all;
     return all
       .map((it) => ({ it, s: score(it.label, q) }))
@@ -70,7 +90,7 @@ export function Palette() {
           aria-expanded="true"
           aria-controls="palette-list"
           aria-activedescendant={items().length ? `palette-${active()}` : undefined}
-          placeholder="Search files and actions…"
+          placeholder="Search files and actions, or / for commands"
           class="mx-3 h-8 border-b-[.5px] border-rule bg-transparent px-1 text-[14px] outline-none placeholder:text-mark"
           onInput={(e) => (setQuery(e.currentTarget.value), setActive(0))}
           onKeyDown={keys}
@@ -91,6 +111,9 @@ export function Palette() {
                 </Show>
                 <span class="flex-1 truncate">{it.label}</span>
                 <Show when={it.keys}>{(k) => <kbd class="font-[inherit] text-muted">{keyLabel(k())}</kbd>}</Show>
+                <Show when={it.hint}>
+                  <span class="text-muted">{it.hint}</span>
+                </Show>
               </li>
             )}
           </For>

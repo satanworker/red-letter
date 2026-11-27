@@ -2,6 +2,10 @@
 
 How Red Letter got built, newest first. Live at [diff.satanworker.com](https://diff.satanworker.com); the design and current status are in [docs/DESIGN.md](docs/DESIGN.md).
 
+## 2026-11-27: The comment panel follows the text
+
+- **Clicking a comment in the text scrolls the panel to its card** (⌘⌥N / ⌘⌥P too); in a doc with many comments the card could be far out of view. Typing afterwards doesn't pull a panel you scrolled away back to it.
+
 ## 2026-11-24: Menus, toasts, optimistic comments (Designs_tasks.md)
 
 - **The "/" menu** takes the dropdown design (Figma `183:953`): each block's markdown on the right in grey, the list fading out at the foot, and a search line on top. What you type after "/" searches names, markdown and aliases, spaces included ("/code b", "/todo", "/h2").

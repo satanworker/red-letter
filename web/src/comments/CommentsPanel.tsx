@@ -4,7 +4,7 @@
 // card puts the caret at its text; Reply / Resolve / Reopen are buttons, and each message's "…" opens its menu (Delete,
 // Copy link). Esc closes inputs and the menu. Resolved threads wait, collapsed, under "N resolved"; hovering or
 // focusing one's card lights up its text.
-import { For, Show, createMemo, createSignal, type Accessor } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, type Accessor } from "solid-js";
 import { commentLink, deleteMessage, doc, goToThread, hoverThread, reopenThread, resolveThread, selectThread, submitReply } from "../doc/docStore.ts";
 import { repo } from "../repo/repoStore.ts";
 import { keyLabel } from "../palette/commands.ts";
@@ -275,13 +275,17 @@ function ThreadCard(props: { thread: Accessor<Thread>; canComment: boolean; sele
     const next = (cards[i + 1] ?? cards[i - 1])?.querySelector("button");
     (next ?? document.getElementById("tab-comments"))?.focus();
   };
+  // lit from the text (a click, ⌘⌥N / ⌘⌥P): bring the card into the panel's view. A memo, so typing (a new thread
+  // object each keystroke) doesn't pull a panel the reader scrolled away back to the card.
+  const active = createMemo(() => t().id === doc.activeThread);
+  createEffect(() => active() && el.scrollIntoView({ block: "nearest" }));
   return (
     <div
       ref={el}
       data-card={t().id}
       // content-visibility: a card outside the panel's view skips layout and paint (a long doc has hundreds; drawing
       // them all cost the doc's scrolling 25 ms of paint bookkeeping a jump)
-      class={`${card} cursor-pointer gap-6 [contain-intrinsic-size:auto_160px] [content-visibility:auto] ${t().id === doc.activeThread ? "shadow-[0_0_0_2px_rgba(223,171,1,.55),var(--shadow)]" : ""}`}
+      class={`${card} cursor-pointer gap-6 [contain-intrinsic-size:auto_160px] [content-visibility:auto] ${active() ? "shadow-[0_0_0_2px_rgba(223,171,1,.55),var(--shadow)]" : ""}`}
       onClick={(e) => {
         if (!(e.target instanceof Element && e.target.closest("form, button"))) props.select();
       }}
